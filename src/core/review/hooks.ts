@@ -115,6 +115,7 @@ function runSingleHook(
     const child = spawn(hook.command, [], {
       cwd,
       shell: true,
+      detached: true, // own process group so timeout can kill the whole tree
       env: { ...process.env, PROJECT_DIR: cwd },
       stdio: ["pipe", "pipe", "pipe"]
     });
@@ -130,7 +131,15 @@ function runSingleHook(
 
     const timer = setTimeout(() => {
       timedOut = true;
-      child.kill("SIGKILL");
+      // Kill the whole process group (shell + descendants). Killing only the
+      // shell leaves orphaned grandchildren holding the stdio pipes open, so the
+      // 'close' event never fires and the timeout does not actually bound the run
+      // (seen on Linux where sh forks rather than execs the command).
+      try {
+        process.kill(-child.pid!, "SIGKILL");
+      } catch {
+        child.kill("SIGKILL");
+      }
     }, timeoutMs);
 
     child.on("close", (code) => {
