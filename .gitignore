@@ -11,3 +11,14 @@ dist/
 data/
 !src/ui/data/
 !src/ui/data/**
+
+# Local env overrides
+.env*.local
+# Test coverage
+coverage/
+# TypeScript incremental build cache
+*.tsbuildinfo
+# ESLint cache
+.eslintcache
+# Windows
+Thumbs.db

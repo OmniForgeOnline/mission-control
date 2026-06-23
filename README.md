@@ -82,7 +82,7 @@ Runtime state is not stored in the source checkout by default. Mission Control u
 - Linux: `$XDG_DATA_HOME/mission-control` or `~/.local/share/mission-control`
 - Windows: `%APPDATA%\mission-control`
 
-The runtime state directory contains settings, tasks, runs, generated indexes, seeded policies, project memory, and connector state. Existing state from the legacy `~/codex/harness` location is migrated once on first run.
+The runtime state directory contains settings, tasks, runs, generated indexes, seeded policies, project memory, and connector state.
 
 ## Environment Variables
 

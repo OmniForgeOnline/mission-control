@@ -13,6 +13,27 @@ import { loadWorkflow } from "../src/core/workflows/index.ts";
 
 const execFileAsync = promisify(execFile);
 
+/**
+ * Best-effort background writes (memory capture, run artifacts) can still be
+ * flushing when the test tears down. macOS recursive rm is non-atomic, so a
+ * file landing mid-removal throws ENOTEMPTY. Retry briefly until it drains.
+ */
+async function rmRoot(dir: string): Promise<void> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      await rm(dir, { recursive: true, force: true });
+      return;
+    } catch (err) {
+      const code = (err as NodeJS.ErrnoException).code;
+      if ((code === "ENOTEMPTY" || code === "EBUSY") && attempt < 10) {
+        await new Promise((resolve) => setTimeout(resolve, 25 * (attempt + 1)));
+        continue;
+      }
+      throw err;
+    }
+  }
+}
+
 const STALE_BLOCKED_REASON =
   "Harness commit blocked: same pre-commit failure repeated 5 times:\n\nerror: remove .commit-blocker";
 
@@ -25,7 +46,7 @@ describe("daemon blockedReason cleanup", () => {
   });
 
   afterEach(async () => {
-    await rm(root, { recursive: true, force: true });
+    await rmRoot(root);
   });
 
   it("clears stale blockedReason after successful author commit and push", async () => {

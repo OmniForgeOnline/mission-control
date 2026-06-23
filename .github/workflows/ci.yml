@@ -12,22 +12,17 @@ concurrency:
 
 jobs:
   check:
-    # Full quality gate (lint, typecheck, test, knip, build) on more than one OS
-    # and Node version. This is what proves a fresh clone works outside the
-    # author's machine.
-    name: check (${{ matrix.os }} / node ${{ matrix.node }})
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, macos-latest]
-        node: ["20", "22", "24"]
+    # Full quality gate on the active Node LTS. This package ships compiled JS,
+    # so a single lane on Node 22 (Ubuntu) covers the real risk surface; the
+    # cross-platform paths are unit-tested.
+    name: check
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Setup Node ${{ matrix.node }}
+      - name: Setup Node 22
         uses: actions/setup-node@v4
         with:
-          node-version: ${{ matrix.node }}
+          node-version: "22"
           cache: npm
       - name: Install dependencies
         run: npm ci

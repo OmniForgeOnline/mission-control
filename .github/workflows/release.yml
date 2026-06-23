@@ -10,8 +10,9 @@
 #      (npmjs.com -> Access Tokens) and add it as the repo secret NPM_TOKEN.
 #      An automation/granular token can publish even with 2FA enforced on your
 #      account; the job is gated on NPM_TOKEN, so it stays inert without it.
-#   2. Keep `publishConfig.provenance: true` in package.json so npm publishes
-#      include GitHub Actions provenance.
+#   2. npm provenance requires publishing from this workflow (GHA OIDC). It is
+#      not wired yet; enable it (publishConfig.provenance or NPM_CONFIG_PROVENANCE)
+#      once releases move to CI. A local publish cannot produce provenance.
 
 name: Release
 
