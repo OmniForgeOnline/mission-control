@@ -1,0 +1,413 @@
+{"type":"text","data":"Planning sco"}
+{"type":"text","data":"pe discovery"}
+{"type":"text","data":" for the cor"}
+{"type":"text","data":"e quality ga"}
+{"type":"text","data":"te. I'll loa"}
+{"type":"text","data":"d the releva"}
+{"type":"text","data":"nt skills an"}
+{"type":"text","data":"d inspect `s"}
+{"type":"text","data":"rc/core` plu"}
+{"type":"text","data":"s existing t"}
+{"type":"text","data":"ests Checkin"}
+{"type":"text","data":"g how qualit"}
+{"type":"text","data":"y grading wo"}
+{"type":"text","data":"rks and whic"}
+{"type":"text","data":"h core modul"}
+{"type":"text","data":"es lack test"}
+{"type":"text","data":" coverage Th"}
+{"type":"text","data":"e grading lo"}
+{"type":"text","data":"gic only che"}
+{"type":"text","data":"cks test fil"}
+{"type":"text","data":"e paths, not"}
+{"type":"text","data":" imports — I"}
+{"type":"text","data":"'ll verify w"}
+{"type":"text","data":"hich filenam"}
+{"type":"text","data":"es actually "}
+{"type":"text","data":"match \"core "}
+{"type":"text","data":"Checking for"}
+{"type":"text","data":" oversized c"}
+{"type":"text","data":"ore files an"}
+{"type":"text","data":"d modules wi"}
+{"type":"text","data":"thout dedica"}
+{"type":"text","data":"ted tests Th"}
+{"type":"text","data":"e `core` dom"}
+{"type":"text","data":"ain is grade"}
+{"type":"text","data":"d C because "}
+{"type":"text","data":"the quality "}
+{"type":"text","data":"heuristic ma"}
+{"type":"text","data":"tches **test"}
+{"type":"text","data":" file paths*"}
+{"type":"text","data":"*, not impor"}
+{"type":"text","data":"t paths. Man"}
+{"type":"text","data":"y tests alre"}
+{"type":"text","data":"ady import f"}
+{"type":"text","data":"rom `src/cor"}
+{"type":"text","data":"e/*`, but no"}
+{"type":"text","data":" test file i"}
+{"type":"text","data":"s named `cor"}
+{"type":"text","data":"e.test.ts` o"}
+{"type":"text","data":"r lives unde"}
+{"type":"text","data":"r `tests/cor"}
+{"type":"text","data":"e/` — and in"}
+{"type":"text","data":" CI/temp dir"}
+{"type":"text","data":"s the accide"}
+{"type":"text","data":"ntal `\"codex"}
+{"type":"text","data":"\"` → `\"core\""}
+{"type":"text","data":"` substring "}
+{"type":"text","data":"match does n"}
+{"type":"text","data":"ot apply<pro"}
+{"type":"text","data":"posed_plan>\n"}
+{"type":"text","data":"\n# Quality G"}
+{"type":"text","data":"ate: Bring `"}
+{"type":"text","data":"core` Domain"}
+{"type":"text","data":" to Grade A\n"}
+{"type":"text","data":"\n## Problem\n"}
+{"type":"text","data":"\nThe `core` "}
+{"type":"text","data":"domain (`src"}
+{"type":"text","data":"/core/`, 26 "}
+{"type":"text","data":"modules) has"}
+{"type":"text","data":" quality gra"}
+{"type":"text","data":"de **C** wit"}
+{"type":"text","data":"h rationale:"}
+{"type":"text","data":" *\"No tests "}
+{"type":"text","data":"reference th"}
+{"type":"text","data":"is domain.\"T"}
+{"type":"text","data":"he grading l"}
+{"type":"text","data":"ogic in `src"}
+{"type":"text","data":"/core/qualit"}
+{"type":"text","data":"y.ts` detect"}
+{"type":"text","data":"s test cover"}
+{"type":"text","data":"age by scann"}
+{"type":"text","data":"ing test **f"}
+{"type":"text","data":"ile paths** "}
+{"type":"text","data":"for\n- `/core"}
+{"type":"text","data":".` (e.g. `te"}
+{"type":"text","data":"sts/core.tes"}
+{"type":"text","data":"t.ts\n- `/cor"}
+{"type":"text","data":"e/` (e.g. `t"}
+{"type":"text","data":"ests/core/fs"}
+{"type":"text","data":".test.ts\n- t"}
+{"type":"text","data":"he substring"}
+{"type":"text","data":" `\"core\"` an"}
+{"type":"text","data":"ywhere in th"}
+{"type":"text","data":"e path (frag"}
+{"type":"text","data":"ile; fails i"}
+{"type":"text","data":"n temp/CI pa"}
+{"type":"text","data":"ths that lac"}
+{"type":"text","data":"k e.g. `code"}
+{"type":"text","data":"x Existing t"}
+{"type":"text","data":"ests (`agent"}
+{"type":"text","data":"s.test.ts`, "}
+{"type":"text","data":"`repository."}
+{"type":"text","data":"test.ts`, et"}
+{"type":"text","data":"c.) import `"}
+{"type":"text","data":"../src/core/"}
+{"type":"text","data":"*` but **non"}
+{"type":"text","data":"e** satisfy "}
+{"type":"text","data":"the filename"}
+{"type":"text","data":" heuristic r"}
+{"type":"text","data":"eliably. The"}
+{"type":"text","data":" existing `q"}
+{"type":"text","data":"uality.test."}
+{"type":"text","data":"ts` explicit"}
+{"type":"text","data":"ly documents"}
+{"type":"text","data":" this scenar"}
+{"type":"text","data":"io and expec"}
+{"type":"text","data":"ts grade C u"}
+{"type":"text","data":"ntil a `core"}
+{"type":"text","data":"`-named test"}
+{"type":"text","data":" file exists"}
+{"type":"text","data":"\n\n## Success"}
+{"type":"text","data":" Criteria\n- "}
+{"type":"text","data":"`computeQual"}
+{"type":"text","data":"ityGrades()`"}
+{"type":"text","data":" assigns `co"}
+{"type":"text","data":"re` grade **"}
+{"type":"text","data":"A** (score ≥"}
+{"type":"text","data":" 90: no over"}
+{"type":"text","data":"sized files,"}
+{"type":"text","data":" `hasTests: "}
+{"type":"text","data":"true\n- New t"}
+{"type":"text","data":"ests are mea"}
+{"type":"text","data":"ningful (not"}
+{"type":"text","data":" empty stubs"}
+{"type":"text","data":") and pass w"}
+{"type":"text","data":"ith `npm tes"}
+{"type":"text","data":"t\n- No chang"}
+{"type":"text","data":"es to `src/c"}
+{"type":"text","data":"ore/` source"}
+{"type":"text","data":" unless a te"}
+{"type":"text","data":"st reveals a"}
+{"type":"text","data":" real bug (u"}
+{"type":"text","data":"nlikely; out"}
+{"type":"text","data":" of scope\n- "}
+{"type":"text","data":"Mechanical c"}
+{"type":"text","data":"hecks in `.h"}
+{"type":"text","data":"arness/check"}
+{"type":"text","data":"s.yml` pass "}
+{"type":"text","data":"on push\n\n## "}
+{"type":"text","data":"Out of Scope"}
+{"type":"text","data":"\n- Refactori"}
+{"type":"text","data":"ng oversized"}
+{"type":"text","data":" files (none"}
+{"type":"text","data":" in `core`; "}
+{"type":"text","data":"largest ~405"}
+{"type":"text","data":" lines, well"}
+{"type":"text","data":" under ~800-"}
+{"type":"text","data":"line thresho"}
+{"type":"text","data":"ld\n- Changin"}
+{"type":"text","data":"g the qualit"}
+{"type":"text","data":"y grading he"}
+{"type":"text","data":"uristic itse"}
+{"type":"text","data":"lf (`quality"}
+{"type":"text","data":".ts` detecti"}
+{"type":"text","data":"on logic\n- C"}
+{"type":"text","data":"onsolidating"}
+{"type":"text","data":" or renaming"}
+{"type":"text","data":" existing do"}
+{"type":"text","data":"main-specifi"}
+{"type":"text","data":"c test files"}
+{"type":"text","data":"\n- Broad new"}
+{"type":"text","data":" integration"}
+{"type":"text","data":" tests for a"}
+{"type":"text","data":"lready-cover"}
+{"type":"text","data":"ed modules ("}
+{"type":"text","data":"`tasks`, `wo"}
+{"type":"text","data":"rkflows`, `r"}
+{"type":"text","data":"epository`, "}
+{"type":"text","data":"etc.)\n\n## Im"}
+{"type":"text","data":"plementation"}
+{"type":"text","data":" Steps\n\n### "}
+{"type":"text","data":"Step 1: Add "}
+{"type":"text","data":"`tests/core."}
+{"type":"text","data":"test.ts` (me"}
+{"type":"text","data":"dium effort "}
+{"type":"text","data":"Create a new"}
+{"type":"text","data":" test file m"}
+{"type":"text","data":"atching the "}
+{"type":"text","data":"`/core.` pat"}
+{"type":"text","data":"h pattern. F"}
+{"type":"text","data":"ollow existi"}
+{"type":"text","data":"ng conventio"}
+{"type":"text","data":"ns (`mkdtemp"}
+{"type":"text","data":"`/`rm` fixtu"}
+{"type":"text","data":"res, `descri"}
+{"type":"text","data":"be` blocks p"}
+{"type":"text","data":"er module**T"}
+{"type":"text","data":"arget module"}
+{"type":"text","data":"s with no di"}
+{"type":"text","data":"rect test co"}
+{"type":"text","data":"verage today"}
+{"type":"text","data":"\n\n| Module |"}
+{"type":"text","data":" What to tes"}
+{"type":"text","data":"t | Pattern "}
+{"type":"text","data":"|\n| --- | --"}
+{"type":"text","data":"- | --- |\n| "}
+{"type":"text","data":"`fs.ts` | `r"}
+{"type":"text","data":"eadJsonFile`"}
+{"type":"text","data":" fallback, `"}
+{"type":"text","data":"writeJsonFil"}
+{"type":"text","data":"e` round-tri"}
+{"type":"text","data":"p, `writeFil"}
+{"type":"text","data":"eIfMissing`,"}
+{"type":"text","data":" `safeRootPa"}
+{"type":"text","data":"th` rejects "}
+{"type":"text","data":"traversal/ab"}
+{"type":"text","data":"solute paths"}
+{"type":"text","data":", `listFileN"}
+{"type":"text","data":"ames` on mis"}
+{"type":"text","data":"sing dir | T"}
+{"type":"text","data":"emp dir fixt"}
+{"type":"text","data":"ures |\n| `ch"}
+{"type":"text","data":"ecks.ts` | `"}
+{"type":"text","data":"runChecks` s"}
+{"type":"text","data":"kipped when "}
+{"type":"text","data":"no `.harness"}
+{"type":"text","data":"/checks.yml`"}
+{"type":"text","data":"; parses/run"}
+{"type":"text","data":"s configured"}
+{"type":"text","data":" checks; `su"}
+{"type":"text","data":"mmarizeFailu"}
+{"type":"text","data":"res` formats"}
+{"type":"text","data":" failed resu"}
+{"type":"text","data":"lts | Mirror"}
+{"type":"text","data":" `hooks.test"}
+{"type":"text","data":".ts` YAML fi"}
+{"type":"text","data":"xture style "}
+{"type":"text","data":"|\n| `activit"}
+{"type":"text","data":"y.ts` | `ACT"}
+{"type":"text","data":"IVITY_THRESH"}
+{"type":"text","data":"OLDS` export"}
+{"type":"text","data":"s sane value"}
+{"type":"text","data":"s (`staleMs`"}
+{"type":"text","data":", `longRunMs"}
+{"type":"text","data":"` > 0) | Pur"}
+{"type":"text","data":"e assertions"}
+{"type":"text","data":" |\n| `intake"}
+{"type":"text","data":"-prompts.ts`"}
+{"type":"text","data":" | `buildInt"}
+{"type":"text","data":"akePrompt` i"}
+{"type":"text","data":"ncludes work"}
+{"type":"text","data":"flow catalog"}
+{"type":"text","data":", cwd, and t"}
+{"type":"text","data":"ranscript | "}
+{"type":"text","data":"Minimal `Int"}
+{"type":"text","data":"akeSession` "}
+{"type":"text","data":"+ `WorkflowS"}
+{"type":"text","data":"ummary` fixt"}
+{"type":"text","data":"ures |\n**Dep"}
+{"type":"text","data":"endencies:**"}
+{"type":"text","data":" None — new "}
+{"type":"text","data":"file only\n##"}
+{"type":"text","data":"# Step 2: Ve"}
+{"type":"text","data":"rify grade c"}
+{"type":"text","data":"omputation ("}
+{"type":"text","data":"low effort R"}
+{"type":"text","data":"un targeted "}
+{"type":"text","data":"tests```bash"}
+{"type":"text","data":"npm test -\n-"}
+{"type":"text","data":" tests/core."}
+{"type":"text","data":"test.ts test"}
+{"type":"text","data":"s/quality.te"}
+{"type":"text","data":"st.ts Option"}
+{"type":"text","data":"ally add one"}
+{"type":"text","data":" assertion t"}
+{"type":"text","data":"o `quality.t"}
+{"type":"text","data":"est.ts` prov"}
+{"type":"text","data":"ing that a r"}
+{"type":"text","data":"epo with `te"}
+{"type":"text","data":"sts/core.tes"}
+{"type":"text","data":"t.ts` grades"}
+{"type":"text","data":" `core` as *"}
+{"type":"text","data":"*A** (extend"}
+{"type":"text","data":"s the existi"}
+{"type":"text","data":"ng fixture t"}
+{"type":"text","data":"est). This i"}
+{"type":"text","data":"s optional b"}
+{"type":"text","data":"ut makes reg"}
+{"type":"text","data":"ression cove"}
+{"type":"text","data":"rage explici"}
+{"type":"text","data":"t**Dependenc"}
+{"type":"text","data":"ies:** Step "}
+{"type":"text","data":"1\n\n### Step "}
+{"type":"text","data":"3: Branch, c"}
+{"type":"text","data":"ommit, push "}
+{"type":"text","data":"(low effort "}
+{"type":"text","data":"Per `pr-driv"}
+{"type":"text","data":"en-execution"}
+{"type":"text","data":"\n1. Work in "}
+{"type":"text","data":"scratch work"}
+{"type":"text","data":"tree (`cwd` "}
+{"type":"text","data":"provided\n2. "}
+{"type":"text","data":"Run full tes"}
+{"type":"text","data":"t suite / ha"}
+{"type":"text","data":"rness checks"}
+{"type":"text","data":" before hand"}
+{"type":"text","data":"off\n3. Commi"}
+{"type":"text","data":"t with messa"}
+{"type":"text","data":"ge like: `te"}
+{"type":"text","data":"st(core): ad"}
+{"type":"text","data":"d core.test."}
+{"type":"text","data":"ts for quali"}
+{"type":"text","data":"ty gate cove"}
+{"type":"text","data":"rage\n4. Push"}
+{"type":"text","data":"; let destin"}
+{"type":"text","data":"ation repo o"}
+{"type":"text","data":"pen PR autom"}
+{"type":"text","data":"atically**De"}
+{"type":"text","data":"pendencies:*"}
+{"type":"text","data":"* Steps 1–2\n"}
+{"type":"text","data":"\n### Step 4:"}
+{"type":"text","data":" Confirm gra"}
+{"type":"text","data":"de uplift (l"}
+{"type":"text","data":"ow effort Af"}
+{"type":"text","data":"ter push, th"}
+{"type":"text","data":"e autonomy `"}
+{"type":"text","data":"quality-gate"}
+{"type":"text","data":"-sweep` job "}
+{"type":"text","data":"recomputes g"}
+{"type":"text","data":"rades. Autho"}
+{"type":"text","data":"r handoff sh"}
+{"type":"text","data":"ould note ex"}
+{"type":"text","data":"pected outco"}
+{"type":"text","data":"me: `core` →"}
+{"type":"text","data":" **A**, rati"}
+{"type":"text","data":"onale *\"Heal"}
+{"type":"text","data":"thy: no over"}
+{"type":"text","data":"sized files,"}
+{"type":"text","data":" tests refer"}
+{"type":"text","data":"ence this do"}
+{"type":"text","data":"main.\"**Depe"}
+{"type":"text","data":"ndencies:** "}
+{"type":"text","data":"Step 3\n\n## E"}
+{"type":"text","data":"ffort Summar"}
+{"type":"text","data":"y\n\n| Step | "}
+{"type":"text","data":"Effort |\n| -"}
+{"type":"text","data":"-- | --- |\n|"}
+{"type":"text","data":" Add `tests/"}
+{"type":"text","data":"core.test.ts"}
+{"type":"text","data":"` | Medium ("}
+{"type":"text","data":"~80–120 line"}
+{"type":"text","data":"s) |\n| Verif"}
+{"type":"text","data":"y + optional"}
+{"type":"text","data":" `quality.te"}
+{"type":"text","data":"st.ts` exten"}
+{"type":"text","data":"sion | Low |"}
+{"type":"text","data":"\n| Push + ha"}
+{"type":"text","data":"ndoff | Low "}
+{"type":"text","data":"|\n**Total:**"}
+{"type":"text","data":" ~1 implemen"}
+{"type":"text","data":"tation turn\n"}
+{"type":"text","data":"## Risks & O"}
+{"type":"text","data":"pen Question"}
+{"type":"text","data":"s\n\n| Risk | "}
+{"type":"text","data":"Mitigation |"}
+{"type":"text","data":"\n| --- | ---"}
+{"type":"text","data":" |\n| `runChe"}
+{"type":"text","data":"cks` tests m"}
+{"type":"text","data":"ay be slow i"}
+{"type":"text","data":"f they invok"}
+{"type":"text","data":"e real shell"}
+{"type":"text","data":" commands | "}
+{"type":"text","data":"Use trivial "}
+{"type":"text","data":"commands (`e"}
+{"type":"text","data":"cho ok`, `fa"}
+{"type":"text","data":"lse`) in fix"}
+{"type":"text","data":"ture `checks"}
+{"type":"text","data":".yml`, same "}
+{"type":"text","data":"as `hooks.te"}
+{"type":"text","data":"st.ts` |\n| S"}
+{"type":"text","data":"ubstring heu"}
+{"type":"text","data":"ristic is br"}
+{"type":"text","data":"ittle for ot"}
+{"type":"text","data":"her domains "}
+{"type":"text","data":"| Not in sco"}
+{"type":"text","data":"pe; `core.te"}
+{"type":"text","data":"st.ts` is th"}
+{"type":"text","data":"e intended f"}
+{"type":"text","data":"ix per `buil"}
+{"type":"text","data":"dQualityGate"}
+{"type":"text","data":"Remediation`"}
+{"type":"text","data":" |\n| Duplica"}
+{"type":"text","data":"te coverage "}
+{"type":"text","data":"with future "}
+{"type":"text","data":"`checks.test"}
+{"type":"text","data":".ts` | Accep"}
+{"type":"text","data":"table; this "}
+{"type":"text","data":"task optimiz"}
+{"type":"text","data":"es for grade"}
+{"type":"text","data":" gate + fill"}
+{"type":"text","data":"s real gaps "}
+{"type":"text","data":"|\n**No block"}
+{"type":"text","data":"ing question"}
+{"type":"text","data":"s** — requir"}
+{"type":"text","data":"ements, root"}
+{"type":"text","data":" cause, and "}
+{"type":"text","data":"fix are clea"}
+{"type":"text","data":"r from task "}
+{"type":"text","data":"description "}
+{"type":"text","data":"and `quality"}
+{"type":"text","data":".ts` source<"}
+{"type":"text","data":"/proposed_pl"}
+{"type":"text","data":"an>"}
+{"type":"end","sessionId":"fixture-grok-plan-1"}

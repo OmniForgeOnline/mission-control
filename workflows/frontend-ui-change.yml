@@ -1,0 +1,57 @@
+# Harness workflow definition. Managed by the Workflows tab; edits round-trip to YAML.
+id: frontend-ui-change
+name: Frontend UI Change
+initial: ux_scope
+defaults:
+  agents:
+    author: kiro
+    reviewer: codex
+  effort: medium
+steps:
+  ux_scope:
+    kind: conversation
+    agent: kiro
+    effort: medium
+    skill: product-discovery
+    approval: none
+    next: implementation_plan
+  implementation_plan:
+    kind: conversation
+    agent: kiro
+    effort: high
+    skill: technical-investigation
+    approval: none
+    next: implement_ui
+  implement_ui:
+    kind: agent_turn
+    agent: claude
+    effort: high
+    skill: pr-driven-execution
+    approval: required
+    next: create_merge_request
+  create_merge_request:
+    kind: create_merge_request
+    agent: none
+    approval: none
+    next: resolve_conflicts
+  resolve_conflicts:
+    kind: resolve_conflicts
+    agent: none
+    approval: none
+    next: review
+    branch:
+      conflicts: implement_ui
+  review:
+    kind: review
+    agent: reviewer
+    effort: medium
+    skill: code-review
+    approval: none
+    branch:
+      approved: handoff
+      changes_requested: implement_ui
+  handoff:
+    kind: terminal
+    agent: none
+    skill: operator-handoff
+    approval: none

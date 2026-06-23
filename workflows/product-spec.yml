@@ -1,0 +1,50 @@
+id: product-spec
+name: Product Spec
+initial: discover
+
+defaults:
+  agents:
+    author: kiro
+    reviewer: claude
+  effort: medium
+
+steps:
+  discover:
+    kind: conversation
+    agent: author
+    effort: medium
+    skill: product-discovery
+    approval: none
+    next: research_context
+
+  research_context:
+    kind: agent_turn
+    agent: author
+    effort: medium
+    skill: harness-memory
+    approval: none
+    next: write_spec
+
+  write_spec:
+    kind: agent_turn
+    agent: author
+    effort: medium
+    skill: content-production
+    approval: required
+    next: review_spec
+
+  review_spec:
+    kind: review
+    agent: reviewer
+    effort: high
+    skill: code-review
+    approval: none
+    branch:
+      approved: handoff
+      changes_requested: write_spec
+
+  handoff:
+    kind: terminal
+    agent: none
+    skill: operator-handoff
+    approval: none

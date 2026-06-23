@@ -1,0 +1,56 @@
+# Harness workflow definition. Managed by the Workflows tab; edits round-trip to YAML.
+id: code-feature
+name: Code Feature
+initial: plan
+defaults:
+  agents:
+    author: claude
+    reviewer: codex
+  effort: medium
+steps:
+  plan:
+    kind: conversation
+    agent: codex
+    effort: medium
+    skill: product-discovery
+    approval: none
+    next: plan_gate
+  plan_gate:
+    kind: agent_turn
+    agent: none
+    effort: medium
+    approval: required
+    next: implement
+  implement:
+    kind: agent_turn
+    agent: claude
+    effort: high
+    skill: pr-driven-execution
+    approval: required
+    next: create_merge_request
+  create_merge_request:
+    kind: create_merge_request
+    agent: none
+    approval: none
+    next: resolve_conflicts
+  resolve_conflicts:
+    kind: resolve_conflicts
+    agent: none
+    approval: none
+    next: review
+    branch:
+      conflicts: implement
+  review:
+    kind: review
+    agent: reviewer
+    effort: medium
+    skill: code-review
+    approval: none
+    branch:
+      approved: handoff
+      changes_requested: implement
+  handoff:
+    kind: terminal
+    agent: none
+    skill: operator-handoff
+    approval: none

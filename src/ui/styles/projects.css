@@ -1,0 +1,327 @@
+/* ---------- projects ---------- */
+
+.project-view {
+  max-width: none;
+  margin: 0;
+  padding-inline: clamp(var(--s-5), 4vw, var(--s-8));
+}
+
+.project-header {
+  align-items: flex-start;
+}
+
+.project-picker {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+}
+
+.project-picker-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: var(--s-3);
+}
+
+.project-picker-card {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--s-3);
+  padding: var(--s-3);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  text-align: left;
+}
+
+.project-picker-card:hover {
+  border-color: var(--hairline-strong);
+  background: var(--surface-2);
+}
+
+.project-picker-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: var(--r-md);
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.project-picker-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.project-picker-body strong,
+.project-picker-body span {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.project-picker-body span {
+  color: var(--ink-muted);
+  font-size: var(--t-sm);
+}
+
+.project-intake,
+.project-tickets {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+}
+
+.project-section-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s-3);
+}
+
+.project-section-head h2 {
+  font-size: var(--t-xl);
+  font-weight: var(--w-semi);
+  letter-spacing: -0.01em;
+}
+
+/* Header status pill — toned dot, pulsing while the project is active. */
+.project-status-badge {
+  text-transform: capitalize;
+}
+
+.project-status-badge[data-tone="running"] .dot {
+  animation: pulse-dot 1.8s ease-in-out infinite;
+}
+
+.project-intake-queue {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+
+.project-tabs {
+  display: flex;
+  gap: var(--s-1);
+  border-bottom: 1px solid var(--hairline);
+  margin-bottom: var(--s-2);
+}
+
+.project-tab {
+  appearance: none;
+  background: transparent;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  padding: var(--s-2) var(--s-3);
+  color: var(--ink-muted);
+  font: inherit;
+  font-weight: var(--w-medium);
+  cursor: pointer;
+  margin-bottom: -1px;
+}
+
+.project-tab:hover {
+  color: var(--ink);
+}
+
+.project-tab.active {
+  color: var(--ink);
+  border-bottom-color: var(--accent);
+}
+
+.project-tab:focus-visible {
+  outline: none;
+  box-shadow: var(--ring);
+  border-radius: var(--r-sm);
+}
+
+.project-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+}
+
+/* ---------- project ticket table ---------- */
+
+.ticket-table-filters {
+  display: flex;
+  gap: var(--s-2);
+  margin-bottom: var(--s-3);
+  flex-wrap: wrap;
+}
+
+.ticket-filter-name {
+  flex: 1 1 220px;
+  min-width: 0;
+}
+
+.ticket-filter-status {
+  flex: 0 0 auto;
+  width: auto;
+  min-width: 160px;
+}
+
+.project-ticket-table {
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: collapse;
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-lg);
+  overflow: hidden;
+  background: var(--surface);
+}
+
+.project-ticket-table th:nth-child(1),
+.project-ticket-table td:nth-child(1) {
+  width: 52%;
+}
+
+.project-ticket-table th:nth-child(2),
+.project-ticket-table td:nth-child(2) {
+  width: 116px;
+}
+
+.project-ticket-table th:nth-child(3),
+.project-ticket-table td:nth-child(3) {
+  width: 112px;
+}
+
+.project-ticket-table thead th {
+  text-align: left;
+  font-size: var(--t-xs);
+  font-weight: var(--w-semi);
+  color: var(--ink-faint);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: var(--s-2) var(--s-4);
+  border-bottom: 1px solid var(--hairline);
+  background: var(--surface-2);
+}
+
+.ticket-sort-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  cursor: pointer;
+  padding: 0;
+}
+
+.ticket-sort-toggle:hover {
+  color: var(--ink);
+}
+
+.ticket-sort-caret {
+  display: inline-flex;
+  transition: transform var(--d-fast) var(--ease-out);
+}
+
+.ticket-sort-caret.is-asc {
+  transform: rotate(180deg);
+}
+
+.project-ticket-row {
+  border-bottom: 1px solid var(--hairline);
+  transition: background var(--d-fast) var(--ease-out);
+}
+
+.project-ticket-row:last-child {
+  border-bottom: none;
+}
+
+.project-ticket-row:hover {
+  background: var(--surface-2);
+}
+
+.project-ticket-table td {
+  padding: var(--s-3) var(--s-4);
+  font-size: var(--t-sm);
+  color: var(--ink-muted);
+  vertical-align: middle;
+}
+
+.ticket-link {
+  border: none;
+  background: transparent;
+  color: var(--ink-strong);
+  font-weight: var(--w-medium);
+  font-size: var(--t-base);
+  text-align: left;
+  cursor: pointer;
+  padding: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ticket-link:hover {
+  color: var(--accent);
+  text-decoration: underline;
+}
+
+.ticket-link:focus-visible {
+  outline: none;
+  box-shadow: var(--ring);
+  border-radius: var(--r-sm);
+}
+
+.ticket-status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 8px 2px 6px;
+  border-radius: var(--r-pill);
+  font-size: var(--t-xs);
+  font-weight: var(--w-medium);
+  text-transform: lowercase;
+  border: 1px solid var(--hairline-strong);
+  background: var(--surface-2);
+  color: var(--ink-muted);
+}
+
+.ticket-status-badge .dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  flex: none;
+}
+
+.ticket-status-badge[data-status="running"] {
+  color: var(--status-running);
+  border-color: color-mix(in srgb, var(--status-running) 40%, transparent);
+}
+
+.ticket-status-badge[data-status="awaiting_operator"],
+.ticket-status-badge[data-status="awaiting_review"] {
+  color: var(--status-await-operator);
+  border-color: color-mix(in srgb, var(--status-await-operator) 40%, transparent);
+}
+
+.ticket-status-badge[data-status="blocked"] {
+  color: var(--status-blocked);
+  border-color: color-mix(in srgb, var(--status-blocked) 40%, transparent);
+}
+
+.ticket-status-badge[data-status="completed"] {
+  color: var(--status-completed);
+  border-color: color-mix(in srgb, var(--status-completed) 40%, transparent);
+}
+
+.ticket-branch {
+  font-family: var(--font-mono);
+  font-size: var(--t-xs);
+  color: var(--ink-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

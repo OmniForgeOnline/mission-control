@@ -1,0 +1,205 @@
+/* ---------- command palette ---------- */
+
+.palette {
+  position: fixed;
+  top: 12vh;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(640px, 92vw);
+  margin: 0;
+  background: var(--bg-elev);
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--r-xl);
+  overflow: hidden;
+  box-shadow: var(--shadow-overlay), inset 0 1px 0 color-mix(in srgb, white 6%, transparent);
+}
+
+.palette[open] {
+  animation: palette-in var(--d-base) var(--ease-out);
+}
+
+@keyframes palette-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, calc(8px + 0px));
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+
+.palette .palette-input {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  font-size: var(--t-lg);
+  padding: var(--s-4) var(--s-5);
+  border-bottom: 1px solid var(--hairline);
+  caret-color: var(--accent);
+}
+
+.palette .palette-input:focus {
+  outline: none;
+}
+
+.palette-list {
+  max-height: 50vh;
+  overflow: auto;
+  padding: var(--s-2) 0;
+}
+
+.palette-empty {
+  padding: var(--s-5);
+  text-align: center;
+  color: var(--ink-muted);
+}
+
+.palette-section {
+  padding: var(--s-2) var(--s-4);
+  font-size: var(--t-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--ink-faint);
+  font-weight: var(--w-semi);
+}
+
+.palette-item {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  padding: 8px var(--s-4);
+  cursor: pointer;
+  font-size: var(--t-md);
+  color: var(--ink);
+}
+
+.palette-item:hover,
+.palette-item.active {
+  background: var(--surface-2);
+}
+
+.palette-item:focus-visible {
+  outline: none;
+  box-shadow: var(--ring);
+}
+
+.palette-item .meta {
+  margin-left: auto;
+  color: var(--ink-faint);
+  font-size: var(--t-xs);
+  font-family: var(--font-mono);
+}
+
+/* ---------- shortcuts overlay ---------- */
+
+.shortcuts-modal {
+  width: min(520px, 92vw);
+  max-height: 90svh;
+  margin: auto;
+}
+
+.shortcuts-panel {
+  display: flex;
+  flex-direction: column;
+  max-height: 90svh;
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-lg);
+  background: var(--bg-elev);
+  box-shadow: var(--shadow-overlay);
+  overflow: hidden;
+}
+
+.shortcuts-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--s-3);
+  padding: var(--s-4) var(--s-5);
+  border-bottom: 1px solid var(--hairline);
+}
+
+.shortcuts-head h2 {
+  margin: 0;
+  font-size: var(--t-lg);
+  font-weight: var(--w-semi);
+}
+
+.shortcuts-head p {
+  margin: 4px 0 0;
+  font-size: var(--t-xs);
+}
+
+.shortcuts-body {
+  padding: var(--s-3) var(--s-5) var(--s-5);
+  overflow: auto;
+  display: grid;
+  gap: 8px;
+}
+
+.shortcuts-row {
+  display: grid;
+  grid-template-columns: 120px 1fr;
+  gap: var(--s-3);
+  align-items: center;
+  font-size: var(--t-sm);
+}
+
+.shortcuts-keys {
+  display: inline-block;
+  padding: 4px 8px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--hairline-strong);
+  background: var(--surface-2);
+  font-family: var(--font-mono);
+  font-size: var(--t-xs);
+  color: var(--ink-strong);
+}
+
+.shortcuts-desc {
+  color: var(--ink-muted);
+}
+
+/* ---------- target suggest ---------- */
+
+.target-suggest {
+  display: none;
+  position: fixed;
+  inset: auto;
+  margin: 0;
+  padding: 0;
+  z-index: 8;
+  max-width: min(640px, calc(100vw - 24px));
+  max-height: 240px;
+  overflow: auto;
+  background: var(--bg-elev);
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-popover);
+}
+
+.target-suggest button {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  padding: 8px var(--s-3);
+  text-align: left;
+  border-bottom: 1px solid var(--hairline);
+  font-size: var(--t-md);
+}
+
+.target-suggest button:last-child {
+  border-bottom: 0;
+}
+
+.target-suggest button:hover,
+.target-suggest button.is-active {
+  background: var(--surface-2);
+}
+
+.target-suggest small {
+  color: var(--ink-faint);
+  font-family: var(--font-mono);
+  font-size: var(--t-xs);
+}

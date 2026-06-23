@@ -1,0 +1,21 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "jsx": "react-jsx",
+    "jsxImportSource": "preact",
+    "types": ["node"],
+    "paths": {
+      "@harness/core/*": ["../core/*"],
+      "@ui/app/*": ["./app/*"],
+      "@ui/data/*": ["./data/*"],
+      "@ui/shell/*": ["./shell/*"],
+      "@ui/features/*": ["./features/*"],
+      "@ui/shared/*": ["./shared/*"],
+      "@ui/overlays/*": ["./overlays/*"]
+    }
+  },
+  "include": ["**/*.ts", "**/*.tsx"]
+}

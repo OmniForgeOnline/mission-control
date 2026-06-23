@@ -1,0 +1,40 @@
+id: marketing-asset
+name: Marketing Asset
+initial: brief
+
+defaults:
+  agents:
+    author: kiro
+    reviewer: claude
+  effort: medium
+
+steps:
+  brief:
+    kind: conversation
+    agent: author
+    effort: medium
+    skill: content-production
+    approval: none
+    next: draft_asset
+
+  draft_asset:
+    kind: agent_turn
+    agent: author
+    effort: medium
+    skill: content-production
+    approval: required
+    next: brand_review
+
+  brand_review:
+    kind: conversation
+    agent: author
+    effort: medium
+    skill: product-discovery
+    approval: none
+    next: handoff
+
+  handoff:
+    kind: terminal
+    agent: none
+    skill: operator-handoff
+    approval: none

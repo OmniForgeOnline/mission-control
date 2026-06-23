@@ -1,0 +1,21 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "jsx": "react-jsx",
+    "jsxImportSource": "preact",
+    "types": ["node", "vitest/globals"],
+    "paths": {
+      "@harness/core/*": ["./src/core/*"],
+      "@ui/app/*": ["./src/ui/app/*"],
+      "@ui/data/*": ["./src/ui/data/*"],
+      "@ui/shell/*": ["./src/ui/shell/*"],
+      "@ui/features/*": ["./src/ui/features/*"],
+      "@ui/shared/*": ["./src/ui/shared/*"],
+      "@ui/overlays/*": ["./src/ui/overlays/*"]
+    }
+  },
+  "include": ["src/**/*.ts", "src/**/*.tsx", "tests/**/*.ts"],
+  "exclude": ["src/ui/**", "data"]
+}

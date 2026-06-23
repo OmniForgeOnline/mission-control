@@ -1,0 +1,56 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "target": "ES2022",
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "verbatimModuleSyntax": true,
+    "isolatedModules": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "forceConsistentCasingInFileNames": true,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "allowImportingTsExtensions": true,
+    "noEmit": true,
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "lib": [
+      "ES2022",
+      "DOM",
+      "DOM.Iterable"
+    ],
+    "jsx": "react-jsx",
+    "jsxImportSource": "preact",
+    "types": [],
+    "paths": {
+      "@harness/core/*": [
+        "../core/*"
+      ],
+      "@ui/app/*": [
+        "./app/*"
+      ],
+      "@ui/data/*": [
+        "./data/*"
+      ],
+      "@ui/shell/*": [
+        "./shell/*"
+      ],
+      "@ui/features/*": [
+        "./features/*"
+      ],
+      "@ui/shared/*": [
+        "./shared/*"
+      ],
+      "@ui/overlays/*": [
+        "./overlays/*"
+      ]
+    }
+  },
+  "include": [
+    "**/*.ts",
+    "**/*.tsx"
+  ]
+}

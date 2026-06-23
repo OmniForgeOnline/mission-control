@@ -1,0 +1,64 @@
+id: infrastructure-change
+name: Infrastructure Change
+initial: risk_assessment
+
+defaults:
+  agents:
+    author: claude
+    reviewer: codex
+  effort: medium
+
+steps:
+  risk_assessment:
+    kind: conversation
+    agent: codex
+    effort: high
+    skill: infrastructure-change
+    approval: none
+    next: implementation_plan
+
+  implementation_plan:
+    kind: conversation
+    agent: codex
+    effort: high
+    skill: technical-investigation
+    approval: none
+    next: apply_change
+
+  apply_change:
+    kind: agent_turn
+    agent: claude
+    effort: high
+    skill: pr-driven-execution
+    approval: required
+    next: create_merge_request
+
+  create_merge_request:
+    kind: create_merge_request
+    agent: none
+    approval: none
+    next: resolve_conflicts
+
+  resolve_conflicts:
+    kind: resolve_conflicts
+    agent: none
+    approval: none
+    next: review
+    branch:
+      conflicts: apply_change
+
+  review:
+    kind: review
+    agent: reviewer
+    effort: high
+    skill: code-review
+    approval: none
+    branch:
+      approved: handoff
+      changes_requested: apply_change
+
+  handoff:
+    kind: terminal
+    agent: none
+    skill: operator-handoff
+    approval: none

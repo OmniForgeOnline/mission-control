@@ -1,0 +1,42 @@
+id: docs-update
+name: Docs Update
+initial: docs_scope
+
+defaults:
+  agents:
+    author: claude
+    reviewer: claude
+  effort: medium
+
+steps:
+  docs_scope:
+    kind: conversation
+    agent: author
+    effort: medium
+    skill: content-production
+    approval: none
+    next: draft_docs
+
+  draft_docs:
+    kind: agent_turn
+    agent: author
+    effort: medium
+    skill: content-production
+    approval: required
+    next: review
+
+  review:
+    kind: review
+    agent: reviewer
+    effort: high
+    skill: code-review
+    approval: none
+    branch:
+      approved: handoff
+      changes_requested: draft_docs
+
+  handoff:
+    kind: terminal
+    agent: none
+    skill: operator-handoff
+    approval: none

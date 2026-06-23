@@ -1,0 +1,48 @@
+id: ux-research
+name: UX Research
+initial: define_question
+
+defaults:
+  agents:
+    author: kiro
+    reviewer: claude
+  effort: medium
+
+steps:
+  define_question:
+    kind: conversation
+    agent: author
+    effort: medium
+    skill: product-discovery
+    approval: none
+    next: collect_context
+
+  collect_context:
+    kind: agent_turn
+    agent: author
+    effort: medium
+    skill: harness-memory
+    approval: none
+    next: synthesize_findings
+
+  synthesize_findings:
+    kind: agent_turn
+    agent: author
+    effort: high
+    skill: data-analysis
+    approval: none
+    next: recommend_next_steps
+
+  recommend_next_steps:
+    kind: conversation
+    agent: author
+    effort: medium
+    skill: product-discovery
+    approval: none
+    next: handoff
+
+  handoff:
+    kind: terminal
+    agent: none
+    skill: operator-handoff
+    approval: none

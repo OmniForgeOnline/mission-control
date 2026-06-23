@@ -1,0 +1,48 @@
+id: data-analysis
+name: Data Analysis
+initial: question
+
+defaults:
+  agents:
+    author: claude
+    reviewer: claude
+  effort: medium
+
+steps:
+  question:
+    kind: conversation
+    agent: author
+    effort: medium
+    skill: data-analysis
+    approval: none
+    next: collect
+
+  collect:
+    kind: agent_turn
+    agent: author
+    effort: medium
+    skill: data-analysis
+    approval: none
+    next: analyze
+
+  analyze:
+    kind: agent_turn
+    agent: author
+    effort: high
+    skill: data-analysis
+    approval: none
+    next: recommend
+
+  recommend:
+    kind: conversation
+    agent: author
+    effort: medium
+    skill: data-analysis
+    approval: none
+    next: handoff
+
+  handoff:
+    kind: terminal
+    agent: none
+    skill: operator-handoff
+    approval: none

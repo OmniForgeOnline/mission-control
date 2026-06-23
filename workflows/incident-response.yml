@@ -1,0 +1,43 @@
+# Harness workflow definition. Managed by the Workflows tab; edits round-trip to YAML.
+id: incident-response
+name: Incident Response
+initial: intake
+defaults:
+  agents:
+    author: claude
+    reviewer: codex
+  effort: medium
+steps:
+  intake:
+    kind: conversation
+    agent: claude
+    effort: medium
+    skill: incident-response
+    approval: none
+    next: investigate
+  investigate:
+    kind: agent_turn
+    agent: codex
+    effort: medium
+    skill: debug-prior-runs
+    approval: none
+    next: mitigate
+  mitigate:
+    kind: agent_turn
+    agent: claude
+    effort: high
+    skill: incident-response
+    approval: required
+    next: postmortem
+  postmortem:
+    kind: agent_turn
+    agent: claude
+    effort: medium
+    skill: content-production
+    approval: none
+    next: handoff
+  handoff:
+    kind: terminal
+    agent: none
+    skill: operator-handoff
+    approval: none

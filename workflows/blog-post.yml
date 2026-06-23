@@ -1,0 +1,58 @@
+id: blog-post
+name: Blog Post
+initial: angle
+
+defaults:
+  agents:
+    author: kiro
+    reviewer: claude
+  effort: medium
+
+steps:
+  angle:
+    kind: conversation
+    agent: author
+    effort: medium
+    skill: content-production
+    approval: none
+    next: outline
+
+  outline:
+    kind: conversation
+    agent: author
+    effort: medium
+    skill: content-production
+    approval: none
+    next: draft
+
+  draft:
+    kind: agent_turn
+    agent: author
+    effort: medium
+    skill: content-production
+    approval: required
+    next: seo_review
+
+  seo_review:
+    kind: agent_turn
+    agent: author
+    effort: medium
+    skill: seo-growth
+    approval: none
+    next: editorial_review
+
+  editorial_review:
+    kind: review
+    agent: reviewer
+    effort: high
+    skill: code-review
+    approval: none
+    branch:
+      approved: handoff
+      changes_requested: draft
+
+  handoff:
+    kind: terminal
+    agent: none
+    skill: operator-handoff
+    approval: none

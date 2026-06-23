@@ -1,0 +1,16 @@
+#!/bin/sh
+set -e
+
+cd "$(git rev-parse --show-toplevel)"
+
+# Fast, staged-only lint fix. The full gate (typecheck, tests, knip, build) runs
+# in CI (.github/workflows/ci.yml), not on every commit, so contributors are not
+# blocked for minutes per commit. Only files already staged are touched and
+# re-staged, so this never sweeps in unrelated unstaged work.
+
+staged_ts=$(git diff --cached --name-only --diff-filter=ACM | grep -E '^(src|tests)/.+\.(ts|tsx)$' || true)
+if [ -n "$staged_ts" ]; then
+  echo "pre-commit: eslint --fix on staged TypeScript"
+  echo "$staged_ts" | xargs npx eslint --fix
+  echo "$staged_ts" | xargs git add
+fi

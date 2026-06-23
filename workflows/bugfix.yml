@@ -1,0 +1,62 @@
+id: bugfix
+name: Bugfix
+initial: investigate
+
+defaults:
+  agents:
+    author: claude
+    reviewer: codex
+  effort: medium
+
+steps:
+  investigate:
+    kind: conversation
+    agent: codex
+    effort: high
+    skill: technical-investigation
+    approval: none
+    next: plan_gate
+
+  plan_gate:
+    kind: agent_turn
+    agent: none
+    approval: required
+    next: fix
+
+  fix:
+    kind: agent_turn
+    agent: claude
+    effort: high
+    skill: pr-driven-execution
+    approval: required
+    next: create_merge_request
+
+  create_merge_request:
+    kind: create_merge_request
+    agent: none
+    approval: none
+    next: resolve_conflicts
+
+  resolve_conflicts:
+    kind: resolve_conflicts
+    agent: none
+    approval: none
+    next: review
+    branch:
+      conflicts: fix
+
+  review:
+    kind: review
+    agent: reviewer
+    effort: high
+    skill: code-review
+    approval: none
+    branch:
+      approved: handoff
+      changes_requested: fix
+
+  handoff:
+    kind: terminal
+    agent: none
+    skill: operator-handoff
+    approval: none

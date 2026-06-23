@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>OmniForge Mission Control</title>
+    <link rel="icon" href="/omniforge-mark.png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..700&family=JetBrains+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/theme.css" />
+    <link rel="stylesheet" href="/styles/index.css" />
+  </head>
+  <body>
+    <div id="app" class="app-shell">
+      <header class="app-bar" id="appBar"></header>
+      <aside class="app-rail" id="appRail"></aside>
+      <main class="app-main" id="viewContent"></main>
+    </div>
+
+    <dialog id="paletteDialog" class="palette"></dialog>
+    <dialog id="slideDialog" class="slideover"></dialog>
+    <dialog id="confirmDialog" class="confirm-dialog"></dialog>
+    <dialog id="shortcutsDialog" class="shortcuts-modal"></dialog>
+    <div id="toastStack" class="toast-stack"></div>
+    <div id="targetSuggest" class="target-suggest"></div>
+
+    <script type="module" src="/main.ts"></script>
+  </body>
+</html>

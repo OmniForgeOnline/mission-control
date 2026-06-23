@@ -1,0 +1,1015 @@
+/* ---------- responsiveness ---------- */
+
+@media (max-width: 1024px) {
+  .detail-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .detail-side {
+    position: static;
+  }
+}
+
+@media (max-width: 720px) {
+  .app-shell {
+    grid-template-columns: 56px minmax(0, 1fr);
+  }
+
+  .rail-resize-handle {
+    display: none;
+  }
+
+  .app-shell .rail-link .label,
+  .app-shell .rail-link .count,
+  .app-shell .rail-heading {
+    display: none;
+  }
+
+  .app-shell .rail-link {
+    justify-content: center;
+  }
+
+  .view {
+    padding: var(--s-4);
+  }
+
+  .form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .settings-row {
+    grid-template-columns: 1fr;
+    gap: var(--s-3);
+    align-items: start;
+  }
+
+  .settings-row-control {
+    justify-content: flex-start;
+    width: 100%;
+  }
+
+  .settings-control,
+  .settings-control-wide,
+  .settings-readonly {
+    width: 100%;
+    min-width: 0;
+    max-width: none;
+    text-align: left;
+  }
+}
+
+/* ============================================================
+   Catalog — shared master/detail vocabulary
+   Used by Connectors, Skills, and Workflows. Connector-, skill-,
+   and wf- prefixed rules below layer feature-specific internals
+   (logos, mapping table, doc pane, pipeline canvas) on top.
+   ============================================================ */
+.catalog-view {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+/* Master-detail is a wide layout, not a centered reading column: drop the
+   shared .view 1280px cap so the catalog sits flush-left and the detail
+   panel gets the full content pane (the .view-header label compound
+   raises specificity above plain .view regardless of stylesheet order). */
+.view.catalog-view {
+  max-width: none;
+}
+
+.catalog-view-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--s-4);
+  flex-wrap: wrap;
+}
+
+.catalog-health {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  font-size: var(--t-sm);
+  color: var(--ink-muted);
+  background: var(--surface);
+  border: 1px solid var(--hairline);
+  padding: 6px 12px;
+  border-radius: var(--r-pill);
+  white-space: nowrap;
+}
+
+.catalog-health-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--status-completed);
+  box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.15);
+}
+
+.catalog-shell {
+  display: grid;
+  grid-template-columns: 300px minmax(0, 1fr);
+  gap: var(--s-5);
+  align-items: start;
+  margin-top: var(--s-4);
+}
+
+/* ---------- left rail: catalog ---------- */
+.catalog-rail {
+  position: sticky;
+  top: var(--s-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-4);
+}
+
+.catalog-search {
+  position: relative;
+}
+
+.catalog-search .input {
+  width: 100%;
+  padding-left: 32px;
+}
+
+.catalog-search-ico {
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--ink-faint);
+  display: inline-flex;
+  pointer-events: none;
+}
+
+.catalog-group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.catalog-group-head {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  padding: 0 var(--s-2) var(--s-2);
+  font-size: var(--t-xs);
+  font-weight: var(--w-semi);
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+/* Collapsible variant: the same header rendered as a <button>. */
+button.catalog-group-head {
+  width: 100%;
+  background: none;
+  border: 0;
+  text-align: left;
+  cursor: pointer;
+  padding-top: var(--s-1);
+  padding-bottom: var(--s-2);
+  border-radius: var(--r-md);
+  transition: color var(--d-fast);
+}
+
+button.catalog-group-head:hover {
+  color: var(--ink-muted);
+}
+
+.catalog-group-chevron {
+  display: inline-flex;
+  color: var(--ink-faint);
+  transition: transform var(--d-fast);
+}
+
+button.catalog-group-head[aria-expanded="true"] .catalog-group-chevron {
+  transform: rotate(90deg);
+}
+
+.catalog-group-count {
+  margin-left: auto;
+  font-size: 10px;
+  letter-spacing: 0;
+  color: var(--ink-faint);
+  background: var(--surface-2);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-pill);
+  padding: 1px 7px;
+}
+
+.catalog-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  width: 100%;
+  text-align: left;
+  padding: 9px 10px;
+  border-radius: var(--r-lg);
+  border: 1px solid transparent;
+  background: transparent;
+  cursor: pointer;
+  transition: background var(--d-fast), border-color var(--d-fast);
+}
+
+.catalog-item:hover {
+  background: var(--surface);
+}
+
+.catalog-item.is-selected {
+  background: var(--surface);
+  border-color: var(--hairline-strong);
+}
+
+.catalog-item.is-selected::before {
+  content: "";
+  position: absolute;
+  left: -1px;
+  top: 9px;
+  bottom: 9px;
+  width: 3px;
+  border-radius: var(--r-pill);
+  background: linear-gradient(var(--accent), var(--accent-hover));
+}
+
+.catalog-item-logo {
+  --connector-logo-size: 18px;
+  width: 32px;
+  height: 32px;
+  flex: none;
+  border-radius: var(--r-lg);
+  display: grid;
+  place-items: center;
+  background: var(--surface-2);
+  border: 1px solid var(--hairline);
+  color: var(--ink-strong);
+}
+
+.catalog-item-logo .connector-logo {
+  width: var(--connector-logo-size);
+  height: var(--connector-logo-size);
+}
+
+.connector-logo svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.catalog-item-meta {
+  min-width: 0;
+  flex: 1;
+}
+
+.catalog-item-name {
+  display: block;
+  font-size: var(--t-base);
+  font-weight: var(--w-medium);
+  color: var(--ink-strong);
+}
+
+.catalog-item-sub {
+  display: block;
+  font-size: var(--t-xs);
+  color: var(--ink-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.catalog-item-status {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.catalog-item-status.is-ok {
+  background: var(--status-completed);
+  box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.14);
+}
+
+.catalog-item-status.is-err {
+  background: var(--status-blocked);
+  box-shadow: 0 0 0 3px rgba(244, 63, 94, 0.14);
+}
+
+.catalog-item-status.is-off {
+  background: var(--ink-faint);
+}
+
+.catalog-item-add {
+  flex: none;
+  font-size: var(--t-xs);
+  font-weight: var(--w-medium);
+  color: var(--accent);
+  border: 1px solid var(--hairline-strong);
+  background: var(--surface-2);
+  border-radius: var(--r-pill);
+  padding: 3px 10px;
+}
+
+.catalog-empty {
+  color: var(--ink-muted);
+  font-size: var(--t-sm);
+  padding: var(--s-3) var(--s-2);
+}
+
+/* ---------- right: detail ---------- */
+.catalog-detail {
+  min-width: 0;
+}
+
+.catalog-detail-inner {
+  max-width: 1080px;
+}
+
+.catalog-id-head {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s-4);
+  padding-bottom: var(--s-5);
+}
+
+.catalog-id-logo {
+  --connector-logo-size: 30px;
+  width: 56px;
+  height: 56px;
+  flex: none;
+  border-radius: 14px;
+  display: grid;
+  place-items: center;
+  background: var(--surface);
+  border: 1px solid var(--hairline-strong);
+  color: var(--ink-strong);
+}
+
+.catalog-id-logo .connector-logo,
+.catalog-id-logo .connector-logo svg {
+  width: var(--connector-logo-size);
+  height: var(--connector-logo-size);
+}
+
+.catalog-id-text {
+  flex: 1;
+  min-width: 0;
+  padding-top: 2px;
+}
+
+.catalog-id-title-row {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+}
+
+.catalog-id-title {
+  font-size: var(--t-xl);
+  font-weight: var(--w-semi);
+  color: var(--ink-strong);
+  letter-spacing: -0.01em;
+}
+
+.catalog-id-account {
+  font-size: var(--t-md);
+  color: var(--ink-muted);
+  margin-top: 4px;
+}
+
+.catalog-id-actions {
+  display: flex;
+  gap: var(--s-2);
+  flex: none;
+}
+
+/* badges */
+.catalog-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--t-xs);
+  font-weight: var(--w-medium);
+  padding: 3px 9px;
+  border-radius: var(--r-pill);
+  border: 1px solid var(--hairline-strong);
+  background: var(--surface-2);
+  color: var(--ink-muted);
+}
+
+.catalog-badge-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.catalog-badge.is-ok {
+  color: var(--status-completed);
+  border-color: rgba(34, 197, 94, 0.3);
+  background: rgba(34, 197, 94, 0.08);
+}
+
+.catalog-badge.is-err {
+  color: var(--status-blocked);
+  border-color: rgba(244, 63, 94, 0.3);
+  background: rgba(244, 63, 94, 0.08);
+}
+
+/* section label + panels */
+.catalog-section-label {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  font-size: var(--t-xs);
+  font-weight: var(--w-semi);
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  margin: 0 0 var(--s-3) 2px;
+}
+
+.catalog-section-actions {
+  margin-left: auto;
+  display: flex;
+  gap: var(--s-2);
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.catalog-panel {
+  background: var(--surface);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-xl);
+  margin-bottom: var(--s-4);
+  overflow: hidden;
+}
+
+.catalog-panel-body {
+  padding: var(--s-5);
+}
+
+/* identity facts grid */
+.catalog-facts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--s-5) var(--s-6);
+}
+
+.catalog-fact-k {
+  font-size: var(--t-xs);
+  font-weight: var(--w-semi);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  margin-bottom: 5px;
+}
+
+.catalog-fact-v {
+  font-size: var(--t-base);
+  color: var(--ink);
+}
+
+.catalog-fact-mono {
+  font-family: var(--font-mono);
+  font-size: var(--t-md);
+  color: var(--ink-strong);
+}
+
+.catalog-fact-muted {
+  color: var(--ink-muted);
+}
+
+.connector-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.connector-chip {
+  font-family: var(--font-mono);
+  font-size: var(--t-xs);
+  color: var(--ink-muted);
+  background: var(--surface-2);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-sm);
+  padding: 2px 7px;
+}
+
+/* import action zone */
+.connector-action-zone {
+  display: flex;
+  align-items: center;
+  gap: var(--s-4);
+}
+
+.connector-action-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.connector-action-title {
+  font-size: var(--t-base);
+  font-weight: var(--w-medium);
+  color: var(--ink-strong);
+}
+
+.connector-action-desc {
+  font-size: var(--t-sm);
+  color: var(--ink-muted);
+  margin-top: 4px;
+  max-width: 56ch;
+}
+
+/* ---------- ClickUp mapping table ---------- */
+.connector-map {
+  display: flex;
+  flex-direction: column;
+}
+
+.connector-map-toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  padding: var(--s-3) var(--s-4);
+  border-bottom: 1px solid var(--hairline);
+}
+
+.connector-map-search {
+  position: relative;
+  flex: 1;
+  max-width: 320px;
+}
+
+.connector-map-search .input {
+  width: 100%;
+  padding-left: 32px;
+}
+
+.connector-map-search-ico {
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--ink-faint);
+  display: inline-flex;
+  pointer-events: none;
+}
+
+.connector-map-count {
+  font-size: var(--t-sm);
+  color: var(--ink-muted);
+  white-space: nowrap;
+}
+
+.connector-map-count b {
+  color: var(--ink-strong);
+  font-weight: var(--w-semi);
+}
+
+.connector-map-scroll {
+  max-height: 460px;
+  overflow: auto;
+}
+
+.connector-map-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.connector-map-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  text-align: left;
+  font-size: var(--t-xs);
+  font-weight: var(--w-semi);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  padding: 10px var(--s-4);
+  background: var(--bg-elev);
+  border-bottom: 1px solid var(--hairline);
+}
+
+.connector-map-table tbody td {
+  padding: 10px var(--s-4);
+  border-bottom: 1px solid var(--hairline);
+  vertical-align: middle;
+}
+
+.connector-map-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.connector-map-table tbody tr {
+  transition: background var(--d-fast);
+}
+
+.connector-map-table tbody tr:hover {
+  background: var(--surface-2);
+}
+
+.connector-map-table tbody tr.is-muted td {
+  opacity: 0.55;
+}
+
+.connector-map-table tbody tr.is-muted:hover td {
+  opacity: 0.75;
+}
+
+.cm-col-sub {
+  width: 42px;
+}
+
+.cm-col-proj {
+  width: 240px;
+}
+
+.cm-col-poll {
+  width: 130px;
+}
+
+.connector-map-check {
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.connector-map-list {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.connector-map-list-name {
+  font-size: var(--t-base);
+  font-weight: var(--w-medium);
+  color: var(--ink-strong);
+}
+
+.connector-map-list-context {
+  font-size: var(--t-xs);
+  color: var(--ink-muted);
+  font-family: var(--font-mono);
+  margin-top: 1px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.connector-map-project {
+  width: 100%;
+  max-width: 240px;
+}
+
+.connector-map-project.is-unset {
+  color: var(--ink-faint);
+}
+
+.connector-poll {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: var(--t-sm);
+}
+
+.connector-poll-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex: none;
+  background: currentColor;
+}
+
+.connector-poll.is-on {
+  color: var(--status-running);
+}
+
+.connector-poll.is-on .connector-poll-dot {
+  box-shadow: 0 0 0 3px rgba(34, 211, 238, 0.14);
+}
+
+.connector-poll.is-off {
+  color: var(--ink-faint);
+}
+
+.connector-map-noresult td {
+  padding: var(--s-5) var(--s-4);
+  color: var(--ink-muted);
+  font-size: var(--t-sm);
+  text-align: center;
+}
+
+.connector-map-foot {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 11px var(--s-4);
+  border-top: 1px solid var(--hairline);
+  font-size: var(--t-xs);
+  color: var(--ink-faint);
+}
+
+.connector-map-foot svg {
+  flex: none;
+  margin-top: 1px;
+  color: var(--ink-muted);
+}
+
+.connector-map-foot code {
+  font-family: var(--font-mono);
+  color: var(--ink-muted);
+  background: var(--surface-2);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-sm);
+  padding: 1px 5px;
+}
+
+.connector-map-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  text-align: center;
+  padding: var(--s-8) var(--s-5);
+  color: var(--ink-muted);
+}
+
+.connector-map-empty svg {
+  color: var(--ink-faint);
+}
+
+.connector-map-empty p {
+  font-size: var(--t-base);
+  font-weight: var(--w-medium);
+  color: var(--ink);
+}
+
+.connector-map-empty span {
+  font-size: var(--t-sm);
+  max-width: 42ch;
+}
+
+/* ---------- connect panel ---------- */
+.connector-connect {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-4);
+  max-width: 480px;
+}
+
+.connector-or {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  color: var(--ink-faint);
+  font-size: var(--t-xs);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.connector-or::before,
+.connector-or::after {
+  content: "";
+  height: 1px;
+  flex: 1;
+  background: var(--hairline);
+}
+
+.connector-connect-field {
+  display: block;
+}
+
+.connector-connect-label {
+  display: block;
+  font-size: var(--t-sm);
+  font-weight: var(--w-medium);
+  color: var(--ink);
+  margin-bottom: 6px;
+}
+
+.connector-connect-hint {
+  font-size: var(--t-sm);
+  color: var(--ink-muted);
+  margin-bottom: 10px;
+}
+
+.connector-token-input {
+  width: 100%;
+  font-family: var(--font-mono);
+}
+
+.connector-help-link {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.connector-help-link:hover {
+  text-decoration: underline;
+}
+
+.connector-info-strip {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  margin-top: var(--s-5);
+  padding: var(--s-3) var(--s-4);
+  background: var(--accent-soft);
+  border: 1px solid rgba(124, 92, 255, 0.22);
+  border-radius: var(--r-lg);
+  font-size: var(--t-sm);
+  color: var(--ink);
+}
+
+.connector-info-strip svg {
+  flex: none;
+  margin-top: 1px;
+  color: var(--accent-hover);
+}
+
+.connector-error {
+  margin: 0 0 var(--s-4);
+  color: var(--status-blocked);
+  font-size: var(--t-sm);
+}
+
+/* ---------- responsive ---------- */
+@media (max-width: 900px) {
+  .catalog-shell {
+    grid-template-columns: 1fr;
+  }
+
+  .catalog-rail {
+    position: static;
+  }
+
+  .catalog-facts {
+    grid-template-columns: 1fr;
+    gap: var(--s-4);
+  }
+
+  .connector-map-scroll {
+    overflow-x: auto;
+  }
+
+  .connector-map-table {
+    min-width: 560px;
+  }
+}
+
+
+/* ============================================================
+   Skills — inline doc + editor (on the shared catalog shell)
+   ============================================================ */
+.skill-doc.message-body {
+  padding: var(--s-5) var(--s-6);
+}
+
+.skill-doc-empty {
+  color: var(--ink-muted);
+  font-size: var(--t-sm);
+}
+
+.skill-edit {
+  display: flex;
+  flex-direction: column;
+}
+
+.skill-edit-textarea {
+  width: 100%;
+  min-height: min(70vh, 760px);
+  resize: vertical;
+  padding: var(--s-5) var(--s-6);
+  font-family: var(--font-mono);
+  font-size: var(--t-sm);
+  line-height: 1.75;
+  color: var(--ink);
+  border: 0;
+  border-radius: 0;
+  background: var(--bg-elev);
+  display: block;
+  tab-size: 2;
+}
+
+.skill-edit-textarea::placeholder {
+  color: var(--ink-faint);
+}
+
+.skill-edit-textarea:focus {
+  outline: none;
+  background: var(--surface);
+}
+
+.skill-edit-hint {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 11px var(--s-5);
+  border-top: 1px solid var(--hairline);
+  font-size: var(--t-xs);
+  color: var(--ink-faint);
+}
+
+.skill-edit-hint svg {
+  flex: none;
+  color: var(--ink-muted);
+}
+
+/* ============================================================
+   Workflows — detail pane (on the shared catalog shell)
+   Diagram (the real ticket canvas) sits beside config + stages,
+   so a wide monitor isn't wasted next to the narrow vertical DAG.
+   ============================================================ */
+.wf-detail-split {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
+  gap: var(--s-5);
+  align-items: start;
+}
+
+.wf-detail-canvas {
+  position: sticky;
+  top: var(--s-4);
+  height: clamp(460px, 70vh, 760px);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-xl);
+  overflow: hidden;
+  background: var(--bg);
+}
+
+.wf-detail-side {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-4);
+  min-width: 0;
+}
+
+/* Read-only stages table */
+.wf-stage-table {
+  width: 100%;
+  /* Fixed layout so the four columns distribute evenly and fill the
+     container at any width — auto layout bunched them to the left third
+     (huge Stage->Kind gap, cramped Agent/Approval) and left empty space. */
+  table-layout: fixed;
+  border-collapse: collapse;
+}
+
+.wf-stage-table col.col-stage { width: 34%; }
+.wf-stage-table col.col-kind { width: 28%; }
+.wf-stage-table col.col-agent { width: 19%; }
+.wf-stage-table col.col-approval { width: 19%; }
+
+.wf-stage-table thead th {
+  text-align: left;
+  font-size: var(--t-xs);
+  font-weight: var(--w-semi);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  padding: 10px var(--s-4);
+  border-bottom: 1px solid var(--hairline);
+}
+
+.wf-stage-table tbody td {
+  padding: 10px var(--s-4);
+  border-bottom: 1px solid var(--hairline);
+  font-size: var(--t-sm);
+  color: var(--ink);
+  vertical-align: middle;
+  /* keep long values from breaking the fixed grid */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wf-stage-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.wf-stage-table tbody tr.is-selected td {
+  background: var(--surface-2);
+}
+
+.wf-stage-name {
+  font-family: var(--font-mono);
+  font-size: var(--t-sm);
+  color: var(--ink-strong);
+}
+
+.wf-stage-muted {
+  color: var(--ink-faint);
+}
+
+@media (max-width: 1180px) {
+  .wf-detail-split {
+    grid-template-columns: 1fr;
+  }
+
+  .wf-detail-canvas {
+    position: static;
+    height: clamp(380px, 56vh, 620px);
+  }
+}

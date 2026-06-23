@@ -1,0 +1,40 @@
+id: customer-support
+name: Customer Support
+initial: triage
+
+defaults:
+  agents:
+    author: claude
+    reviewer: claude
+  effort: medium
+
+steps:
+  triage:
+    kind: conversation
+    agent: author
+    effort: medium
+    skill: customer-support-triage
+    approval: none
+    next: investigate
+
+  investigate:
+    kind: agent_turn
+    agent: author
+    effort: medium
+    skill: harness-memory
+    approval: none
+    next: draft_response
+
+  draft_response:
+    kind: agent_turn
+    agent: author
+    effort: medium
+    skill: customer-support-triage
+    approval: required
+    next: handoff
+
+  handoff:
+    kind: terminal
+    agent: none
+    skill: operator-handoff
+    approval: none

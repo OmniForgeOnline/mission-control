@@ -1,0 +1,246 @@
+/* Workflows tab: list + editor.
+   The Graph view reuses the task-detail workflow canvas, so the canvas/node/
+   edge/tab classes (.wf-canvas-wrap, .wf-node, .wf-edge, .wf-tabs, .wf-tab)
+   come from workflow-canvas.css. Do not redefine those here. */
+
+/* editor */
+.wf-editor .view-header {
+  flex-wrap: wrap;
+  gap: var(--s-3);
+}
+/* The Graph editor fills the main scroll area so the canvas can grow to the
+   full viewport height; the split + canvas then flex into that space. */
+.view.wf-editor {
+  height: 100%;
+  min-height: 0;
+}
+.wf-header-actions {
+  margin-left: auto;
+}
+
+.wf-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-4);
+  margin-top: var(--s-4);
+}
+.wf-card {
+  padding: var(--s-4);
+}
+.wf-section-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--s-3);
+}
+
+.wf-grid-2 {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--s-3);
+}
+.wf-grid-3 {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--s-3);
+}
+@media (max-width: 720px) {
+  .wf-grid-2,
+  .wf-grid-3 {
+    grid-template-columns: 1fr;
+  }
+}
+
+.wf-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1);
+}
+.wf-field > span,
+.wf-field-label {
+  font-size: var(--t-xs);
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.wf-field-wide {
+  grid-column: span 2;
+}
+.wf-field-tight {
+  min-width: 200px;
+}
+
+/* steps */
+.wf-steps {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+}
+.wf-step {
+  background: var(--surface-2);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-lg);
+  padding: var(--s-3);
+}
+.wf-step-head {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  margin-bottom: var(--s-3);
+}
+.wf-step-id {
+  font-family: var(--font-mono);
+  font-size: var(--t-md);
+  color: var(--ink);
+  font-weight: var(--w-semi);
+}
+.wf-step-remove {
+  margin-left: auto;
+  padding: var(--s-1);
+}
+
+.wf-edges {
+  margin-top: var(--s-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+.wf-branch {
+  border-top: 1px solid var(--hairline);
+  padding-top: var(--s-2);
+}
+.wf-branch-head {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  margin-bottom: var(--s-2);
+}
+.wf-branch-row {
+  display: flex;
+  gap: var(--s-2);
+  margin-bottom: var(--s-1);
+}
+.wf-branch-event {
+  max-width: 160px;
+}
+
+/* yaml */
+.wf-yaml {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+  margin-top: var(--s-4);
+}
+.wf-yaml-textarea {
+  font-family: var(--font-mono);
+  font-size: var(--t-sm);
+  min-height: 420px;
+  resize: vertical;
+  line-height: 1.5;
+}
+.wf-yaml-error {
+  color: var(--status-blocked);
+  font-size: var(--t-sm);
+  white-space: pre-wrap;
+}
+
+/* graph: the canvas itself is the task-detail WorkflowCanvas; this just sizes its viewport */
+.wf-graph-canvas {
+  margin-top: var(--s-4);
+  height: clamp(380px, 70vh, 760px);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-lg);
+  overflow: hidden;
+}
+
+/* graph-first editor: graph hero on the left, inspector panel on the right */
+.wf-editor-split {
+  display: flex;
+  gap: var(--s-4);
+  align-items: stretch;
+  /* Grow to fill the remaining viewport height so the graph canvas is tall
+     instead of collapsing to its min-height. Requires the view to own a
+     definite height (see .view.wf-editor below). */
+  flex: 1;
+  min-height: 0;
+}
+.wf-editor-graph {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+}
+.wf-graph-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+}
+.wf-editor-graph .wf-graph-canvas {
+  margin-top: 0;
+  flex: 1;
+  min-height: 440px;
+  height: auto;
+}
+.wf-editor-panel {
+  width: 360px;
+  flex-shrink: 0;
+}
+.wf-panel {
+  background: var(--surface);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-lg);
+  display: flex;
+  flex-direction: column;
+  max-height: clamp(440px, 70vh, 760px);
+  position: sticky;
+  top: var(--s-4);
+}
+.wf-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-2);
+  padding: var(--s-3);
+  border-bottom: 1px solid var(--hairline);
+}
+.wf-panel-title {
+  font-family: var(--font-mono);
+  font-size: var(--t-sm);
+  font-weight: var(--w-semi);
+}
+.wf-panel-close {
+  padding: var(--s-1);
+}
+.wf-panel-body {
+  padding: var(--s-3);
+  overflow-y: auto;
+}
+.wf-panel-empty {
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--t-sm);
+  line-height: 1.5;
+}
+/* inside the panel, stack the form grids and strip the step card chrome */
+.wf-panel-body .wf-grid-2,
+.wf-panel-body .wf-grid-3 {
+  grid-template-columns: 1fr;
+}
+.wf-panel-body .wf-step {
+  background: transparent;
+  border: 0;
+  padding: 0;
+}
+@media (max-width: 980px) {
+  .wf-editor-split {
+    flex-direction: column;
+  }
+  .wf-editor-panel {
+    width: 100%;
+  }
+  .wf-panel {
+    position: static;
+    max-height: none;
+  }
+}

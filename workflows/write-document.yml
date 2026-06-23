@@ -1,0 +1,50 @@
+id: write-document
+name: Write Document
+initial: scope
+
+defaults:
+  agents:
+    author: kiro
+    reviewer: claude
+  effort: medium
+
+steps:
+  scope:
+    kind: conversation
+    agent: author
+    effort: medium
+    skill: content-production
+    approval: none
+    next: outline
+
+  outline:
+    kind: conversation
+    agent: author
+    effort: medium
+    skill: content-production
+    approval: none
+    next: draft
+
+  draft:
+    kind: agent_turn
+    agent: author
+    effort: medium
+    skill: content-production
+    approval: required
+    next: review
+
+  review:
+    kind: review
+    agent: reviewer
+    effort: high
+    skill: code-review
+    approval: none
+    branch:
+      approved: handoff
+      changes_requested: draft
+
+  handoff:
+    kind: terminal
+    agent: none
+    skill: operator-handoff
+    approval: none

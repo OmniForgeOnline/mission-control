@@ -1,0 +1,278 @@
+/* ---------- workflow activity: timeline rail + milestones ---------- */
+
+/* The live stream reads as one continuous timeline: a single hairline rail
+   with a fixed-width circular glyph node per row, so every event aligns and
+   the kind is legible at a glance. Bodies stay collapsed by default. */
+/* Uppercase, letter-spaced section labels for the activity rail. */
+.wf-rail-label {
+  margin: 0 0 var(--s-2);
+  font-size: var(--t-xs);
+  font-weight: var(--w-medium);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--ink-faint);
+}
+
+.wf-activity-feed {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: var(--s-2) 0 var(--s-4);
+}
+
+/* Continuous rail behind the glyph column; opaque glyph nodes sit on top so
+   the event kind reads at a glance. Rail + glyphs live INSIDE each row's box
+   (no negative offsets), so paint containment never clips the nodes. */
+.wf-activity-feed::before {
+  content: "";
+  position: absolute;
+  left: 19px;
+  top: 10px;
+  bottom: 10px;
+  width: 1px;
+  background: var(--hairline);
+}
+
+.wf-activity-row {
+  position: relative;
+  content-visibility: auto;
+  contain-intrinsic-size: auto 38px;
+  font-size: var(--t-sm);
+}
+
+.wf-activity-row > summary {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: var(--s-2);
+  padding: 5px 8px;
+  border-radius: var(--r-md);
+  cursor: pointer;
+  list-style: none;
+  transition: background var(--d-fast) var(--ease-out);
+}
+
+.wf-activity-row > summary::-webkit-details-marker {
+  display: none;
+}
+
+.wf-activity-row > summary:hover {
+  background: var(--surface);
+}
+
+.wf-activity-glyph {
+  position: relative;
+  z-index: 1;
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--bg-elev);
+  border: 1px solid var(--hairline-strong);
+  color: var(--ink-muted);
+}
+
+.wf-activity-glyph svg {
+  width: 12px;
+  height: 12px;
+}
+
+.wf-activity-head {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  min-width: 0;
+  flex-wrap: nowrap;
+}
+
+.wf-activity-chevron {
+  display: inline-flex;
+  align-self: center;
+  color: var(--ink-faint);
+  transition: transform var(--d-fast) var(--ease-out);
+}
+
+.wf-activity-row[open] > summary .wf-activity-chevron {
+  transform: rotate(90deg);
+}
+
+.wf-activity-title {
+  color: var(--ink);
+  font-weight: var(--w-semi);
+}
+
+.wf-activity-count {
+  font-family: var(--font-mono);
+  font-size: var(--t-xs);
+  color: var(--ink-faint);
+}
+
+.wf-activity-summary {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--t-xs);
+  color: var(--ink-muted);
+}
+
+.wf-activity-time {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--t-xs);
+  color: var(--ink-faint);
+  white-space: nowrap;
+}
+
+.wf-activity-body {
+  margin: 2px 8px 8px 40px;
+  padding: 9px 11px;
+  border-left: 2px solid var(--hairline);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-family: var(--font-mono);
+  font-size: var(--t-xs);
+  line-height: 1.55;
+  color: var(--ink-muted);
+}
+
+/* ----- per-kind accents on the rail node ----- */
+
+.wf-activity-row.is-action .wf-activity-glyph {
+  color: var(--accent-hover);
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--hairline));
+}
+
+.wf-activity-row.is-action .wf-activity-summary {
+  font-family: var(--font-mono);
+}
+
+.wf-activity-row.is-message .wf-activity-glyph {
+  color: var(--ink-strong);
+}
+
+.wf-activity-row.is-message .wf-activity-title {
+  color: var(--ink-strong);
+}
+
+.wf-activity-row.is-thinking .wf-activity-glyph {
+  color: var(--ink-faint);
+}
+
+.wf-activity-row.is-thinking .wf-activity-title {
+  color: var(--ink-muted);
+  font-weight: var(--w-medium);
+}
+
+.wf-activity-row.is-thinking .wf-activity-summary {
+  font-style: italic;
+}
+
+.wf-activity-row.is-operator .wf-activity-glyph {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--hairline));
+}
+
+.wf-activity-row.is-status .wf-activity-glyph {
+  color: var(--status-completed);
+  border-color: color-mix(in srgb, var(--status-completed) 45%, var(--hairline));
+}
+
+.wf-activity-row.is-error .wf-activity-glyph {
+  color: var(--status-blocked);
+  border-color: color-mix(in srgb, var(--status-blocked) 50%, var(--hairline));
+}
+
+.wf-activity-row.is-error .wf-activity-title {
+  color: var(--status-blocked);
+}
+
+/* message + operator bodies read as prose, not log mono */
+.wf-activity-row.is-message .wf-activity-body,
+.wf-activity-row.is-operator .wf-activity-body {
+  font-family: var(--font-ui);
+  font-size: var(--t-sm);
+  color: var(--ink);
+}
+
+/* ---------- durable milestones ---------- */
+
+.wf-milestones {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+
+.wf-milestone {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  padding: 10px 12px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-md);
+  background: var(--surface);
+}
+
+.wf-milestone-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--status-completed);
+  flex: none;
+}
+
+.wf-milestone-title {
+  font-size: var(--t-sm);
+  color: var(--ink);
+  font-weight: var(--w-medium);
+}
+
+.wf-milestone-time {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--t-xs);
+  color: var(--ink-faint);
+  white-space: nowrap;
+}
+
+/* ---------- shared empty / placeholder state ---------- */
+
+.wf-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: var(--s-3);
+  padding: var(--s-8) var(--s-5);
+  color: var(--ink-muted);
+}
+
+.wf-empty-icon {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  border: 1px solid var(--hairline);
+  color: var(--ink-muted);
+}
+
+.wf-empty-state h3 {
+  margin: 0;
+  font-size: var(--t-md);
+  font-weight: var(--w-semi);
+  color: var(--ink);
+}
+
+.wf-empty-state p {
+  margin: 0;
+  max-width: 34ch;
+  font-size: var(--t-sm);
+  line-height: 1.5;
+  color: var(--ink-muted);
+}

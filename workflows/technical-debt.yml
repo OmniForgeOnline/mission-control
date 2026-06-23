@@ -1,0 +1,72 @@
+id: technical-debt
+name: Technical Debt
+initial: triage
+
+defaults:
+  agents:
+    author: claude
+    reviewer: codex
+  effort: medium
+
+steps:
+  triage:
+    kind: agent_turn
+    agent: codex
+    effort: medium
+    skill: harness-quality
+    approval: none
+    next: plan
+
+  plan:
+    kind: conversation
+    agent: codex
+    effort: high
+    skill: technical-investigation
+    approval: none
+    next: implement
+
+  implement:
+    kind: agent_turn
+    agent: claude
+    effort: high
+    skill: pr-driven-execution
+    approval: required
+    next: create_merge_request
+
+  create_merge_request:
+    kind: create_merge_request
+    agent: none
+    approval: none
+    next: resolve_conflicts
+
+  resolve_conflicts:
+    kind: resolve_conflicts
+    agent: none
+    approval: none
+    next: review
+    branch:
+      conflicts: implement
+
+  review:
+    kind: review
+    agent: reviewer
+    effort: high
+    skill: code-review
+    approval: none
+    branch:
+      approved: capture_followups
+      changes_requested: implement
+
+  capture_followups:
+    kind: agent_turn
+    agent: claude
+    effort: low
+    skill: tech-debt-capture
+    approval: none
+    next: handoff
+
+  handoff:
+    kind: terminal
+    agent: none
+    skill: operator-handoff
+    approval: none

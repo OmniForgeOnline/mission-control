@@ -1,0 +1,59 @@
+# Automated releases via Changesets.
+#
+# On every push to main this either:
+#   (a) opens/updates a "Version Packages" PR that bumps the version and
+#       rewrites CHANGELOG.md from accumulated .changeset/*.md notes, or
+#   (b) if that PR was just merged, publishes to npm and tags a GitHub Release.
+#
+# Prerequisites:
+#   1. Create an npm automation/granular publish token for the @omniforge scope
+#      (npmjs.com -> Access Tokens) and add it as the repo secret NPM_TOKEN.
+#      An automation/granular token can publish even with 2FA enforced on your
+#      account; the job is gated on NPM_TOKEN, so it stays inert without it.
+#   2. Keep `publishConfig.provenance: true` in package.json so npm publishes
+#      include GitHub Actions provenance.
+
+name: Release
+
+on:
+  push:
+    branches: [main]
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Version or publish
+    runs-on: ubuntu-latest
+    env:
+      # Job-level so the step `if` below can read it. Empty until the NPM_TOKEN
+      # repo secret is added, which keeps this job inert until you are ready.
+      NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+    permissions:
+      contents: write # tag commits and create GitHub Releases
+      pull-requests: write # open the Version Packages PR
+      id-token: write # npm provenance (OIDC)
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # changesets needs full history to diff against published versions
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          registry-url: https://registry.npmjs.org # writes .npmrc using NODE_AUTH_TOKEN
+      - run: npm ci
+
+      - name: Version Packages PR or publish
+        if: ${{ env.NPM_TOKEN != '' }}
+        uses: changesets/action@v1
+        with:
+          version: npx changeset version
+          publish: npm run release
+          commit: "chore(release): version packages"
+          title: "chore(release): version packages"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }} # read by setup-node's .npmrc for npm publish

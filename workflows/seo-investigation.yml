@@ -1,0 +1,48 @@
+id: seo-investigation
+name: SEO Investigation
+initial: define_hypothesis
+
+defaults:
+  agents:
+    author: kiro
+    reviewer: claude
+  effort: medium
+
+steps:
+  define_hypothesis:
+    kind: conversation
+    agent: author
+    effort: medium
+    skill: seo-growth
+    approval: none
+    next: collect_evidence
+
+  collect_evidence:
+    kind: agent_turn
+    agent: author
+    effort: medium
+    skill: data-analysis
+    approval: none
+    next: root_cause
+
+  root_cause:
+    kind: conversation
+    agent: codex
+    effort: high
+    skill: technical-investigation
+    approval: none
+    next: remediation_plan
+
+  remediation_plan:
+    kind: conversation
+    agent: author
+    effort: medium
+    skill: seo-growth
+    approval: none
+    next: handoff
+
+  handoff:
+    kind: terminal
+    agent: none
+    skill: operator-handoff
+    approval: none
