@@ -2,7 +2,8 @@ name: Changeset check
 
 # Fails the PR check if a user-facing change ships without a .changeset/*.md
 # note. Non-release PRs (docs, chores) opt out with `npm run changeset --
-# --empty`. The auto-generated Version Packages PR is excluded.
+# --empty`. The auto-generated Version Packages PR and Dependabot maintenance
+# PRs are excluded.
 on:
   pull_request:
     branches: [main]
@@ -21,4 +22,9 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
       - run: npm ci
+        if: github.event.pull_request.user.login != 'dependabot[bot]'
       - run: npx changeset status --since=origin/${{ github.base_ref }}
+        if: github.event.pull_request.user.login != 'dependabot[bot]'
+      - name: Skip release gate for Dependabot
+        if: github.event.pull_request.user.login == 'dependabot[bot]'
+        run: echo "Dependabot maintenance PRs do not require changesets."
