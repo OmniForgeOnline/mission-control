@@ -192,7 +192,11 @@ describe("daemon blockedReason cleanup", () => {
     });
 
     const updated = await getTask(root, task.id);
-    expect(updated?.blockedReason).toBeUndefined();
+    // The stale pre-commit block must be cleared. A background reviewer turn
+    // (scheduled here because the task has a mergeRequest, wait:false) can set a
+    // *different* blockedReason, so assert the stale one is gone, not that the
+    // field is undefined (matches the sibling test above).
+    expect(updated?.blockedReason ?? "").not.toContain("Harness commit blocked");
     expect(updated?.workflowRun?.currentStepId).not.toBe("implement");
     expect(updated?.workflowRun?.currentStepId).not.toBe("create_merge_request");
   });
