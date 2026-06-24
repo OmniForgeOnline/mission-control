@@ -47,7 +47,7 @@
   },
   "dependencies": {
     "express": "^5.1.0",
-    "marked": "^18.0.4",
+    "marked": "^18.0.5",
     "preact": "^10.29.2",
     "yaml": "^2.9.0"
   },
@@ -58,17 +58,17 @@
     "@types/express": "^5.0.3",
     "@types/node": "^26.0.0",
     "@types/supertest": "^6.0.3",
-    "@typescript-eslint/eslint-plugin": "^8.60.1",
+    "@typescript-eslint/eslint-plugin": "^8.62.0",
     "@typescript-eslint/parser": "^8.60.1",
     "esbuild": "^0.28.1",
-    "eslint": "^10.4.1",
-    "globals": "^17.6.0",
-    "knip": "^6.16.0",
+    "eslint": "^10.5.0",
+    "globals": "^17.7.0",
+    "knip": "^6.18.0",
     "preact-render-to-string": "^6.7.0",
     "supertest": "^7.1.1",
     "tsx": "^4.20.3",
     "typescript": "^6.0.3",
     "vite": "^7.3.5",
-    "vitest": "^4.1.8"
+    "vitest": "^4.1.9"
   }
 }
