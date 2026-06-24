@@ -1,0 +1,24 @@
+name: Changeset check
+
+# Fails the PR check if a user-facing change ships without a .changeset/*.md
+# note. Non-release PRs (docs, chores) opt out with `npm run changeset --
+# --empty`. The auto-generated Version Packages PR is excluded.
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  changeset:
+    name: Ensure changeset present
+    if: github.event.pull_request.head.ref != 'changeset-release/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npx changeset status --since=origin/${{ github.base_ref }}
