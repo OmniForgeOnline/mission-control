@@ -139,10 +139,16 @@ export function describeNetworkError(error: unknown): string {
   return [code, syscall].filter(Boolean).join(" ") || `${deepest.name}: ${deepest.message}`;
 }
 
-/** Run a single ClickUp HTTP request, retrying only transient transport failures
- * with bounded exponential backoff. HTTP responses (4xx/5xx, 429) are returned
- * to the caller untouched, so rate-limit and auth handling in `readJsonResponse`
- * is unchanged. */
+/** Run a single idempotent ClickUp request, retrying only transient transport
+ * failures with bounded exponential backoff. HTTP responses (4xx/5xx, 429) are
+ * returned to the caller untouched, so rate-limit and auth handling in
+ * `readJsonResponse` is unchanged.
+ *
+ * Idempotent-only: a read timeout can land after the server has applied the
+ * request but before the response arrives, so retrying a non-idempotent write
+ * (e.g. the comment POST) would duplicate its side effect. Use this wrapper for
+ * GET reads and idempotent PUTs; route any create/non-idempotent write through
+ * `fetchImpl` directly so it stays single-attempt. */
 async function requestClickUp(
   fetchImpl: FetchLike,
   url: string,
@@ -304,14 +310,15 @@ export async function createClickUpComment(options: {
   taskId: string;
   text: string;
   fetchImpl?: FetchLike;
-  retry?: ClickUpRetryOptions;
 }): Promise<void> {
   const fetchImpl = options.fetchImpl ?? fetch;
-  const response = await requestClickUp(
-    fetchImpl,
+  // Single-attempt on purpose: comment creation is a non-idempotent POST. A read
+  // timeout can arrive after ClickUp has already recorded the comment, so a retry
+  // would post it twice. The job is self-healing across polling intervals; a
+  // transient failure here surfaces and the next tick re-evaluates the task.
+  const response = await fetchImpl(
     `https://api.clickup.com/api/v2/task/${options.taskId}/comment`,
-    { method: "POST", headers: jsonHeaders(options.token), body: JSON.stringify({ comment_text: options.text }) },
-    options.retry
+    { method: "POST", headers: jsonHeaders(options.token), body: JSON.stringify({ comment_text: options.text }) }
   );
   await readJsonResponse<unknown>(response, "ClickUp comment create");
 }

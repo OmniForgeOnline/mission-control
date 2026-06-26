@@ -842,6 +842,26 @@ describe("ClickUp polling sync", () => {
     expect(attempts).toBe(1);
   });
 
+  it("does not retry comment creation so a non-idempotent POST cannot duplicate comments", async () => {
+    // A read timeout can land after ClickUp has accepted the POST but before the
+    // client sees the response. Retrying would then post the comment twice. The
+    // POST must stay single-attempt even under a transient transport failure.
+    let attempts = 0;
+    const fetchImpl = async (input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input);
+      if (url.includes("/task/cu-dup/comment") && init?.method === "POST") {
+        attempts += 1;
+        throw transientFetchError();
+      }
+      return json({});
+    };
+
+    await expect(
+      createClickUpComment({ token: "token", taskId: "cu-dup", text: "once only", fetchImpl })
+    ).rejects.toThrow();
+    expect(attempts).toBe(1);
+  });
+
   it("completes the sync when one task's comment fetch fails transiently, deferring that task", async () => {
     await saveConnection(root, {
       id: "conn-clickup",
