@@ -774,6 +774,148 @@ describe("ClickUp polling sync", () => {
     expect(downloadHeaders[0]?.["Authorization"]).toBe("secret-operator-token");
   });
 
+  function transientFetchError(): TypeError {
+    // Mirror undici's real shape: `TypeError: fetch failed` whose `cause` is the
+    // underlying Node system error carrying `code`/`syscall` (errno -60 here,
+    // the exact failure the daemon logs during the autonomy loop).
+    return Object.assign(new TypeError("fetch failed"), {
+      cause: Object.assign(new Error("read ETIMEDOUT"), { code: "ETIMEDOUT", syscall: "read" })
+    });
+  }
+
+  it("retries transient ClickUp transport failures before giving up", async () => {
+    let attempts = 0;
+    const fetchImpl = async (input: string | URL | Request) => {
+      const url = String(input);
+      if (url.includes("/task/cu-retry/comment")) {
+        attempts += 1;
+        if (attempts < 3) throw transientFetchError();
+        return json({ comments: [{ id: "c-1", comment_text: "hi", date: "1" }] });
+      }
+      return json({});
+    };
+
+    const comments = await listClickUpTaskComments({
+      token: "token",
+      taskId: "cu-retry",
+      fetchImpl,
+      retry: { maxAttempts: 4, baseDelayMs: 0 }
+    });
+
+    expect(comments).toHaveLength(1);
+    expect(attempts).toBe(3);
+  });
+
+  it("does not retry non-transient ClickUp fetch errors", async () => {
+    let attempts = 0;
+    const fetchImpl = async () => {
+      attempts += 1;
+      throw new TypeError("genuinely broken");
+    };
+
+    await expect(
+      listClickUpTaskComments({
+        token: "token",
+        taskId: "cu-hard",
+        fetchImpl,
+        retry: { maxAttempts: 4, baseDelayMs: 0 }
+      })
+    ).rejects.toThrow("genuinely broken");
+    expect(attempts).toBe(1);
+  });
+
+  it("does not retry ClickUp rate-limit responses at the transport layer", async () => {
+    let attempts = 0;
+    const fetchImpl = async () => {
+      attempts += 1;
+      return json({ err: "rate limit" }, 429);
+    };
+
+    await expect(
+      listClickUpTaskComments({
+        token: "token",
+        taskId: "cu-429",
+        fetchImpl,
+        retry: { maxAttempts: 4, baseDelayMs: 0 }
+      })
+    ).rejects.toThrow(/rate limit/i);
+    expect(attempts).toBe(1);
+  });
+
+  it("completes the sync when one task's comment fetch fails transiently, deferring that task", async () => {
+    await saveConnection(root, {
+      id: "conn-clickup",
+      providerId: "clickup",
+      status: "connected",
+      authMethod: "token",
+      accountLabel: "Workspace",
+      connectedAt: new Date().toISOString(),
+      config: { clickup: { subscribedListIds: ["list-1"] } }
+    });
+
+    let flakyAttempts = 0;
+    const fetchImpl = async (input: string | URL | Request) => {
+      const url = String(input);
+      if (url.includes("/list/list-1/task")) {
+        return json({
+          tasks: [
+            { id: "cu-flaky", name: "Flaky", date_updated: "2000" },
+            { id: "cu-ok", name: "Ok", markdown_description: "@omc", date_updated: "2000" }
+          ]
+        });
+      }
+      if (url.includes("/task/cu-flaky/comment")) {
+        flakyAttempts += 1;
+        throw transientFetchError();
+      }
+      if (url.includes("/task/cu-ok/comment")) return json({ comments: [] });
+      return json({});
+    };
+
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    const result = await runClickUpTicketSync(root, {
+      token: "token",
+      fetchImpl,
+      retry: { maxAttempts: 2, baseDelayMs: 0 }
+    });
+
+    expect(result.status).toBe("completed");
+    expect(result.summary).toContain("transiently");
+    // The flaky task's comments were retried then deferred to the next interval;
+    // the subsequent task still synced, proving the whole job did not abort.
+    expect(flakyAttempts).toBe(2);
+    const tasks = await listTasks(root);
+    expect(tasks).toHaveLength(1);
+    expect(tasks[0]?.title).toBe("Ok");
+    expect(warnSpy).toHaveBeenCalledWith(expect.any(String), expect.any(Error));
+  });
+
+  it("still fails the sync when a comment fetch returns a durable ClickUp API error", async () => {
+    await saveConnection(root, {
+      id: "conn-clickup",
+      providerId: "clickup",
+      status: "connected",
+      authMethod: "token",
+      accountLabel: "Workspace",
+      connectedAt: new Date().toISOString(),
+      config: { clickup: { subscribedListIds: ["list-1"] } }
+    });
+
+    const fetchImpl = async (input: string | URL | Request) => {
+      const url = String(input);
+      if (url.includes("/list/list-1/task")) {
+        return json({ tasks: [{ id: "cu-auth", name: "Auth", date_updated: "2000" }] });
+      }
+      if (url.includes("/task/cu-auth/comment")) return json({ err: "unauthorized" }, 401);
+      return json({});
+    };
+
+    await expect(
+      runClickUpTicketSync(root, { token: "token", fetchImpl, retry: { maxAttempts: 3, baseDelayMs: 0 } })
+    ).rejects.toThrow(/401/);
+  });
+
   it("classifies ClickUp API origins for attachment authentication", () => {
     expect(isClickUpApiUrl("https://api.clickup.com/api/v2/task/abc")).toBe(true);
     expect(isClickUpApiUrl("https://api.clickup.com/anything")).toBe(true);
