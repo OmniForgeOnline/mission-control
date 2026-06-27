@@ -3,12 +3,15 @@ import {
   ClickUpApiError,
   ClickUpRateLimitError,
   createClickUpComment,
+  describeNetworkError,
   isClickUpApiUrl,
+  isTransientNetworkError,
   listClickUpTaskAttachments,
   listClickUpTaskComments,
   listClickUpTasks,
   updateClickUpTaskStatus,
   type ClickUpAttachment,
+  type ClickUpRetryOptions,
   type ClickUpTaskComment,
   type ClickUpTaskSummary
 } from "../../connectors/providers/clickup-client.ts";
@@ -42,6 +45,7 @@ interface ClickUpSyncOptions {
   token?: string;
   fetchImpl?: FetchLike;
   integrationUserId?: string;
+  retry?: ClickUpRetryOptions;
 }
 
 interface SyncStats {
@@ -50,6 +54,9 @@ interface SyncStats {
   created: number;
   comments: number;
   outbound: number;
+  /** Tasks whose comment fetch failed transiently even after retries and were
+   * deferred to the next polling interval rather than aborting the sync. */
+  commentFetchFailures: number;
 }
 
 export async function runClickUpTicketSync(
@@ -84,30 +91,43 @@ export async function runClickUpTicketSync(
 }
 
 function isClickUpSyncOptions(options: AutonomyJobContext | ClickUpSyncOptions | undefined): options is ClickUpSyncOptions {
-  return Boolean(options && ("token" in options || "fetchImpl" in options || "integrationUserId" in options));
+  return Boolean(
+    options && ("token" in options || "fetchImpl" in options || "integrationUserId" in options || "retry" in options)
+  );
 }
 
-function optionalSyncDeps(options: ClickUpSyncOptions): { fetchImpl?: FetchLike; integrationUserId?: string } {
+function optionalSyncDeps(
+  options: ClickUpSyncOptions
+): { fetchImpl?: FetchLike; integrationUserId?: string; retry?: ClickUpRetryOptions } {
   return {
     ...(options.fetchImpl ? { fetchImpl: options.fetchImpl } : {}),
-    ...(options.integrationUserId ? { integrationUserId: options.integrationUserId } : {})
+    ...(options.integrationUserId ? { integrationUserId: options.integrationUserId } : {}),
+    ...(options.retry ? { retry: options.retry } : {})
   };
 }
 
 function emptyStats(): SyncStats {
-  return { lists: 0, tasks: 0, created: 0, comments: 0, outbound: 0 };
+  return { lists: 0, tasks: 0, created: 0, comments: 0, outbound: 0, commentFetchFailures: 0 };
+}
+
+interface ClickUpSyncDeps {
+  token: string;
+  fetchImpl?: FetchLike;
+  integrationUserId?: string;
+  retry?: ClickUpRetryOptions;
 }
 
 async function syncList(
   root: string,
-  options: { token: string; listId: string; fetchImpl?: FetchLike; integrationUserId?: string },
+  options: ClickUpSyncDeps & { listId: string },
   stats: SyncStats
 ): Promise<void> {
   const before = await getClickUpSyncState(root);
   const tasks = await listClickUpTasks({
     token: options.token,
     listId: options.listId,
-    ...(options.fetchImpl ? { fetchImpl: options.fetchImpl } : {})
+    ...(options.fetchImpl ? { fetchImpl: options.fetchImpl } : {}),
+    ...(options.retry ? { retry: options.retry } : {})
   });
   stats.lists += 1;
   stats.tasks += tasks.length;
@@ -126,15 +146,32 @@ async function syncList(
 
 async function syncClickUpTask(
   root: string,
-  options: { token: string; listId: string; fetchImpl?: FetchLike; integrationUserId?: string },
+  options: ClickUpSyncDeps & { listId: string },
   task: ClickUpTaskSummary,
   stats: SyncStats
 ): Promise<void> {
-  const comments = await listClickUpTaskComments({
-    token: options.token,
-    taskId: task.id,
-    ...(options.fetchImpl ? { fetchImpl: options.fetchImpl } : {})
-  });
+  let comments: ClickUpTaskComment[];
+  try {
+    comments = await listClickUpTaskComments({
+      token: options.token,
+      taskId: task.id,
+      ...(options.fetchImpl ? { fetchImpl: options.fetchImpl } : {}),
+      ...(options.retry ? { retry: options.retry } : {})
+    });
+  } catch (error) {
+    // A transient transport failure (e.g. `read ETIMEDOUT`) must not abort the
+    // whole list. After the client exhausts its retries, defer this one task to
+    // the next polling interval and keep syncing the rest. Durable failures
+    // (auth, malformed request) are not transient and still propagate.
+    if (!isTransientNetworkError(error)) throw error;
+    stats.commentFetchFailures += 1;
+    console.warn(
+      `harness:clickup-sync list ${options.listId} task ${task.id} comment fetch failed transiently ` +
+        `(${describeNetworkError(error)}); deferring to next interval.`,
+      error
+    );
+    return;
+  }
   const state = await getClickUpSyncState(root);
   const existing = state.tasks[task.id];
   if (existing) {
@@ -458,8 +495,12 @@ function updateSyncedTask(
   });
 }
 
-function completed(summary: string, _stats: SyncStats): AutonomyRunResult {
-  return { jobId: "clickup-ticket-sync", status: "completed", summary, proposalsCreated: 0 };
+function completed(summary: string, stats: SyncStats): AutonomyRunResult {
+  const deferred =
+    stats.commentFetchFailures > 0
+      ? ` ${stats.commentFetchFailures} task comment fetch(es) failed transiently; deferred to next interval.`
+      : "";
+  return { jobId: "clickup-ticket-sync", status: "completed", summary: `${summary}${deferred}`, proposalsCreated: 0 };
 }
 
 function blocked(summary: string): AutonomyRunResult {

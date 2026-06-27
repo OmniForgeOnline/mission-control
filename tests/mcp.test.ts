@@ -4,6 +4,7 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { computeQualityGrades } from "../src/core/quality/quality.ts";
@@ -528,7 +529,7 @@ describe("gbrain MCP server", () => {
 
 describe("mcp quality grade", () => {
   it("assigns grade A once tests/mcp.test.ts exists in the harness repo", async () => {
-    const repoRoot = path.resolve(path.dirname(new URL(import.meta.url).pathname), "..");
+    const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
     expect(existsSync(path.join(repoRoot, "tests", "mcp.test.ts"))).toBe(true);
 
     const quality = await computeQualityGrades(repoRoot);
