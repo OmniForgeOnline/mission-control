@@ -3,6 +3,10 @@
   "version": "0.1.1",
   "license": "MIT",
   "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/omniforgeonline/mission-control.git"
+  },
   "engines": {
     "node": ">=20",
     "npm": ">=10"

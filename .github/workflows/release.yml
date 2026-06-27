@@ -6,13 +6,10 @@
 #   (b) if that PR was just merged, publishes to npm and tags a GitHub Release.
 #
 # Prerequisites:
-#   1. Create an npm automation/granular publish token for the @omniforge scope
-#      (npmjs.com -> Access Tokens) and add it as the repo secret NPM_TOKEN.
-#      An automation/granular token can publish even with 2FA enforced on your
-#      account; the job is gated on NPM_TOKEN, so it stays inert without it.
-#   2. npm provenance is generated on CI publishes via NPM_CONFIG_PROVENANCE
-#      (GHA OIDC, id-token: write). A local publish cannot produce provenance, so
-#      the first release (v0.1.1) shipped without a badge.
+#   1. Configure @omniforge/mission-control on npm with a trusted publisher for
+#      omniforgeonline/mission-control using this release.yml workflow.
+#   2. npm publish authenticates through GitHub Actions OIDC (id-token: write)
+#      and generates provenance via NPM_CONFIG_PROVENANCE.
 
 name: Release
 
@@ -28,14 +25,10 @@ jobs:
   release:
     name: Version or publish
     runs-on: ubuntu-latest
-    env:
-      # Job-level so the step `if` below can read it. Empty until the NPM_TOKEN
-      # repo secret is added, which keeps this job inert until you are ready.
-      NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
     permissions:
       contents: write # tag commits and create GitHub Releases
       pull-requests: write # open the Version Packages PR
-      id-token: write # npm provenance (OIDC)
+      id-token: write # npm trusted publishing and provenance (OIDC)
     steps:
       - uses: actions/checkout@v7
         with:
@@ -44,11 +37,11 @@ jobs:
         with:
           node-version-file: .nvmrc
           cache: npm
-          registry-url: https://registry.npmjs.org # writes .npmrc using NODE_AUTH_TOKEN
+          registry-url: https://registry.npmjs.org
       - run: npm ci
+      - run: npm install -g npm@11
 
       - name: Version Packages PR or publish
-        if: ${{ env.NPM_TOKEN != '' }}
         uses: changesets/action@v1
         with:
           version: npx changeset version
@@ -57,5 +50,4 @@ jobs:
           title: "chore(release): version packages"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }} # read by setup-node's .npmrc for npm publish
-          NPM_CONFIG_PROVENANCE: "true" # npm provenance (GHA OIDC); local publishes have no provenance
+          NPM_CONFIG_PROVENANCE: "true"
