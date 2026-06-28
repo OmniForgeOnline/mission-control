@@ -7,7 +7,7 @@
 #
 # Prerequisites:
 #   1. Configure @omniforge/mission-control on npm with a trusted publisher for
-#      omniforgeonline/mission-control using this release.yml workflow.
+#      OmniForgeOnline/mission-control using this release.yml workflow.
 #   2. npm publish authenticates through GitHub Actions OIDC (id-token: write)
 #      and generates provenance via NPM_CONFIG_PROVENANCE.
 
