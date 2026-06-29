@@ -117,6 +117,48 @@ describe("gatherProjectIntel", () => {
     expect(all).toContain("npm run build");
   });
 
+  it("collects build/test/lint commands from docs/ and .github/ subdirectories", async () => {
+    await mkdir(path.join(root, "docs"), { recursive: true });
+    await mkdir(path.join(root, ".github"), { recursive: true });
+    await writeFile(
+      path.join(root, "docs", "development.md"),
+      ["## Developing", "", "```", "npm test", "npm run lint", "```"].join("\n"),
+      "utf8"
+    );
+    // A docs file named after a build concept, not in the root DOC_GLOB allowlist,
+    // must still be found because the docs/ directory signals documentation.
+    await writeFile(path.join(root, "docs", "build.md"), "Build with `npm run build`.\n", "utf8");
+    await writeFile(
+      path.join(root, ".github", "CONTRIBUTING.md"),
+      "Run `npm run typecheck` before pushing.\n",
+      "utf8"
+    );
+
+    const intel = await gatherProjectIntel(root);
+    const paths = intel.docs.map((d) => d.path);
+    expect(paths).toContain("docs/development.md");
+    expect(paths).toContain("docs/build.md");
+    expect(paths).toContain(".github/CONTRIBUTING.md");
+
+    const dev = intel.docs.find((d) => d.path === "docs/development.md");
+    expect(dev).toBeTruthy();
+    expect(dev!.commands.join(" ")).toContain("npm test");
+    expect(dev!.commands.join(" ")).toContain("npm run lint");
+  });
+
+  it("ignores non-doc files and build output while scanning doc directories", async () => {
+    await mkdir(path.join(root, "docs", "node_modules", "some-pkg"), { recursive: true });
+    await mkdir(path.join(root, ".github", "workflows"), { recursive: true });
+    // Build output and CI yaml are not documentation and must be skipped.
+    await writeFile(path.join(root, "docs", "node_modules", "some-pkg", "readme.md"), "lint: eslint .\n", "utf8");
+    await writeFile(path.join(root, ".github", "workflows", "ci.yml"), "- run: pytest\n", "utf8");
+
+    const intel = await gatherProjectIntel(root);
+    expect(intel.docs).toEqual([]);
+    // CI yaml is still harvested by the dedicated CI scan, not the docs scan.
+    expect(intel.ci.map((c) => c.command)).toContain("pytest");
+  });
+
   it("collects run: steps from CI workflows", async () => {
     await mkdir(path.join(root, ".github", "workflows"), { recursive: true });
     await writeFile(
