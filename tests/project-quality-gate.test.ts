@@ -168,6 +168,58 @@ describe("parseAndValidateQualityGate workingDirectory containment", () => {
   });
 });
 
+/** A ready config carrying one check with an arbitrary command and evidence. */
+function readyWithCommand(command: string): string {
+  return JSON.stringify({
+    status: "ready",
+    checks: [{ name: "x", category: "test", command, required: true, evidence: ["repo"] }],
+    rationale: "x"
+  });
+}
+
+describe("parseAndValidateQualityGate shell-syntax contract", () => {
+  // The check executor spawns each command directly (shell: false), so a command
+  // that relies on shell operators cannot run correctly: `a && b` runs only `a`
+  // (with `&&`, `b` as junk argv), `cd x && c` fails to spawn the `cd` builtin,
+  // and pipes/redirections/substitution are passed as literal argv. Such commands
+  // must be rejected at the persistence boundary rather than stored to mis-run.
+  it("rejects a command that chains stages with &&", () => {
+    const result = parseAndValidateQualityGate(readyWithCommand("npm run lint && npm run test"));
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.errors.join(" ")).toMatch(/&&/);
+  });
+
+  it("rejects a piped command", () => {
+    expect(parseAndValidateQualityGate(readyWithCommand("pytest | tee out.txt")).ok).toBe(false);
+  });
+
+  it("rejects a cd-prefixed command", () => {
+    expect(parseAndValidateQualityGate(readyWithCommand("cd packages/api && npm test")).ok).toBe(false);
+  });
+
+  it("rejects a redirection", () => {
+    expect(parseAndValidateQualityGate(readyWithCommand("make test > build.log")).ok).toBe(false);
+  });
+
+  it("rejects a leading NAME=value env assignment", () => {
+    expect(parseAndValidateQualityGate(readyWithCommand("NODE_ENV=test npm test")).ok).toBe(false);
+  });
+
+  it("accepts a NAME=value argument that is not a leading env assignment", () => {
+    // `make test VAR=1` passes VAR=1 as a make argument; only a LEADING assignment
+    // (before the program) is shell env syntax the executor cannot honour.
+    expect(parseAndValidateQualityGate(readyWithCommand("make test VAR=1")).ok).toBe(true);
+  });
+
+  it("accepts a shell operator inside a quoted argument (a literal, not an operator)", () => {
+    expect(parseAndValidateQualityGate(readyWithCommand('./check.sh --label "a && b"')).ok).toBe(true);
+  });
+
+  it("accepts a clean multi-argument command", () => {
+    expect(parseAndValidateQualityGate(readyWithCommand("ruff check --select E,F src/")).ok).toBe(true);
+  });
+});
+
 describe("generateProjectQualityGate lifecycle", () => {
   let root: string;
   let repo: string;
@@ -286,5 +338,48 @@ describe("planProjectChecks workingDirectory containment", () => {
     const plan = await planProjectChecks(root, project.id, repo);
     const check = plan.checks.find((c) => c.name === "lint");
     expect(check!.cwd).toBe("packages/web");
+  });
+});
+
+describe("planProjectChecks shell-syntax guard", () => {
+  let root: string;
+  let repo: string;
+  let project: ProjectRecord;
+
+  beforeEach(async () => {
+    root = await mkdtemp(path.join(os.tmpdir(), "harness-qg-shell-"));
+    repo = path.join(root, "repo");
+    execSync(`git init -q ${repo}`);
+    execSync("git config user.email t@t.com", { cwd: repo });
+    execSync("git config user.name t", { cwd: repo });
+    project = await onboardProject(root, { repoPath: repo, name: "Repo" });
+  });
+
+  afterEach(async () => {
+    await rm(root, { recursive: true, force: true }).catch(() => {});
+  });
+
+  it("surfaces a stored shell-style command as an explicit skip, never silently mis-runs it", async () => {
+    // Stored configs are re-read with only a loose shape check, so the shell-syntax
+    // contract is enforced at the plan boundary too: a command the direct-spawn
+    // executor cannot run becomes an unavailable check with a reason, rather than
+    // being spawned and running only its first stage.
+    await writeQualityGate(root, project.id, {
+      status: "ready",
+      checks: [
+        {
+          name: "ci",
+          category: "test",
+          command: "npm run lint && npm run test",
+          required: true,
+          evidence: [".github/workflows/ci.yml"]
+        }
+      ]
+    });
+    const plan = await planProjectChecks(root, project.id, repo);
+    expect(plan.source).toBe("quality-gate");
+    const check = plan.checks.find((c) => c.name === "ci");
+    expect(check?.available).toBe(false);
+    expect(check?.skipReason).toMatch(/shell syntax/);
   });
 });

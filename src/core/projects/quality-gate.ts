@@ -111,6 +111,46 @@ export function isRepoRelativePath(input: string): boolean {
   return !normalized.startsWith(`..${path.sep}`);
 }
 
+/**
+ * Shell syntax the check executor cannot honour: it spawns each command directly
+ * (`shell: false`), passing the program and argv verbatim with no shell. An
+ * unquoted operator is therefore passed as a literal argument and silently
+ * mis-runs (an `&&` chain executes only the first stage; `cd x && c` fails to
+ * spawn the `cd` builtin; pipes, redirections and substitution do nothing). An
+ * operator that appears *inside* quotes is a literal argument and is fine, so the
+ * scan is quote-aware. A leading `NAME=value` env assignment is rejected too: the
+ * executor passes `env` only, never per-command assignments.
+ *
+ * Returns a short label naming the first offending construct, or null when the
+ * command is a single direct invocation. Enforced both at generation
+ * ({@link parseAndValidateQualityGate}) and when a stored gate is re-read
+ * ({@link gateCheckToPlanned}), mirroring {@link isRepoRelativePath}.
+ */
+export function findUnsupportedShellSyntax(command: string): string | null {
+  const assignment = command.match(/^\s*([A-Za-z_][A-Za-z0-9_]*)=(?!=)\S/);
+  if (assignment?.[1]) return `leading ${assignment[1]}= assignment`;
+
+  let quote: '"' | "'" | null = null;
+  for (let i = 0; i < command.length; i++) {
+    const ch = command.slice(i, i + 1);
+    if (quote !== null) {
+      if (ch === quote) quote = null;
+      continue;
+    }
+    if (ch === '"' || ch === "'") {
+      quote = ch;
+      continue;
+    }
+    const pair = command.slice(i, i + 2);
+    if (pair === "&&" || pair === "||") return pair;
+    if (pair === "$(" || pair === "${") return pair;
+    if (ch === "|" || ch === "&" || ch === ";" || ch === ">" || ch === "<" || ch === "`") return ch;
+    if (ch === "\n") return "newline";
+    if (ch === "\r") return "carriage return";
+  }
+  return null;
+}
+
 function extractJsonText(raw: string): string | null {
   const text = raw.trim();
   if (!text) return null;
@@ -166,6 +206,7 @@ export function parseAndValidateQualityGate(raw: string): QualityGateValidation 
   }
 
   const checks: QualityGateCheck[] = [];
+  const errors: string[] = [];
   for (const entry of doc["checks"] as unknown[]) {
     const check = asRecord(entry, "check", { orNull: true });
     if (!check) continue;
@@ -176,6 +217,19 @@ export function parseAndValidateQualityGate(raw: string): QualityGateValidation 
     if (!name || !command) continue;
     if (!VALID_CATEGORIES.has(category)) continue;
     if (!evidence) continue; // A check without concrete evidence is a generic guess — drop it.
+    const shellSyntax = findUnsupportedShellSyntax(command);
+    if (shellSyntax !== null) {
+      // The executor spawns commands directly (no shell), so a shell-style command
+      // would mis-run: `a && b` runs only `a`, `cd x && c` cannot spawn `cd`, and
+      // pipes/redirections/substitution are passed as literal argv. Reject it here
+      // so it is never persisted; the message drives the agent's correction turn.
+      errors.push(
+        `Check "${name}" command \`${command}\` uses shell syntax (\`${shellSyntax}\`) the executor cannot run. ` +
+          "Emit a single direct invocation per check (no &&, ||, pipes, redirections, background &, command substitution, leading NAME=value, or cd). " +
+          "Split a chain into separate checks and use workingDirectory to run from a subdirectory."
+      );
+      continue;
+    }
     const built: QualityGateCheck = {
       name,
       category,
@@ -187,6 +241,8 @@ export function parseAndValidateQualityGate(raw: string): QualityGateValidation 
     if (workingDirectory && isRepoRelativePath(workingDirectory)) built.workingDirectory = workingDirectory;
     checks.push(built);
   }
+
+  if (errors.length > 0) return { ok: false, errors };
 
   if (status === "ready" && checks.length === 0) {
     return {

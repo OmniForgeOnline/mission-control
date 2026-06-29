@@ -8,6 +8,7 @@ import {
   type PlannedCheck
 } from "../review/checks.ts";
 import {
+  findUnsupportedShellSyntax,
   isRepoRelativePath,
   readProjectQualityGate,
   type QualityGateCheck,
@@ -52,6 +53,14 @@ function gateCheckToPlanned(check: QualityGateCheck): PlannedCheck {
   // guard is enforced here too: an unsafe cwd never reaches the executor or the
   // rendered author prompt.
   if (check.workingDirectory && isRepoRelativePath(check.workingDirectory)) planned.cwd = check.workingDirectory;
+  // Same reason, same boundary: a command the direct-spawn executor cannot run
+  // (shell operators, a leading env assignment) becomes an explicit skip with a
+  // reason, instead of being spawned and silently mis-running its first stage.
+  const shellSyntax = findUnsupportedShellSyntax(check.command);
+  if (shellSyntax !== null) {
+    planned.available = false;
+    planned.skipReason = `command uses shell syntax (${shellSyntax}) the executor cannot run directly`;
+  }
   return planned;
 }
 
