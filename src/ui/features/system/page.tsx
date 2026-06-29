@@ -1,13 +1,11 @@
 import { render } from "preact";
-import { $, withPending } from "@ui/shell/dom.js";
+import { $ } from "@ui/shell/dom.js";
 import { icon } from "@ui/shell/icons.js";
-import { toast, errorToast } from "@ui/overlays/toast.js";
-import { confirm } from "@ui/overlays/confirm.js";
 import { ui } from "@ui/app/state.js";
 import { AutonomyPanel } from "@ui/features/autonomy/page.js";
 import { RunGroupList } from "@ui/features/runs/page.js";
 import { isMaintenanceRun } from "@ui/features/runs/groups.js";
-import { SHUTDOWN_WARNING, requestShutdown } from "./shutdown.js";
+import { confirmAndShutdown } from "./shutdown.js";
 
 function Icon({ name, size = 16 }: { name: string; size?: number }) {
   return <span dangerouslySetInnerHTML={{ __html: icon(name, size) }} />;
@@ -63,18 +61,9 @@ export function MaintenanceView() {
  */
 function PowerControl() {
   async function handleShutdown(event: Event): Promise<void> {
-    const button = event.currentTarget as HTMLButtonElement;
-    const ok = await confirm({ ...SHUTDOWN_WARNING, tone: "danger" });
-    if (!ok) return;
-    // Guard against duplicate shutdown requests while the POST is in flight.
-    await withPending(button, async () => {
-      try {
-        await requestShutdown();
-        toast("Mission Control is shutting down. Restart it from the terminal.", { tone: "success" });
-      } catch (err) {
-        errorToast(err instanceof Error ? err.message : "Failed to shut down Mission Control.");
-      }
-    });
+    // Confirm-gated, cancel-safe, duplicate-guarded shutdown shared with the
+    // app-bar power button (see confirmAndShutdown).
+    await confirmAndShutdown(event.currentTarget as HTMLButtonElement);
   }
 
   return (

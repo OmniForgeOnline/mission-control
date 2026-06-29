@@ -1,5 +1,8 @@
 import { api } from "@ui/data/api.js";
 import { ui } from "@ui/app/state.js";
+import { confirm } from "@ui/overlays/confirm.js";
+import { toast, errorToast } from "@ui/overlays/toast.js";
+import { withPending } from "@ui/shell/dom.js";
 
 /**
  * UI-side shutdown. The control is gated behind a confirmation modal built from
@@ -28,4 +31,29 @@ export async function requestShutdown(): Promise<void> {
     method: "POST",
     headers: { "content-type": "application/json", "x-shutdown-token": token }
   });
+}
+
+/**
+ * Confirmation-gated shutdown shared by the maintenance Power control and the
+ * app-bar power button. The operator must accept the danger modal before any
+ * shutdown request leaves the client; a cancel short-circuits with no request.
+ * When a triggering button is supplied it is pinned with a pending state to
+ * guard against duplicate in-flight requests.
+ */
+export async function confirmAndShutdown(trigger?: HTMLButtonElement | null): Promise<void> {
+  const ok = await confirm({ ...SHUTDOWN_WARNING, tone: "danger" });
+  if (!ok) return;
+  const run = async (): Promise<void> => {
+    try {
+      await requestShutdown();
+      toast("Mission Control is shutting down. Restart it from the terminal.", { tone: "success" });
+    } catch (err) {
+      errorToast(err instanceof Error ? err.message : "Failed to shut down Mission Control.");
+    }
+  };
+  if (trigger) {
+    await withPending(trigger, run);
+  } else {
+    await run();
+  }
 }

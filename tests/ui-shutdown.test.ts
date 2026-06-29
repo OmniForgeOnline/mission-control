@@ -7,6 +7,8 @@ import { ui } from "../src/ui/app/state.ts";
 import type { AppState } from "../src/ui/app/types.ts";
 
 const PAGE = path.join(process.cwd(), "src/ui/features/system/page.tsx");
+const SHUTDOWN = path.join(process.cwd(), "src/ui/features/system/shutdown.ts");
+const LAYOUT = path.join(process.cwd(), "src/ui/shell/layout.ts");
 
 describe("UI shutdown warning copy", () => {
   it("warns that all running processes are terminated", () => {
@@ -25,41 +27,42 @@ describe("UI shutdown warning copy", () => {
 });
 
 describe("UI shutdown control is confirmation-gated", () => {
-  const source = () => readFileSync(PAGE, "utf8");
-
   it("renders a danger shutdown control in the maintenance view", () => {
-    const src = source();
+    const src = readFileSync(PAGE, "utf8");
     expect(src).toContain("Shut down Mission Control");
     expect(src).toContain('class="btn btn-danger"');
     expect(src).toContain("data-shutdown");
     expect(src).toContain("PowerControl");
   });
 
-  it("opens the confirmation modal before any shutdown request", () => {
-    const src = source();
-    // The confirm() call (modal) must appear before requestShutdown().
-    const confirmIndex = src.indexOf("confirm({");
-    const requestIndex = src.indexOf("requestShutdown()");
-    expect(confirmIndex).toBeGreaterThan(-1);
-    expect(requestIndex).toBeGreaterThan(-1);
-    expect(confirmIndex).toBeLessThan(requestIndex);
-    // And the modal uses the required warning copy.
-    expect(src).toContain("...SHUTDOWN_WARNING");
-    expect(src).toContain('tone: "danger"');
+  it("delegates to the shared confirmAndShutdown helper instead of duplicating gating", () => {
+    expect(readFileSync(PAGE, "utf8")).toContain("confirmAndShutdown");
   });
 
-  it("does not request shutdown when the operator cancels", () => {
-    const src = source();
-    // The early return on !ok sits between confirm() and requestShutdown().
-    const confirmIndex = src.indexOf("confirm({");
-    const requestIndex = src.indexOf("requestShutdown()");
-    const returnIndex = src.indexOf("if (!ok) return");
+  it("gates every shutdown behind a danger confirmation modal", () => {
+    const src = readFileSync(SHUTDOWN, "utf8");
+    // Slice to the orchestrator so the ordering check is immune to where the
+    // requestShutdown definition sits in the file.
+    const fn = src.slice(src.indexOf("confirmAndShutdown"));
+    expect(fn).toContain("confirm({ ...SHUTDOWN_WARNING");
+    expect(fn).toContain('tone: "danger"');
+    // confirm() runs before requestShutdown(), with a cancel short-circuit between.
+    const confirmIndex = fn.indexOf("confirm({");
+    const returnIndex = fn.indexOf("if (!ok) return");
+    const requestIndex = fn.indexOf("requestShutdown()");
+    expect(confirmIndex).toBeGreaterThan(-1);
     expect(returnIndex).toBeGreaterThan(confirmIndex);
-    expect(returnIndex).toBeLessThan(requestIndex);
+    expect(requestIndex).toBeGreaterThan(returnIndex);
   });
 
   it("guards against duplicate requests with a pending state", () => {
-    expect(source()).toContain("withPending");
+    expect(readFileSync(SHUTDOWN, "utf8")).toContain("withPending");
+  });
+
+  it("surfaces a power button in the app bar wired to the shared gated shutdown", () => {
+    const layout = readFileSync(LAYOUT, "utf8");
+    expect(layout).toContain("powerButton");
+    expect(layout).toContain("confirmAndShutdown");
   });
 });
 
