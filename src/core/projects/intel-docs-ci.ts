@@ -101,7 +101,8 @@ export async function collectDocCommands(repoPath: string): Promise<DocExcerpt[]
   return excerpts;
 }
 
-function inferCategoryFromToken(command: string): GateCategory {
+/** Infer a gate category from a bare command token. Shared by CI/doc collection. */
+export function inferCategoryFromToken(command: string): GateCategory {
   const lower = command.toLowerCase();
   if (/\b(ruff|eslint|pylint|biome|flake8)\b/.test(lower)) return "lint";
   if (/\b(pytest|jest|vitest|mocha|test|check)\b/.test(lower)) return "test";

@@ -5,7 +5,7 @@ import { execSync } from "node:child_process";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 
 import { onboardProject, type ProjectRecord } from "../src/core/projects/registry.ts";
-import { gatherProjectIntel } from "../src/core/projects/intel.ts";
+import { gatherProjectIntel, type ProjectIntel } from "../src/core/projects/intel.ts";
 import {
   parseAndValidateQualityGate,
   readProjectQualityGate,
@@ -70,6 +70,84 @@ describe("synthesizeGateFromIntel", () => {
     } finally {
       await rm(tmp, { recursive: true, force: true }).catch(() => {});
     }
+  });
+});
+
+describe("synthesizeGateFromIntel docs/CI evidence", () => {
+  // A minimal intel with no evidence in any bucket, reused as the base for the
+  // docs/CI-only scenarios below.
+  const emptyIntel: ProjectIntel = {
+    repoPath: "/repo",
+    markers: [],
+    commands: [],
+    docs: [],
+    ci: [],
+    summary: []
+  };
+
+  it("builds a ready config from CI run steps when no manifest commands exist", () => {
+    const intel: ProjectIntel = {
+      ...emptyIntel,
+      ci: [
+        { command: "npm test", category: "test", source: "CI ci.yml run step" },
+        { command: "npm run build", category: "build", source: "CI ci.yml run step" }
+      ]
+    };
+    const file = synthesizeGateFromIntel(intel);
+    expect(file.status).toBe("ready");
+    const cmds = file.checks.map((c) => c.command);
+    expect(cmds).toContain("npm test");
+    expect(cmds).toContain("npm run build");
+    // The CI provenance is carried as evidence so the source is transparent.
+    expect(file.checks.find((c) => c.command === "npm test")?.evidence).toContain(
+      "CI ci.yml run step"
+    );
+  });
+
+  it("builds a ready config from doc excerpts (README-only repo)", () => {
+    const intel: ProjectIntel = {
+      ...emptyIntel,
+      docs: [{ path: "README.md", commands: ["npm test", "npm run build"] }]
+    };
+    const file = synthesizeGateFromIntel(intel);
+    expect(file.status).toBe("ready");
+    const cmds = file.checks.map((c) => c.command);
+    expect(cmds).toContain("npm test");
+    expect(cmds).toContain("npm run build");
+    expect(file.checks.find((c) => c.command === "npm run build")?.evidence).toContain(
+      "docs README.md"
+    );
+  });
+
+  it("drops shell-chain docs/CI commands (same direct-invocation vetting as agent output)", () => {
+    // A README whose only test line is a chain cannot run as a single direct spawn
+    // (the executor would silently run only the first stage), so it must not be
+    // emitted. With no other evidence, the gate stays incomplete rather than
+    // persisting a command that would mis-run.
+    const intel: ProjectIntel = {
+      ...emptyIntel,
+      docs: [{ path: "README.md", commands: ["npm run lint && npm run test"] }]
+    };
+    const file = synthesizeGateFromIntel(intel);
+    expect(file.status).toBe("incomplete");
+    expect(file.checks).toEqual([]);
+  });
+
+  it("dedupes a command shared by manifests and CI, keeping the higher-confidence source", () => {
+    // Manifests/Makefile are higher confidence than CI; both are processed, so the
+    // first occurrence (manifest) wins and the CI duplicate is dropped.
+    const intel: ProjectIntel = {
+      ...emptyIntel,
+      commands: [
+        { command: "npm run -s test", category: "test", source: "package.json script `test`" }
+      ],
+      ci: [{ command: "npm run -s test", category: "test", source: "CI ci.yml run step" }]
+    };
+    const file = synthesizeGateFromIntel(intel);
+    expect(file.status).toBe("ready");
+    const matches = file.checks.filter((c) => c.command === "npm run -s test");
+    expect(matches.length).toBe(1);
+    expect(matches[0]?.evidence).toContain("package.json script `test`");
   });
 });
 
@@ -287,6 +365,25 @@ describe("generateProjectQualityGate lifecycle", () => {
     expect(file.status).toBe("incomplete");
     expect(file.checks).toEqual([]);
     expect(file.needsResolution?.length).toBeGreaterThan(0);
+  });
+
+  it("synthesizes a ready gate from README docs when the agent fails (README-only repo)", async () => {
+    // No manifest/Makefile/CI: the only evidence is fenced commands in the README.
+    // The agent fails, so deterministic synthesis must fold the docs evidence into a
+    // ready gate rather than marking the repo incomplete with no checks (the prior
+    // fallback only inspected manifest commands and so missed docs-only repos).
+    await writeFile(
+      path.join(repo, "README.md"),
+      "# Project\n\n## Usage\n\n```sh\nnpm test\nnpm run build\n```\n",
+      "utf8"
+    );
+    const runner = repliesRunner("nope, can't help");
+    const file = await generateProjectQualityGate(root, project, { runner });
+
+    expect(file.status).toBe("ready");
+    const cmds = file.checks.map((c) => c.command);
+    expect(cmds).toContain("npm test");
+    expect(cmds).toContain("npm run build");
   });
 
   it("returns the same stamped config it persists on success (matches a later GET)", async () => {

@@ -166,13 +166,13 @@ export async function generateProjectQualityGate(
   project: ProjectRecord,
   options?: GenerateQualityGateOptions
 ): Promise<QualityGateFile> {
-  // Persist `generating` up front, before intel gathering or any agent turn, so a
-  // project-scoped check plan read during generation never sees `pending` (the
-  // generic-baseline interim). The contract: once generation has started for a
-  // project its gate state surfaces, never a one-size-fits-all fallback. This
-  // mirrors generateProjectQuickstarts and closes the onboarding race where the
-  // fire-and-forget kick-off returned before the `generating` write landed. The
-  // intel-backed `generating` (or `failed`) write below overwrites this promptly.
+  // Persist `generating` up front, before intel gathering or any agent turn. This
+  // covers direct (awaited) callers: while they await the long intel/agent work, a
+  // concurrent project-scoped check plan read sees `generating` rather than `pending`
+  // (the generic-baseline interim). The fire-and-forget onboarding race, where the
+  // caller proceeds before any write lands, is closed by startProjectQualityGate's
+  // own eager write; this one overwrites it promptly with the same `generating`
+  // state (or `failed` below) as intel gathering proceeds.
   await writeQualityGate(root, project.id, { ...pendingQualityGate(), status: "generating" });
 
   let intel: ProjectIntel;
@@ -250,15 +250,22 @@ export async function generateProjectQualityGate(
 /**
  * Fire-and-forget generation with an in-flight guard so a re-trigger (or a fast
  * double onboard) doesn't run two turns for the same project.
+ *
+ * Durably writes `generating` before resolving, so the caller can proceed to a
+ * project-scoped check plan read the instant this returns without ever observing
+ * `pending` (the generic-baseline interim). Only that first write is awaited; the
+ * intel gathering and agent turn run detached and overwrite `generating` with the
+ * terminal config when they land.
  */
-export function startProjectQualityGate(
+export async function startProjectQualityGate(
   root: string,
   project: ProjectRecord,
   options?: GenerateQualityGateOptions
-): void {
+): Promise<void> {
   const key = `${root}:${project.id}`;
   if (activeGenerations.has(key)) return;
   activeGenerations.add(key);
+  await writeQualityGate(root, project.id, { ...pendingQualityGate(), status: "generating" });
   void generateProjectQualityGate(root, project, options)
     .catch(() => {})
     .finally(() => activeGenerations.delete(key));

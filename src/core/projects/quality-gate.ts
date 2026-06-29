@@ -4,6 +4,7 @@ import { asRecord } from "../infra/record.ts";
 import { ensureDir, readJsonFile, writeJsonFile } from "../infra/fs.ts";
 import { emitStateChange } from "../infra/state-bus.ts";
 import { type GateCategory, type ProjectIntel } from "./intel.ts";
+import { inferCategoryFromToken } from "./intel-docs-ci.ts";
 import { projectDir } from "./registry.ts";
 
 /**
@@ -300,25 +301,52 @@ const CATEGORY_LABELS: Record<GateCategory, string> = {
 /**
  * Deterministically derive a quality-gate config from gathered intel. Used as the
  * safe fallback when the agent does not return valid output: it never fabricates a
- * gate. When intel has evidence-backed commands it returns a `ready` config built
- * only from them; otherwise it returns `incomplete` with explicit gaps.
+ * gate. It folds every evidence source the intel layer gathered (manifest/Makefile
+ * commands, CI run steps, and commands excerpted from docs) into `ready` checks,
+ * vetting each for a single direct invocation (the executor spawns with no shell,
+ * mirroring {@link parseAndValidateQualityGate}) and attaching its provenance as
+ * evidence. When no source yields a runnable command it returns `incomplete` with
+ * explicit gaps, never a generic gate.
  */
 export function synthesizeGateFromIntel(intel: ProjectIntel): QualityGateFile {
   const checks: QualityGateCheck[] = [];
   const usedNames = new Map<string, number>();
+  const seen = new Set<string>();
 
-  for (const detected of intel.commands) {
-    const base = CATEGORY_LABELS[detected.category] ?? "check";
+  /**
+   * Add a vetted command as a check. A command is dropped (not emitted) when it is
+   * a duplicate of one already added or when it relies on shell syntax the direct
+   * executor cannot run. This is the same vetting enforced on agent output, so a
+   * CI/docs chain like `a && b` is rejected here rather than persisted to mis-run.
+   * Sources are walked highest confidence first: manifests/Makefile, then CI, then docs.
+   */
+  const addCheck = (command: string, category: GateCategory, source: string): void => {
+    if (seen.has(command)) return;
+    if (findUnsupportedShellSyntax(command) !== null) return;
+    seen.add(command);
+    const base = CATEGORY_LABELS[category] ?? "check";
     const count = usedNames.get(base) ?? 0;
     usedNames.set(base, count + 1);
     const name = count === 0 ? base : `${base}-${count + 1}`;
     checks.push({
       name,
-      category: detected.category,
-      command: detected.command,
-      required: detected.category !== "format",
-      evidence: [detected.source]
+      category,
+      command,
+      required: category !== "format",
+      evidence: [source]
     });
+  };
+
+  for (const detected of intel.commands) {
+    addCheck(detected.command, detected.category, detected.source);
+  }
+  for (const detected of intel.ci) {
+    addCheck(detected.command, detected.category, detected.source);
+  }
+  for (const doc of intel.docs) {
+    for (const command of doc.commands) {
+      addCheck(command, inferCategoryFromToken(command), `docs ${doc.path}`);
+    }
   }
 
   if (checks.length > 0) {
@@ -326,7 +354,7 @@ export function synthesizeGateFromIntel(intel: ProjectIntel): QualityGateFile {
       status: "ready",
       checks,
       rationale:
-        "Derived deterministically from repo evidence (manifests, Makefile, Python tooling). " +
+        "Derived deterministically from repo evidence (manifests, Makefile, CI, docs). " +
         "No generic gate was assumed.",
       intel
     };

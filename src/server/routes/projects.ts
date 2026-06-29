@@ -101,7 +101,9 @@ export function createProjectsRouter(options: ServerOptions): Router {
       const turns = turnOptions(options);
       if (!turns.wait) {
         startProjectQuickstarts(options.root, project, turns);
-        startProjectQualityGate(options.root, project, turns);
+        // Await the `generating` write so a project-scoped check plan read issued
+        // the moment onboarding responds never sees the `pending` baseline interim.
+        await startProjectQualityGate(options.root, project, turns);
       }
       res.json(project);
     })
@@ -264,7 +266,7 @@ export function createProjectsRouter(options: ServerOptions): Router {
         res.json(await generateProjectQualityGate(options.root, project, opts));
         return;
       }
-      startProjectQualityGate(options.root, project, opts);
+      await startProjectQualityGate(options.root, project, opts);
       res.json(await readProjectQualityGate(options.root, projectId));
     })
   );

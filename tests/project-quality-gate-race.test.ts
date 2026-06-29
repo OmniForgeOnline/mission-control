@@ -60,17 +60,17 @@ describe("quality-gate generation race (onboarding fire-and-forget)", () => {
     await rm(root, { recursive: true, force: true }).catch(() => {});
   });
 
-  it("persists generating before intel/agent work, so the gate is never pending mid-flight", async () => {
+  it("durably writes generating before returning, so the gate is never pending mid-flight", async () => {
     // Imported AFTER the doMock above so the generation module picks up the stalled intel.
     const { startProjectQualityGate } = await import("../src/core/projects/quality-gate-generation.ts");
 
-    // Onboarding fires generation in the background and returns immediately. While
-    // intel gathering is in flight, a project-scoped check plan must NOT see `pending`
-    // (the generic-baseline interim) — it must see `generating`, which surfaces the
-    // gate state instead of substituting a one-size-fits-all gate.
-    startProjectQualityGate(root, project, { runner: repliesRunner("nope"), agent: "claude" });
-    await settleFirstWrite();
-
+    // The launch MUST await its first `generating` write before returning. The real
+    // onboarding path (POST /projects) reads the gate the moment onboarding responds,
+    // with no settling in between; if the launch returned while the write was still in
+    // flight, that immediate read would see `pending` (the generic-baseline interim).
+    // So: await the launch, then read with no yielding in between; it must be
+    // `generating`, proving the onboarding race is closed.
+    await startProjectQualityGate(root, project, { runner: repliesRunner("nope"), agent: "claude" });
     const stored = await readProjectQualityGate(root, project.id);
     expect(stored.status).toBe("generating");
 
