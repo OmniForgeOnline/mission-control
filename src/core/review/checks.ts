@@ -447,7 +447,13 @@ export function describeCheckPlan(plan: CheckPlan): string {
 ${note} The harness will not run an automated gate for this project. Run whatever validation makes sense by hand before you finish.`;
   }
 
-  const lines = available.map((check) => `- \`${check.command}\``);
+  // Mirror runCheckPlan: when a check carries a cwd the gate runs it from that
+  // subdirectory, so the author-facing command must `cd` there too. Otherwise the
+  // rendered command would pass or fail differently than the enforced gate.
+  const lines = available.map((check) => {
+    const command = check.cwd ? `cd ${check.cwd} && ${check.command}` : check.command;
+    return `- \`${command}\``;
+  });
   const skipLines = unavailable.length
     ? `\n\nUnavailable (do not invent substitutes): ${unavailable
         .map((check) => `${check.name}: ${check.skipReason ?? "unavailable"}`)

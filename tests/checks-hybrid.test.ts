@@ -251,6 +251,23 @@ describe("checks plan prompt rendering", () => {
     expect(text).not.toContain("`npm run -s typecheck`");
   });
 
+  it("prefixes a check's command with its cwd so the author runs it where the gate does", () => {
+    const text = describeCheckPlan({
+      source: "quality-gate",
+      maxRounds: DEFAULT_CHECK_REMEDIATION_ROUNDS,
+      checks: [
+        { name: "lint", kind: "lint", command: "ruff check .", available: true, cwd: "services/api" },
+        { name: "typecheck", kind: "typecheck", command: "tsc --noEmit", available: true }
+      ]
+    });
+    // A cwd-bearing check must point the author at the subdirectory the gate runs
+    // from; otherwise a bare `ruff check .` at the workspace root does not reproduce it.
+    expect(text).toContain("cd services/api && ruff check .");
+    // A check without a cwd stays bare, so the author is not sent to a phantom directory.
+    expect(text).toContain("`tsc --noEmit`");
+    expect(text).not.toMatch(/cd .+ && tsc --noEmit/);
+  });
+
   it("states plainly when no checks are available and there is no automated gate", () => {
     const text = describeCheckPlan({
       source: "none",
