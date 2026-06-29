@@ -3,6 +3,7 @@ import path from "node:path";
 
 import { setConnectorVault } from "../connectors/vault/index.ts";
 import { subscribeStateEvents } from "./events.ts";
+import { gracefulShutdown, isShuttingDown } from "./lifecycle.ts";
 import { createAutonomyRouter } from "./routes/autonomy.ts";
 import { createAgentConfigRouter } from "./routes/agent-config.ts";
 import { createAttachmentsRouter } from "./routes/attachments.ts";
@@ -57,8 +58,15 @@ export function createServer(options: ServerOptions): express.Express {
   app.use("/api", createVersionRouter(options));
 
   app.post("/api/shutdown", (_req, res) => {
-    res.json({ shutting_down: true });
-    setTimeout(() => process.exit(0), 100);
+    res.json({ shutting_down: true, already: isShuttingDown() });
+    if (!isShuttingDown()) {
+      // Defer so the response flushes before the server begins tearing down.
+      // Shares the same graceful path as Ctrl+C: terminates running agent
+      // processes, stops the daemon, closes the server.
+      setImmediate(() => {
+        void gracefulShutdown("api request");
+      });
+    }
   });
 
   app.use("/api", (_req, res) => {

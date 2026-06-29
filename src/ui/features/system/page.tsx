@@ -1,9 +1,17 @@
 import { render } from "preact";
-import { $ } from "@ui/shell/dom.js";
+import { $, withPending } from "@ui/shell/dom.js";
+import { icon } from "@ui/shell/icons.js";
+import { toast, errorToast } from "@ui/overlays/toast.js";
+import { confirm } from "@ui/overlays/confirm.js";
 import { ui } from "@ui/app/state.js";
 import { AutonomyPanel } from "@ui/features/autonomy/page.js";
 import { RunGroupList } from "@ui/features/runs/page.js";
 import { isMaintenanceRun } from "@ui/features/runs/groups.js";
+import { SHUTDOWN_WARNING, requestShutdown } from "./shutdown.js";
+
+function Icon({ name, size = 16 }: { name: string; size?: number }) {
+  return <span dangerouslySetInnerHTML={{ __html: icon(name, size) }} />;
+}
 
 /**
  * System → Maintenance. Surfaces the daemon-wide background jobs (doc
@@ -42,7 +50,57 @@ export function MaintenanceView() {
           <RunGroupList runs={runs} />
         )}
       </section>
+      <PowerControl />
     </div>
+  );
+}
+
+/**
+ * Danger zone: stop the daemon from the UI. Shutdown is gated behind a
+ * confirmation modal (see SHUTDOWN_WARNING) and then routed through the same
+ * backend path as Ctrl+C and `mission-control stop`. After it succeeds the
+ * server tears itself down, so the UI goes offline until a terminal restart.
+ */
+function PowerControl() {
+  async function handleShutdown(event: Event): Promise<void> {
+    const button = event.currentTarget as HTMLButtonElement;
+    const ok = await confirm({ ...SHUTDOWN_WARNING, tone: "danger" });
+    if (!ok) return;
+    // Guard against duplicate shutdown requests while the POST is in flight.
+    await withPending(button, async () => {
+      try {
+        await requestShutdown();
+        toast("Mission Control is shutting down. Restart it from the terminal.", { tone: "success" });
+      } catch (err) {
+        errorToast(err instanceof Error ? err.message : "Failed to shut down Mission Control.");
+      }
+    });
+  }
+
+  return (
+    <section class="project-panel shutdown-panel">
+      <div class="project-section-head">
+        <div>
+          <h2>Power</h2>
+          <span class="muted">Stop the daemon and take the UI offline until a terminal restart.</span>
+        </div>
+      </div>
+      <div class="shutdown-control">
+        <button
+          type="button"
+          class="btn btn-danger"
+          data-shutdown=""
+          aria-label="Shut down Mission Control"
+          onClick={handleShutdown}
+        >
+          <Icon name="power" /> Shut down Mission Control
+        </button>
+        <p class="shutdown-hint">
+          This terminates every running process. You can also stop from the terminal with{" "}
+          <code>mission-control stop</code>.
+        </p>
+      </div>
+    </section>
   );
 }
 
