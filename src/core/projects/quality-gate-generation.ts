@@ -159,6 +159,15 @@ export async function generateProjectQualityGate(
   project: ProjectRecord,
   options?: GenerateQualityGateOptions
 ): Promise<QualityGateFile> {
+  // Persist `generating` up front, before intel gathering or any agent turn, so a
+  // project-scoped check plan read during generation never sees `pending` (the
+  // generic-baseline interim). The contract: once generation has started for a
+  // project its gate state surfaces, never a one-size-fits-all fallback. This
+  // mirrors generateProjectQuickstarts and closes the onboarding race where the
+  // fire-and-forget kick-off returned before the `generating` write landed. The
+  // intel-backed `generating` (or `failed`) write below overwrites this promptly.
+  await writeQualityGate(root, project.id, { ...pendingQualityGate(), status: "generating" });
+
   let intel: ProjectIntel;
   try {
     intel = await gatherProjectIntel(project.repoPath);
