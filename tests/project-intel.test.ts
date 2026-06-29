@@ -174,6 +174,61 @@ describe("gatherProjectIntel", () => {
     expect(intel.ci.find((c) => c.command === "pytest")?.source).toContain("CI");
   });
 
+  it("collects commands from multi-line run: | block-scalar steps", async () => {
+    // The dominant real-world CI shape indents the shell under `run: |`. Those
+    // indented lines never contain `run:`, so the block body must be parsed as a
+    // sequence of candidate commands rather than skipped as non-`run:` lines.
+    await mkdir(path.join(root, ".github", "workflows"), { recursive: true });
+    await writeFile(
+      path.join(root, ".github", "workflows", "ci.yml"),
+      [
+        "jobs:",
+        "  build:",
+        "    steps:",
+        "      - run: |",
+        "          npm ci",
+        "          npm test"
+      ].join("\n"),
+      "utf8"
+    );
+
+    const intel = await gatherProjectIntel(root);
+    const cmds = intel.ci.map((c) => c.command);
+    expect(cmds).toContain("npm ci");
+    expect(cmds).toContain("npm test");
+  });
+
+  it("terminates a run: | block at the first dedent and keeps later steps", async () => {
+    // A block must end where indentation returns to the run: key column, so a
+    // following step is collected on its own (not swallowed as block body) and a
+    // blank line inside the block does not end it prematurely. The folded `>`
+    // indicator opens a block too.
+    await mkdir(path.join(root, ".github", "workflows"), { recursive: true });
+    await writeFile(
+      path.join(root, ".github", "workflows", "ci.yml"),
+      [
+        "jobs:",
+        "  build:",
+        "    steps:",
+        "      - run: |",
+        "          npm ci",
+        "",
+        "      - run: ruff check .",
+        "      - run: >",
+        "          npm run build"
+      ].join("\n"),
+      "utf8"
+    );
+
+    const intel = await gatherProjectIntel(root);
+    const cmds = intel.ci.map((c) => c.command);
+    // Block body (blank line tolerated) and the folded `>` body are harvested...
+    expect(cmds).toContain("npm ci");
+    expect(cmds).toContain("npm run build");
+    // ...and the inline step after the block is collected separately.
+    expect(cmds).toContain("ruff check .");
+  });
+
   it("merges evidence from a mixed repo without duplication or crashing", async () => {
     await writeFile(
       path.join(root, "package.json"),

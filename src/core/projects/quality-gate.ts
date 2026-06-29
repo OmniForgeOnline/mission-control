@@ -161,6 +161,29 @@ export function findUnsupportedShellSyntax(command: string): string | null {
   return null;
 }
 
+/**
+ * Dependency/setup commands install or fetch packages rather than verify behaviour.
+ * The gate exists to verify, not mutate, so such a command must never become a
+ * persisted check: it would mutate the working tree, hit the network, and fail
+ * spuriously on registry issues every turn. Matches the common install/fetch forms
+ * across ecosystems. `mvn install` / `gradle install` are deliberately excluded:
+ * in those tools `install` runs the test suite and packages artifacts (a real
+ * verify/build step), not a dependency install.
+ */
+export function isDependencySetupCommand(command: string): boolean {
+  const c = command.trim();
+  if (/^(?:npm|yarn|pnpm|bun)\s+(?:install|ci|i|add)\b/.test(c)) return true;
+  if (/^(?:pip3?|poetry)\s+(?:install|add)\b/.test(c)) return true;
+  if (/^uv\s+(?:pip\s+install|sync|add)\b/.test(c)) return true;
+  if (/^(?:bundle|gem|composer)\s+install\b/.test(c)) return true;
+  if (/^cargo\s+(?:fetch|add|update)\b/.test(c)) return true;
+  if (/^dotnet\s+(?:restore|add\s+package|tool\s+install)\b/.test(c)) return true;
+  if (/^go\s+(?:mod\s+download|get)\b/.test(c)) return true;
+  if (/^flutter\s+pub\s+get\b/.test(c)) return true;
+  if (/^make\s+(?:install|deps)\b/.test(c)) return true;
+  return false;
+}
+
 function extractJsonText(raw: string): string | null {
   const text = raw.trim();
   if (!text) return null;
@@ -315,14 +338,18 @@ export function synthesizeGateFromIntel(intel: ProjectIntel): QualityGateFile {
 
   /**
    * Add a vetted command as a check. A command is dropped (not emitted) when it is
-   * a duplicate of one already added or when it relies on shell syntax the direct
-   * executor cannot run. This is the same vetting enforced on agent output, so a
-   * CI/docs chain like `a && b` is rejected here rather than persisted to mis-run.
-   * Sources are walked highest confidence first: manifests/Makefile, then CI, then docs.
+   * a duplicate of one already added, when it relies on shell syntax the direct
+   * executor cannot run, or when it is a dependency-setup command that would
+   * mutate state instead of verifying it. The shell-syntax vetting mirrors what is
+   * enforced on agent output, so a CI/docs chain like `a && b` is rejected here
+   * rather than persisted to mis-run; the setup vetting keeps a CI step like
+   * `npm ci` from becoming a blocking, network-dependent check. Sources are walked
+   * highest confidence first: manifests/Makefile, then CI, then docs.
    */
   const addCheck = (command: string, category: GateCategory, source: string): void => {
     if (seen.has(command)) return;
     if (findUnsupportedShellSyntax(command) !== null) return;
+    if (isDependencySetupCommand(command)) return;
     seen.add(command);
     const base = CATEGORY_LABELS[category] ?? "check";
     const count = usedNames.get(base) ?? 0;

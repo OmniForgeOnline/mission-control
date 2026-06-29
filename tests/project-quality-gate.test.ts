@@ -7,6 +7,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { onboardProject, type ProjectRecord } from "../src/core/projects/registry.ts";
 import { gatherProjectIntel, type ProjectIntel } from "../src/core/projects/intel.ts";
 import {
+  isDependencySetupCommand,
   parseAndValidateQualityGate,
   readProjectQualityGate,
   synthesizeGateFromIntel,
@@ -133,6 +134,37 @@ describe("synthesizeGateFromIntel docs/CI evidence", () => {
     expect(file.checks).toEqual([]);
   });
 
+  it("drops dependency-setup CI commands instead of persisting them as required checks", () => {
+    // `npm ci` infers to category "other" (no tool token matches), so without this
+    // guard it would resolve required=true and become a network-dependent check
+    // that runs every turn and fails spuriously on registry issues. Setup commands
+    // verify nothing, so only the real test step survives.
+    const intel: ProjectIntel = {
+      ...emptyIntel,
+      ci: [
+        { command: "npm ci", category: "other", source: "CI ci.yml run step" },
+        { command: "npm test", category: "test", source: "CI ci.yml run step" }
+      ]
+    };
+    const file = synthesizeGateFromIntel(intel);
+    expect(file.status).toBe("ready");
+    const cmds = file.checks.map((c) => c.command);
+    expect(cmds).not.toContain("npm ci");
+    expect(cmds).toContain("npm test");
+  });
+
+  it("stays incomplete when the only CI evidence is a dependency-setup command", () => {
+    // With only an install step and nothing to verify, the gate must not fabricate
+    // a required check; it reports the gap instead (verify, don't mutate).
+    const intel: ProjectIntel = {
+      ...emptyIntel,
+      ci: [{ command: "npm ci", category: "other", source: "CI ci.yml run step" }]
+    };
+    const file = synthesizeGateFromIntel(intel);
+    expect(file.status).toBe("incomplete");
+    expect(file.checks).toEqual([]);
+  });
+
   it("dedupes a command shared by manifests and CI, keeping the higher-confidence source", () => {
     // Manifests/Makefile are higher confidence than CI; both are processed, so the
     // first occurrence (manifest) wins and the CI duplicate is dropped.
@@ -148,6 +180,56 @@ describe("synthesizeGateFromIntel docs/CI evidence", () => {
     const matches = file.checks.filter((c) => c.command === "npm run -s test");
     expect(matches.length).toBe(1);
     expect(matches[0]?.evidence).toContain("package.json script `test`");
+  });
+});
+
+describe("isDependencySetupCommand", () => {
+  // Setup/install commands acquire dependencies rather than verify behaviour, so
+  // the gate (verify, don't mutate) must never persist them as a check. The
+  // predicate classifies the common install/fetch forms; mvn/gradle `install` are
+  // excluded because those run the test suite (a real verify command).
+  it.each<[command: string, expected: boolean]>([
+    ["npm ci", true],
+    ["npm install", true],
+    ["npm install --no-audit --no-fund", true],
+    ["npm i", true],
+    ["npm add left-pad", true],
+    ["yarn install", true],
+    ["pnpm install", true],
+    ["bun install", true],
+    ["bun add foo", true],
+    ["pip install -r requirements.txt", true],
+    ["uv sync", true],
+    ["uv pip install pkg", true],
+    ["poetry install", true],
+    ["bundle install", true],
+    ["gem install rspec", true],
+    ["composer install", true],
+    ["cargo fetch", true],
+    ["cargo add serde", true],
+    ["dotnet restore", true],
+    ["go mod download", true],
+    ["go get example.com/pkg", true],
+    ["flutter pub get", true],
+    ["make install", true],
+    ["make deps", true],
+    // verify commands and bare test/build/lint invocations are NOT setup
+    ["npm test", false],
+    ["npm run build", false],
+    ["npm run -s lint", false],
+    ["npm run install", false],
+    ["uv run pytest", false],
+    ["cargo build", false],
+    ["go test ./...", false],
+    ["make test", false],
+    ["dotnet test", false],
+    ["ruff check .", false],
+    ["pytest", false],
+    // mvn/gradle install run the test suite -> intentionally NOT classified as setup
+    ["mvn install", false],
+    ["gradle install", false]
+  ])("classifies %s as %s", (command, expected) => {
+    expect(isDependencySetupCommand(command)).toBe(expected);
   });
 });
 

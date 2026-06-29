@@ -130,21 +130,48 @@ export async function collectCiCommands(repoPath: string): Promise<DetectedComma
 
   const commands: DetectedCommand[] = [];
   const seen = new Set<string>();
+
+  /** Vets one raw command (an inline value or a block-scalar body line) into `commands`. */
+  const consider = (rel: string, raw: string): void => {
+    const cleaned = cleanDocCommand(raw);
+    if (!cleaned || !DOC_KEYWORDS.test(cleaned)) return;
+    const category = inferCategoryFromToken(cleaned);
+    const key = `${rel}:${cleaned}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    commands.push({ command: cleaned, category, source: `CI ${rel} run step` });
+  };
+
   for (const rel of files.sort()) {
     const text = await readTextFile(path.join(workflowsDir, rel));
     if (text === null) continue;
-    for (const line of text.split("\n")) {
-      // `run:` steps in GitHub Actions hold the shell commands. Match both
-      // bare `run: cmd` and list-item `- run: cmd` forms.
-      const runMatch = line.match(/^\s*-\s*run:\s*(.*)$|^\s*run:\s*(.*)$/);
+    const lines = text.split("\n");
+    for (let i = 0; i < lines.length; i++) {
+      // `run:` steps in GitHub Actions hold the shell commands. Match both bare
+      // `run: cmd` and list-item `- run: cmd` forms, capturing the leading
+      // whitespace (group 1) so a block-scalar body can be bound to its column.
+      const runMatch = lines[i]!.match(/^(\s*-\s*|\s*)run:\s*(.*)$/);
       if (!runMatch) continue;
-      const cleaned = cleanDocCommand((runMatch[1] ?? runMatch[2]) ?? "");
-      if (!cleaned || !DOC_KEYWORDS.test(cleaned)) continue;
-      const category = inferCategoryFromToken(cleaned);
-      const key = `${rel}:${cleaned}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      commands.push({ command: cleaned, category, source: `CI ${rel} run step` });
+      const rest = runMatch[2] ?? "";
+      if (!/^[>|]/.test(rest)) {
+        // Inline: the command follows `run:` on the same line.
+        consider(rel, rest);
+        continue;
+      }
+      // Block scalar: `|` (literal) or `>` (folded), optionally with chomping or
+      // indent hints. The shell lives on the following lines, indented past the
+      // `run:` key column. Blank lines belong to the block but carry no command;
+      // the first line that dedents to (or past) the key column ends it.
+      const keyColumn = (runMatch[1] ?? "").length;
+      while (i + 1 < lines.length) {
+        const body = lines[i + 1]!;
+        if (body.trim() !== "") {
+          const bodyIndent = body.length - body.trimStart().length;
+          if (bodyIndent <= keyColumn) break;
+          consider(rel, body);
+        }
+        i++;
+      }
     }
   }
   return commands.slice(0, 24);
