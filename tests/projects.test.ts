@@ -257,6 +257,24 @@ describe("project API", () => {
     expect(read.status).toBe(200);
     expect(read.body).toHaveProperty("domains");
   });
+
+  it("does not kick off background codex generation when onboarding in test mode", async () => {
+    const repoDir = path.join(tmp, "my-app");
+    const { execSync } = await import("node:child_process");
+    execSync("git init my-app", { cwd: tmp });
+    const created = await request(app).post("/api/projects").send({ repoPath: repoDir, name: "My App" });
+    const id = created.body.id as string;
+
+    // Onboarding must stay hermetic in test mode: no fire-and-forget generation
+    // that would spawn a real codex subprocess. The gate stays at its pending
+    // placeholder for the whole window instead of flipping to "generating".
+    for (let i = 0; i < 8; i++) {
+      const gate = await request(app).get(`/api/projects/${id}/quality-gate`);
+      expect(gate.status).toBe(200);
+      expect(gate.body.status).toBe("pending");
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+  });
 });
 
 describe("projects quality-gate API", () => {

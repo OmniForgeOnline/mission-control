@@ -93,12 +93,16 @@ export function createProjectsRouter(options: ServerOptions): Router {
         input.name = body.name.trim();
       }
       const project = await onboardProject(options.root, input);
-      // Tailor the quick starts to the repo in the background (read-only plan
-      // turn); the response does not wait on it. The UI polls /quickstarts.
-      startProjectQuickstarts(options.root, project, turnOptions(options));
-      // Generate a project-specific quality-gate config in the background by
-      // gathering repo intel; the UI polls /quality-gate.
-      startProjectQualityGate(options.root, project, turnOptions(options));
+      // Tailor quick starts and generate a quality-gate config in the background
+      // (read-only plan turns); the response does not wait on either. Skip both
+      // in test mode so the suite never spawns real codex subprocesses that
+      // outlive their temp dirs. Tests that need a generated config call the
+      // /quickstarts/regenerate or /quality-gate/regenerate routes with a runner.
+      const turns = turnOptions(options);
+      if (!turns.wait) {
+        startProjectQuickstarts(options.root, project, turns);
+        startProjectQualityGate(options.root, project, turns);
+      }
       res.json(project);
     })
   );
