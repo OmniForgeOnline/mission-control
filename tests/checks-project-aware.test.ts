@@ -107,7 +107,7 @@ describe("planProjectChecks (project-aware planner)", () => {
     expect(plan.checks).toEqual([{ name: "custom", command: "./my-gate.sh", available: true }]);
   });
 
-  it("surfaces an incomplete gate as a no-blocking-checks plan, never generic detection", async () => {
+  it("surfaces an incomplete gate's needs-resolution state, never generic detection", async () => {
     const repo = path.join(root, "repo");
     execSync(`git init -q ${repo}`);
     execSync("git config user.email t@t.com", { cwd: repo });
@@ -122,9 +122,14 @@ describe("planProjectChecks (project-aware planner)", () => {
     const plan = await planProjectChecks(root, project.id, workspace);
     expect(plan.source).toBe("quality-gate");
     expect(plan.checks).toEqual([]);
+    // The gap is carried through the plan so it reaches the author prompt and the
+    // checks-outcome message rather than collapsing to an ordinary no-checks run.
+    expect(plan.resolutionNote).toBeTruthy();
+    expect(plan.resolutionNote).toContain("incomplete");
+    expect(plan.resolutionNote).toContain("discoverable");
   });
 
-  it("surfaces a failed gate as a no-blocking-checks plan, never generic detection", async () => {
+  it("surfaces a failed gate's error state, never generic detection", async () => {
     const repo = path.join(root, "repo");
     execSync(`git init -q ${repo}`);
     execSync("git config user.email t@t.com", { cwd: repo });
@@ -136,6 +141,9 @@ describe("planProjectChecks (project-aware planner)", () => {
     const plan = await planProjectChecks(root, project.id, workspace);
     expect(plan.source).toBe("quality-gate");
     expect(plan.checks).toEqual([]);
+    expect(plan.resolutionNote).toBeTruthy();
+    expect(plan.resolutionNote).toContain("failed");
+    expect(plan.resolutionNote).toContain("intel gathering failed");
   });
 
   it("still uses baseline detection while the gate is pending (not yet generated)", async () => {

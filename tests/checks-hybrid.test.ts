@@ -93,6 +93,24 @@ describe("checks outcome descriptions", () => {
     expect(message).toContain("typecheck");
     expect(message).toContain("tooling unavailable");
   });
+
+  it("surfaces a quality-gate resolution note instead of a generic no-checks pass", () => {
+    const message = describeChecksOutcome({
+      outcome: "noChecks",
+      pass: true,
+      skipped: true,
+      source: "quality-gate",
+      results: [],
+      maxRounds: DEFAULT_CHECK_REMEDIATION_ROUNDS,
+      resolutionNote:
+        "The project's quality gate is incomplete and needs operator resolution: declare how to lint/test/build."
+    });
+    // The operator-action gap must reach the message, not the generic "declared no
+    // required checks" line that reads as an ordinary no-checks run.
+    expect(message).toContain("needs operator resolution");
+    expect(message).toContain("Nothing was validated");
+    expect(message).not.toContain("declared no required checks");
+  });
 });
 
 describe("checks project-aware planner", () => {
@@ -276,6 +294,21 @@ describe("checks plan prompt rendering", () => {
     });
     expect(text).toContain("No");
     expect(text).toContain("will not run an automated gate");
+  });
+
+  it("surfaces a quality-gate resolution note so an incomplete gate is not mistaken for no tooling", () => {
+    const text = describeCheckPlan({
+      source: "quality-gate",
+      maxRounds: DEFAULT_CHECK_REMEDIATION_ROUNDS,
+      checks: [],
+      resolutionNote:
+        "The project's quality gate is incomplete and needs operator resolution: declare how to lint/test/build."
+    });
+    expect(text).toContain("needs operator resolution");
+    expect(text).toContain("no automated gate");
+    // The generic "no package.json/Makefile detected" line must not leak in here,
+    // or the operator-action state is indistinguishable from an ordinary empty repo.
+    expect(text).not.toContain("package.json");
   });
 });
 

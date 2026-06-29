@@ -7,12 +7,37 @@ import {
   type CheckSummary,
   type PlannedCheck
 } from "../review/checks.ts";
-import { isRepoRelativePath, readProjectQualityGate, type QualityGateCheck } from "./quality-gate.ts";
+import {
+  isRepoRelativePath,
+  readProjectQualityGate,
+  type QualityGateCheck,
+  type QualityGateFile
+} from "./quality-gate.ts";
 
 /** Map a generated quality-gate category onto a canonical check kind, if any. */
 function gateCategoryToKind(category: QualityGateCheck["category"]): CheckKind | undefined {
   if (category === "lint" || category === "test" || category === "typecheck") return category;
   return undefined;
+}
+
+/**
+ * Build the operator-facing note for a gate that cannot drive the gate as-is.
+ * Carries the `needsResolution` gaps (`incomplete`) or the `error` (`failed`)
+ * through the check plan so they reach the author prompt and checks-outcome
+ * message instead of collapsing to an ordinary no-checks run.
+ */
+function describeGateResolution(gate: QualityGateFile): string {
+  if (gate.status === "incomplete") {
+    const gaps = (gate.needsResolution ?? []).map((gap) => gap.trim()).filter((gap) => gap.length > 0);
+    const detail =
+      gaps.length > 0
+        ? gaps.join(" ")
+        : "the operator must document how to lint, test, and build this repo.";
+    return `The project's quality gate is incomplete and needs operator resolution: ${detail}`;
+  }
+  // status === "failed"
+  const reason = (gate.error ?? "").trim() || "generation could not gather project intel";
+  return `The project's quality gate generation failed (${reason}); the operator must resolve this.`;
 }
 
 function gateCheckToPlanned(check: QualityGateCheck): PlannedCheck {
@@ -63,8 +88,15 @@ export async function planProjectChecks(
   if (gate.status !== "ready") {
     // `incomplete` (insufficient evidence) or `failed` (could not gather intel):
     // the operator must resolve. Surface a quality-gate plan with no blocking
-    // checks rather than substituting generic package.json/Makefile detection.
-    return { checks: [], maxRounds: DEFAULT_CHECK_REMEDIATION_ROUNDS, source: "quality-gate" };
+    // checks, but carry the resolution state as a note so the author prompt and
+    // the checks-outcome message explain what the operator must do rather than
+    // reading as an ordinary no-checks pass.
+    return {
+      checks: [],
+      maxRounds: DEFAULT_CHECK_REMEDIATION_ROUNDS,
+      source: "quality-gate",
+      resolutionNote: describeGateResolution(gate)
+    };
   }
 
   const blocking = gate.checks.filter((check) => check.required !== false);

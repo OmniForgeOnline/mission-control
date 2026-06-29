@@ -48,6 +48,14 @@ export interface CheckPlan {
   checks: PlannedCheck[];
   maxRounds: number;
   source: CheckPlanSource;
+  /**
+   * Present when the plan deliberately runs no blocking checks because the
+   * project's generated gate is not actionable (`incomplete`/`failed`): a
+   * human-readable note naming what the operator must resolve. Rendered in the
+   * author prompt and the checks-outcome message so the gap is never mistaken for
+   * an ordinary no-checks run. Absent for workspace-local detection.
+   */
+  resolutionNote?: string;
 }
 
 export type CheckResultStatus = "passed" | "failed" | "skipped";
@@ -81,6 +89,8 @@ export interface CheckSummary {
   results: CheckRunResult[];
   /** Cap on how many remediation rounds the processor should attempt. */
   maxRounds: number;
+  /** Mirrors {@link CheckPlan.resolutionNote} so the outcome message can surface it. */
+  resolutionNote?: string;
 }
 
 const MAX_OUTPUT_BYTES = 32 * 1024;
@@ -362,7 +372,8 @@ export async function runCheckPlan(
     skipped: outcome === "noChecks",
     source: plan.source,
     results,
-    maxRounds: plan.maxRounds
+    maxRounds: plan.maxRounds,
+    ...(plan.resolutionNote ? { resolutionNote: plan.resolutionNote } : {})
   };
 }
 
@@ -405,6 +416,11 @@ function describeNoChecksSource(source: CheckPlanSource): string {
 
 export function describeChecksOutcome(summary: CheckSummary): string {
   if (summary.outcome === "noChecks") {
+    if (summary.resolutionNote) {
+      // An incomplete/failed gate ran nothing because the operator must resolve it
+      // first; surface that reason rather than the generic detection line.
+      return `${summary.resolutionNote} Nothing was validated.`;
+    }
     return `No mechanical checks detected for this project (${describeNoChecksSource(summary.source)}). Nothing was validated.`;
   }
 
@@ -437,6 +453,14 @@ export function describeCheckPlan(plan: CheckPlan): string {
   const unavailable = plan.checks.filter((check) => !check.available);
 
   if (available.length === 0) {
+    if (plan.resolutionNote) {
+      // An incomplete/failed gate: tell the author the operator action that is
+      // blocking the automated gate, so the gap is visible in the prompt rather
+      // than reading as an ordinary empty repo.
+      return `## Detected mechanical checks
+
+${plan.resolutionNote} The harness runs no automated gate for this project until this is resolved; run whatever validation makes sense by hand before you finish.`;
+    }
     const note = unavailable.length
       ? `None of the probed checks are available: ${unavailable
           .map((check) => `${check.name} (${check.skipReason ?? "unavailable"})`)
