@@ -11,6 +11,7 @@ import {
   parseIntakeReply,
   repairJsonStringLiterals,
   resetIntakeSession,
+  retryIntakeQueueItem,
   runIntakeTurn
 } from "../src/core/intake/intake.ts";
 import { buildIntakePrompt } from "../src/core/intake/prompts.ts";
@@ -201,6 +202,38 @@ describe("intake", () => {
     expect(session.messages).toEqual([]);
   });
 
+  it("runs the intake classifier in non-planning classify mode", async () => {
+    const modes: Array<AgentTurnRequest["mode"]> = [];
+    const runner: AgentRunner = {
+      agent: "claude",
+      abort() {},
+      async runTurn(request) {
+        modes.push(request.mode);
+        return {
+          reply: intakeJson("Filed as a code feature.", {
+            ready: true,
+            title: "Add login button",
+            description: "Add a login button to the auth screen.",
+            workflowId: "code-feature",
+            confidence: "high",
+            rationale: "Greenfield feature request.",
+            suggestNewWorkflow: null
+          }),
+          sessionId: "classify-session",
+          exitCode: 0,
+          command: "classify",
+          rawLog: ""
+        };
+      }
+    };
+
+    await addIntakeMessage(root, { author: "operator", body: "Add a login button." });
+    await runIntakeTurn(root, { runner });
+
+    expect(modes).toContain("classify");
+    expect(modes).not.toContain("plan");
+  });
+
   it("retries when the agent returns invalid output then succeeds", async () => {
     const runner = new DeterministicAgentRunner("grok");
     runner.setReplies([
@@ -221,6 +254,75 @@ describe("intake", () => {
 
     expect(result.task?.title).toBe("Fix login");
     expect((await getIntakeSession(root)).messages).toEqual([]);
+  });
+
+  it("retries a failed intake item in place and reclassifies it", async () => {
+    const repoDir = path.join(rootBase, "repos", "retry-project");
+    await mkdir(repoDir, { recursive: true });
+    const { execSync } = await import("node:child_process");
+    execSync("git init", { cwd: repoDir });
+    const project = await onboardProject(root, { repoPath: repoDir, name: "Retry Project" });
+    const runner = new DeferredAgentRunner();
+    const app = createServer({ root, runner });
+
+    await request(app).post(`/api/projects/${project.id}/intake/messages`).send({ body: "Fix the bug." }).expect(202);
+
+    // Drive classification to failure: three invalid replies exhaust the retries.
+    await waitFor(async () => runner.requests.length, (value) => value === 1);
+    runner.resolveNext("no json here");
+    await waitFor(async () => runner.requests.length, (value) => value === 2);
+    runner.resolveNext("still no json");
+    await waitFor(async () => runner.requests.length, (value) => value === 3);
+    runner.resolveNext("nothing valid");
+
+    const failed = await waitFor(
+      () => getIntakeSession(root, { kind: "project", projectId: project.id }),
+      (value) => value.queue?.[0]?.status === "failed"
+    );
+    expect(failed.queue?.[0]?.error).toContain("invalid output");
+    const failedItemId = failed.queue?.[0]?.id;
+    expect(failedItemId).toBeTruthy();
+
+    // Retry the failed item in place (no duplicate message).
+    await request(app)
+      .post(`/api/projects/${project.id}/intake/queue/${failedItemId}/retry`)
+      .send({})
+      .expect(200);
+
+    // The retry re-drains the same item; supply a valid reply.
+    await waitFor(async () => runner.requests.length, (value) => value === 4);
+    runner.resolveNext(
+      intakeJson("Filed on retry.", {
+        ready: true,
+        title: "Fix the bug",
+        description: "Patch the bug surfaced on retry.",
+        workflowId: "bugfix",
+        confidence: "high",
+        rationale: "Clear defect.",
+        suggestNewWorkflow: null
+      })
+    );
+
+    const completed = await waitFor(
+      () => getIntakeSession(root, { kind: "project", projectId: project.id }),
+      (value) => value.queue?.[0]?.status === "completed"
+    );
+    expect(completed.queue?.[0]?.taskId).toBeTruthy();
+  });
+
+  it("rejects retrying an intake item that is not failed", async () => {
+    const repoDir = path.join(rootBase, "repos", "retry-guard-project");
+    await mkdir(repoDir, { recursive: true });
+    const { execSync } = await import("node:child_process");
+    execSync("git init", { cwd: repoDir });
+    const project = await onboardProject(root, { repoPath: repoDir, name: "Retry Guard Project" });
+    const scope = { kind: "project" as const, projectId: project.id };
+    await addIntakeMessage(root, { author: "operator", body: "Hello" }, scope);
+    const session = await getIntakeSession(root, scope);
+    const itemId = session.queue?.[0]?.id;
+    expect(itemId).toBeTruthy();
+
+    await expect(retryIntakeQueueItem(root, scope, itemId!)).rejects.toThrow(/failed/i);
   });
 
   it("creates a ticket from a ready intake draft", async () => {

@@ -4,7 +4,7 @@ import type { EffortLevel } from "../core/types.ts";
 import type { AgentToolConfig, ModelPoolConfig } from "../core/agents/config/types.ts";
 
 export interface LaunchRequest {
-  mode: "execute" | "plan";
+  mode: "execute" | "plan" | "classify";
   prompt: string;
   cwd: string;
   effort?: EffortLevel;
@@ -38,7 +38,7 @@ function uniqueDirs(request: LaunchRequest): string[] {
 }
 
 function grokArgs(tool: AgentToolConfig, pool: ModelPoolConfig, request: LaunchRequest): LaunchSpec {
-  const isPlan = request.mode === "plan";
+  const isReadOnly = request.mode !== "execute";
   const cli = tool.cli;
   const args = [
     "--single",
@@ -46,13 +46,13 @@ function grokArgs(tool: AgentToolConfig, pool: ModelPoolConfig, request: LaunchR
     "--output-format",
     cli.outputFormat ?? "streaming-json",
     "--permission-mode",
-    (isPlan ? cli.permissionModes?.plan : cli.permissionModes?.execute) ??
-      (isPlan ? "plan" : "bypassPermissions"),
+    (isReadOnly ? cli.permissionModes?.plan : cli.permissionModes?.execute) ??
+      (isReadOnly ? "plan" : "bypassPermissions"),
     "--cwd",
     request.cwd,
     ...pool.modelArgs
   ];
-  if (!isPlan && cli.alwaysApproveInExecute) args.push("--always-approve");
+  if (!isReadOnly && cli.alwaysApproveInExecute) args.push("--always-approve");
   if (request.sessionId) args.push("--resume", request.sessionId);
   return { args, env: { ...pool.modelEnv }, promptOnStdin: false };
 }
@@ -63,7 +63,6 @@ function claudeArgs(
   request: LaunchRequest,
   runtimeCapabilities: RuntimeCapabilityProbe = {}
 ): LaunchSpec {
-  const isPlan = request.mode === "plan";
   const cli = tool.cli;
   const live = request.live === true;
   const args = [
@@ -74,8 +73,11 @@ function claudeArgs(
     live ? "stream-json" : "text",
     "--verbose",
     ...(live && runtimeCapabilities["partialMessages"] === true ? ["--include-partial-messages"] : []),
-    isPlan ? "--permission-mode" : "--dangerously-skip-permissions",
-    ...(isPlan ? ["plan"] : [])
+    // "classify" runs read-only without plan mode (which forces a planning
+    // document); default permission denies mutations in headless -p runs.
+    ...(request.mode === "execute"
+      ? ["--dangerously-skip-permissions"]
+      : ["--permission-mode", request.mode === "classify" ? "default" : "plan"])
   ];
   if (runtimeCapabilities["addDir"] !== false) {
     for (const dir of uniqueDirs(request)) args.push("--add-dir", dir);
@@ -87,9 +89,9 @@ function claudeArgs(
 }
 
 function codexArgs(tool: AgentToolConfig, pool: ModelPoolConfig, request: LaunchRequest): LaunchSpec {
-  const isPlan = request.mode === "plan";
+  const isReadOnly = request.mode !== "execute";
   const cli = tool.cli;
-  const sandbox = isPlan
+  const sandbox = isReadOnly
     ? cli.permissionModes?.plan ?? "read-only"
     : cli.permissionModes?.execute ?? "workspace-write";
   const effortConfig =
@@ -111,7 +113,7 @@ function codexArgs(tool: AgentToolConfig, pool: ModelPoolConfig, request: Launch
 }
 
 function opencodeArgs(tool: AgentToolConfig, pool: ModelPoolConfig, request: LaunchRequest): LaunchSpec {
-  const isPlan = request.mode === "plan";
+  const isReadOnly = request.mode !== "execute";
   const cli = tool.cli;
   const args = [
     "run",
@@ -121,10 +123,10 @@ function opencodeArgs(tool: AgentToolConfig, pool: ModelPoolConfig, request: Lau
     request.cwd,
     ...pool.modelArgs
   ];
-  if (!isPlan) {
+  if (!isReadOnly) {
     args.push("--dangerously-skip-permissions");
   }
-  if (request.effort && cli.effortFlag && !isPlan) args.push(cli.effortFlag, request.effort);
+  if (request.effort && cli.effortFlag && !isReadOnly) args.push(cli.effortFlag, request.effort);
   if (request.sessionId) args.push("--session", request.sessionId);
   return { args, env: { ...pool.modelEnv }, promptOnStdin: true };
 }
