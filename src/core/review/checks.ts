@@ -31,7 +31,13 @@ export interface PlannedCheck {
   fatal?: boolean;
 }
 
-export type CheckPlanSource = "checks.yml" | "package.json" | "makefile" | "hybrid" | "none";
+export type CheckPlanSource =
+  | "checks.yml"
+  | "quality-gate"
+  | "package.json"
+  | "makefile"
+  | "hybrid"
+  | "none";
 
 export interface CheckPlan {
   checks: PlannedCheck[];
@@ -301,15 +307,16 @@ function parseCommand(command: string): { cmd: string | null; args: string[] } {
 }
 
 /**
- * Run the planned checks for `workspacePath`. Unavailable checks are recorded as
- * explicit skips (never a silent pass). A workspace with no runnable checks
- * returns `outcome: "noChecks"` rather than pretending to pass.
+ * Execute a resolved check plan against `workspacePath`. Unavailable checks are
+ * recorded as explicit skips (never a silent pass). A plan with no runnable
+ * checks returns `outcome: "noChecks"` rather than pretending to pass. Extracted
+ * so both the workspace-local and project-scoped runners share one execution path.
  */
-export async function runChecks(
+export async function runCheckPlan(
+  plan: CheckPlan,
   workspacePath: string,
   onChunk?: (chunk: string) => void
 ): Promise<CheckSummary> {
-  const plan = await planChecks(workspacePath);
   const results: CheckRunResult[] = [];
 
   for (const spec of plan.checks) {
@@ -353,6 +360,18 @@ export async function runChecks(
   };
 }
 
+/**
+ * Run the planned checks for `workspacePath`. Unavailable checks are recorded as
+ * explicit skips (never a silent pass). A workspace with no runnable checks
+ * returns `outcome: "noChecks"` rather than pretending to pass.
+ */
+export async function runChecks(
+  workspacePath: string,
+  onChunk?: (chunk: string) => void
+): Promise<CheckSummary> {
+  return runCheckPlan(await planChecks(workspacePath), workspacePath, onChunk);
+}
+
 export function summarizeFailures(summary: CheckSummary): string {
   const failed = summary.results.filter((result) => result.status === "failed");
   if (!failed.length) return "";
@@ -365,6 +384,8 @@ function describeNoChecksSource(source: CheckPlanSource): string {
   switch (source) {
     case "checks.yml":
       return "`.harness/checks.yml` declared no checks";
+    case "quality-gate":
+      return "the generated quality-gate config declared no required checks";
     case "package.json":
       return "`package.json` declared no lint/test/typecheck scripts";
     case "makefile":
