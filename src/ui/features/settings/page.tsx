@@ -5,6 +5,7 @@ import { render } from "preact";
 import { api } from "@ui/data/api.js";
 import { $ } from "@ui/shell/dom.js";
 import { icon } from "@ui/shell/icons.js";
+import { type VersionStatus } from "@ui/shell/update-pill.js";
 import { setTheme, ui, relativeTime } from "@ui/app/state.js";
 import { toast } from "@ui/overlays/toast.js";
 import { confirm } from "@ui/overlays/confirm.js";
@@ -229,10 +230,28 @@ function SettingsView() {
     (ui.data?.agents ?? []).map((agent) => ({ id: agent.id, enabled: true }));
   const [activeSection, setActiveSection] = useState<SettingsSection>("agents");
   const [theme, setThemeValue] = useState<HarnessSettings["theme"]>(settings.theme);
+  const [version, setVersion] = useState<VersionStatus | null>(null);
 
   useEffect(() => {
     setThemeValue(settings.theme);
   }, [settings.theme]);
+
+  // About is read-only environment detail; fetch the live version status only
+  // when that section is open (the header pill polls /api/version separately).
+  useEffect(() => {
+    if (activeSection !== "about") return;
+    let cancelled = false;
+    api<VersionStatus>("/api/version")
+      .then((s) => {
+        if (!cancelled && s) setVersion(s);
+      })
+      .catch(() => {
+        /* network/registry hiccup: keep the last known version, if any */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [activeSection]);
 
   async function applyPatch(patch: Partial<HarnessSettings>, silent = true): Promise<void> {
     const updated = await api<HarnessSettings>("/api/settings", {
@@ -435,6 +454,20 @@ function SettingsView() {
 
               {activeSection === "about" && (
                 <div class="settings-facts">
+                  <div>
+                    <div class="settings-fact-k">Version</div>
+                    <div class="settings-fact-v settings-fact-mono">
+                      {version?.installed ?? "—"}
+                      {version?.latest ? ` (latest: ${version.latest})` : ""}
+                    </div>
+                    <div class="settings-fact-desc">
+                      {version
+                        ? version.behind
+                          ? "An update is available."
+                          : "Up to date with the published release."
+                        : "Checking the published version…"}
+                    </div>
+                  </div>
                   <div class="settings-fact-wide">
                     <div class="settings-fact-k">Mission Control root</div>
                     <div class="settings-fact-v settings-fact-mono">{ui.data?.root ?? ""}</div>
