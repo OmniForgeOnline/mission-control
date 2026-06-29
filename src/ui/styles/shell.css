@@ -177,6 +177,36 @@
   display: inline-flex;
 }
 
+/* App-bar power button: always-visible entry point to the confirm-gated
+   shutdown. Ghost by default so it doesn't compete with the wordmark; turns
+   danger-red on hover to signal the destructive action before the modal. */
+.app-bar-power {
+  display: inline-grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  flex-shrink: 0;
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  color: var(--ink-muted);
+  cursor: pointer;
+  transition: border-color var(--d-fast) var(--ease-out),
+    color var(--d-fast) var(--ease-out), background var(--d-fast) var(--ease-out);
+}
+
+.app-bar-power:hover {
+  color: var(--danger);
+  border-color: color-mix(in srgb, var(--danger) 50%, var(--hairline));
+  background: color-mix(in srgb, var(--danger) 12%, transparent);
+}
+
+.app-bar-power:focus-visible {
+  outline: none;
+  box-shadow: var(--ring);
+}
+
 @keyframes pulse-dot {
   0%,
   100% {
@@ -801,5 +831,83 @@ body.rail-resizing {
   .app-bar .brand-sub,
   .app-bar .brand-sep {
     display: none;
+  }
+
+  .app-bar .update-pill span {
+    display: none;
+  }
+}
+
+/* ---------- npm update pill (sits right of the Mission Control wordmark) ---------- */
+
+.app-bar .update-pill {
+  position: relative;
+  isolation: isolate;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: var(--r-pill);
+  /* Stronger accent fill with a top-down sheen for a subtle shine. */
+  background: linear-gradient(
+    color-mix(in srgb, var(--accent) 48%, transparent),
+    color-mix(in srgb, var(--accent) 30%, transparent)
+  );
+  border: 1px solid color-mix(in srgb, var(--accent) 80%, transparent);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, white 16%, transparent);
+  color: var(--ink);
+  font-size: var(--t-sm);
+  font-weight: var(--w-medium);
+  cursor: pointer;
+  transition: background var(--d-fast) var(--ease-out), border-color var(--d-fast) var(--ease-out);
+}
+
+.app-bar .update-pill:hover {
+  background: linear-gradient(
+    color-mix(in srgb, var(--accent) 60%, transparent),
+    color-mix(in srgb, var(--accent) 40%, transparent)
+  );
+  border-color: color-mix(in srgb, var(--accent) 95%, transparent);
+}
+
+.app-bar .update-pill:focus-visible {
+  outline: none;
+  box-shadow: var(--ring);
+}
+
+.app-bar .update-pill svg {
+  color: var(--accent);
+}
+
+/* Soft pulsing halo behind the badge: slow and subtle so it draws the eye
+   without strobing. The badge itself stays still (text stays stable); only the
+   glow breathes. prefers-reduced-motion is handled globally in theme.css. */
+.app-bar .update-pill::after {
+  content: "";
+  position: absolute;
+  inset: -3px;
+  border-radius: var(--r-pill);
+  box-shadow: 0 0 12px 1px var(--accent-glow);
+  opacity: 0.55;
+  z-index: -1;
+  pointer-events: none;
+  animation: update-pill-pulse 2.4s ease-in-out infinite;
+}
+
+.app-bar .update-pill:hover::after {
+  opacity: 0.85;
+  animation-play-state: paused;
+}
+
+@keyframes update-pill-pulse {
+  0%,
+  100% {
+    opacity: 0.35;
+    transform: scale(1);
+  }
+
+  50% {
+    opacity: 0.95;
+    transform: scale(1.05);
   }
 }

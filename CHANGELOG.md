@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.3.0
+
+### Minor Changes
+
+- acdc7a9: Graceful shutdown via two independent entry points.
+
+  - CLI: `mission-control stop` asks the running server to shut down (`POST /api/shutdown`), reading its pid/port from a runtime state file. Reports clear outcomes for stopped, not-running, and unreachable states, and cleans up stale state from a crashed server.
+  - UI: a Shut down Mission Control control under System → Maintenance → Power, gated behind a confirmation modal that warns all running processes will be terminated and the UI will be unavailable until a terminal restart.
+  - Shared graceful path: every entry point (Ctrl+C, UI button, `mission-control stop`) terminates all in-flight agent processes, stops the daemon, closes the HTTP server, then exits.
+
+## 0.2.0
+
+### Minor Changes
+
+- b4e7ff3: Add an npm update pill in the header next to the Mission Control title. It compares the installed version against the npm registry latest and renders only when behind. Clicking Update offers two modes: update now (stops active work, installs, and restarts) or update when idle (installs and restarts on the next idle transition). A detached updater performs the global install and re-launches the server, with a safe degrade so a failed install never leaves the app dead.
+
+### Patch Changes
+
+- 1c95439: Surface Kiro ACP rate-limit details in blocked run diagnostics instead of showing only "Internal error".
+
 ## 0.1.3
 
 ### Patch Changes

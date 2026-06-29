@@ -164,35 +164,6 @@
   line-height: 1.4;
 }
 
-.settings-agent-availability {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin-top: 8px;
-}
-
-.settings-agent-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 3px 9px;
-  border-radius: var(--r-pill);
-  border: 1px solid var(--hairline);
-  font-size: var(--t-xs);
-  font-family: var(--font-mono);
-  color: var(--ink-muted);
-}
-
-.settings-agent-chip.is-available {
-  color: var(--success);
-  border-color: color-mix(in srgb, var(--success) 35%, var(--hairline));
-}
-
-.settings-agent-chip.is-missing {
-  color: var(--danger);
-  border-color: color-mix(in srgb, var(--danger) 35%, var(--hairline));
-}
-
 .settings-switch {
   position: relative;
   display: inline-flex;

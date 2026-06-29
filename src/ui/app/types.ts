@@ -247,6 +247,8 @@ export interface AgentSummary {
 
 export interface AppState {
   root: string;
+  /** Per-server token the UI echoes in x-shutdown-token to authorize shutdown. */
+  shutdownToken?: string;
   settings?: HarnessSettings;
   agents?: AgentSummary[];
   agentConfig?: AgentConfigBundle;

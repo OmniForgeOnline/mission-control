@@ -5,6 +5,8 @@ import { navigate } from "@ui/app/router.js";
 import { countTaskBuckets, type TaskFilter } from "@ui/features/tasks/filters.js";
 import { taskIsComplete, uiLegacyStatus } from "@ui/app/task-status.js";
 import type { HarnessTask } from "@ui/app/types.js";
+import { updatePillHtml, bindUpdatePill } from "@ui/shell/update-pill.js";
+import { confirmAndShutdown } from "@ui/features/system/shutdown.js";
 
 let eventsConnected = true;
 const PROJECT_COLLAPSE_KEY = "harness:rail:collapsed-projects";
@@ -74,6 +76,7 @@ export function renderAppBar(): void {
         <span class="brand-sub">Mission Control</span>
       </span>
     </button>
+    ${updatePillHtml()}
     <div class="app-bar-spacer"></div>
     <button class="palette-trigger" id="paletteTrigger" title="Open command palette">
       ${icon("search", 14)}
@@ -104,6 +107,9 @@ export function renderAppBar(): void {
       ${icon("refresh", 12)}
       Reconnecting…
     </span>
+    <button class="app-bar-power" id="powerButton" type="button" title="Shut down Mission Control" aria-label="Shut down Mission Control">
+      ${icon("power", 16)}
+    </button>
   `;
 
   $("#brandHome")?.addEventListener("click", () => navigate("home"));
@@ -119,6 +125,12 @@ export function renderAppBar(): void {
         navigate("tasks");
       }
     });
+  });
+
+  bindUpdatePill();
+
+  $("#powerButton")?.addEventListener("click", (event) => {
+    void confirmAndShutdown(event.currentTarget as HTMLButtonElement);
   });
 }
 

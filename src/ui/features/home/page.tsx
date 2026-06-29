@@ -1,4 +1,5 @@
 import { render } from "preact";
+import { useState } from "preact/hooks";
 
 import { ui, relativeTime } from "@ui/app/state.js";
 import { navigate } from "@ui/app/router.js";
@@ -69,7 +70,29 @@ function AwaitingMergeSection({ tasks }: { tasks: HarnessTask[] }) {
   );
 }
 
+const SETUP_DISMISSED_KEY = "harness:setup-dismissed";
+
+function readSetupDismissed(): boolean {
+  return localStorage.getItem(SETUP_DISMISSED_KEY) === "1";
+}
+
+function writeSetupDismissed(): void {
+  localStorage.setItem(SETUP_DISMISSED_KEY, "1");
+}
+
 function SetupChecklist({ hasProjects }: { hasProjects: boolean }) {
+  // Once dismissed, the checklist stays gone across reloads. This is a UI-local
+  // view preference, so it rides localStorage like the rail width and project
+  // collapse state rather than the server settings store.
+  const [dismissed, setDismissed] = useState(readSetupDismissed());
+
+  function handleDismiss(): void {
+    writeSetupDismissed();
+    setDismissed(true);
+  }
+
+  if (dismissed) return null;
+
   const items = [
     {
       iconName: "terminal",
@@ -112,7 +135,18 @@ function SetupChecklist({ hasProjects }: { hasProjects: boolean }) {
           <h2 id="homeSetupTitle">First run setup</h2>
           <p class="home-setup-subtitle">Recommended order before the first real ticket.</p>
         </div>
-        <span class="badge">{items.filter((item) => item.done).length}/{items.length}</span>
+        <div class="home-setup-head-actions">
+          <span class="badge">{items.filter((item) => item.done).length}/{items.length}</span>
+          <button
+            class="btn btn-ghost btn-icon home-setup-dismiss"
+            type="button"
+            aria-label="Dismiss first run setup"
+            title="Dismiss"
+            onClick={handleDismiss}
+          >
+            <Icon name="x" size={14} />
+          </button>
+        </div>
       </div>
       <div class="home-setup-grid">
         {items.map((item) => {
