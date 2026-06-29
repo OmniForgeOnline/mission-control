@@ -7,7 +7,7 @@ import {
   type CheckSummary,
   type PlannedCheck
 } from "../review/checks.ts";
-import { readProjectQualityGate, type QualityGateCheck } from "./quality-gate.ts";
+import { isRepoRelativePath, readProjectQualityGate, type QualityGateCheck } from "./quality-gate.ts";
 
 /** Map a generated quality-gate category onto a canonical check kind, if any. */
 function gateCategoryToKind(category: QualityGateCheck["category"]): CheckKind | undefined {
@@ -23,7 +23,10 @@ function gateCheckToPlanned(check: QualityGateCheck): PlannedCheck {
   };
   const kind = gateCategoryToKind(check.category);
   if (kind) planned.kind = kind;
-  if (check.workingDirectory) planned.cwd = check.workingDirectory;
+  // Stored configs are re-read with only a loose shape check, so the containment
+  // guard is enforced here too: an unsafe cwd never reaches the executor or the
+  // rendered author prompt.
+  if (check.workingDirectory && isRepoRelativePath(check.workingDirectory)) planned.cwd = check.workingDirectory;
   return planned;
 }
 

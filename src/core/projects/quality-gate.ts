@@ -97,6 +97,20 @@ function trimmed(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
 
+/**
+ * A safe `workingDirectory` is relative to the repo root and stays inside it.
+ * Rejects absolute paths and any traversal that normalizes outside the root, so
+ * agent-supplied input cannot relocate check execution (or the rendered `cd` in
+ * the author prompt) beyond the task workspace. Interior `..` that folds back
+ * inside the repo (e.g. `a/../b`) is allowed.
+ */
+export function isRepoRelativePath(input: string): boolean {
+  if (path.isAbsolute(input)) return false;
+  const normalized = path.normalize(input);
+  if (normalized === "..") return false;
+  return !normalized.startsWith(`..${path.sep}`);
+}
+
 function extractJsonText(raw: string): string | null {
   const text = raw.trim();
   if (!text) return null;
@@ -170,7 +184,7 @@ export function parseAndValidateQualityGate(raw: string): QualityGateValidation 
       evidence
     };
     const workingDirectory = trimmed(check["workingDirectory"]);
-    if (workingDirectory) built.workingDirectory = workingDirectory;
+    if (workingDirectory && isRepoRelativePath(workingDirectory)) built.workingDirectory = workingDirectory;
     checks.push(built);
   }
 

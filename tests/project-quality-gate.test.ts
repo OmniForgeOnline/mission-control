@@ -9,9 +9,11 @@ import { gatherProjectIntel } from "../src/core/projects/intel.ts";
 import {
   parseAndValidateQualityGate,
   readProjectQualityGate,
-  synthesizeGateFromIntel
+  synthesizeGateFromIntel,
+  writeQualityGate
 } from "../src/core/projects/quality-gate.ts";
 import { generateProjectQualityGate } from "../src/core/projects/quality-gate-generation.ts";
+import { planProjectChecks } from "../src/core/projects/project-checks.ts";
 import { DeterministicAgentRunner } from "./helpers/deterministic-runner.ts";
 
 function repliesRunner(reply: string): DeterministicAgentRunner {
@@ -119,6 +121,53 @@ describe("parseAndValidateQualityGate", () => {
   });
 });
 
+/** A ready config carrying a single lint check with an optional workingDirectory. */
+function readyCheckWith(workingDirectory?: string): string {
+  const check: Record<string, unknown> = {
+    name: "lint",
+    category: "lint",
+    command: "ruff check .",
+    required: true,
+    evidence: ["pyproject.toml [tool.ruff]"]
+  };
+  if (workingDirectory !== undefined) check["workingDirectory"] = workingDirectory;
+  return JSON.stringify({ status: "ready", checks: [check], rationale: "Ruff in pyproject.toml." });
+}
+
+describe("parseAndValidateQualityGate workingDirectory containment", () => {
+  it("keeps a safe relative working directory", () => {
+    const result = parseAndValidateQualityGate(readyCheckWith("packages/web"));
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.file.checks[0]!.workingDirectory).toBe("packages/web");
+  });
+
+  it("keeps an interior .. that folds back inside the repo", () => {
+    // a/../b normalizes to b, which stays inside the repo root.
+    const result = parseAndValidateQualityGate(readyCheckWith("a/../b"));
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.file.checks[0]!.workingDirectory).toBe("a/../b");
+  });
+
+  it("drops an absolute working directory so the check runs from the repo root", () => {
+    const result = parseAndValidateQualityGate(readyCheckWith("/etc"));
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.file.checks[0]!.workingDirectory).toBeUndefined();
+  });
+
+  it("drops a working directory that escapes the repo via ..", () => {
+    const result = parseAndValidateQualityGate(readyCheckWith("../sibling"));
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.file.checks[0]!.workingDirectory).toBeUndefined();
+  });
+
+  it("drops a deeper traversal that normalizes outside the repo", () => {
+    // a/../../escape normalizes to ../escape, which escapes the root.
+    const result = parseAndValidateQualityGate(readyCheckWith("a/../../escape"));
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.file.checks[0]!.workingDirectory).toBeUndefined();
+  });
+});
+
 describe("generateProjectQualityGate lifecycle", () => {
   let root: string;
   let repo: string;
@@ -176,5 +225,66 @@ describe("generateProjectQualityGate lifecycle", () => {
     expect(file.status).toBe("incomplete");
     expect(file.checks).toEqual([]);
     expect(file.needsResolution?.length).toBeGreaterThan(0);
+  });
+});
+
+describe("planProjectChecks workingDirectory containment", () => {
+  let root: string;
+  let repo: string;
+  let project: ProjectRecord;
+
+  beforeEach(async () => {
+    root = await mkdtemp(path.join(os.tmpdir(), "harness-qg-cwd-"));
+    repo = path.join(root, "repo");
+    execSync(`git init -q ${repo}`);
+    execSync("git config user.email t@t.com", { cwd: repo });
+    execSync("git config user.name t", { cwd: repo });
+    project = await onboardProject(root, { repoPath: repo, name: "Repo" });
+  });
+
+  afterEach(async () => {
+    await rm(root, { recursive: true, force: true }).catch(() => {});
+  });
+
+  it("does not set PlannedCheck.cwd for an unsafe working directory stored on disk", async () => {
+    // Stored configs are re-read with only a loose shape check, so the
+    // containment guard must hold at the planning boundary, not just at parse.
+    await writeQualityGate(root, project.id, {
+      status: "ready",
+      checks: [
+        {
+          name: "lint",
+          category: "lint",
+          command: "ruff check .",
+          required: true,
+          evidence: ["pyproject.toml"],
+          workingDirectory: "/etc"
+        }
+      ]
+    });
+    const plan = await planProjectChecks(root, project.id, repo);
+    expect(plan.source).toBe("quality-gate");
+    const check = plan.checks.find((c) => c.name === "lint");
+    expect(check).toBeTruthy();
+    expect(check!.cwd).toBeUndefined();
+  });
+
+  it("sets PlannedCheck.cwd for a safe relative working directory", async () => {
+    await writeQualityGate(root, project.id, {
+      status: "ready",
+      checks: [
+        {
+          name: "lint",
+          category: "lint",
+          command: "ruff check .",
+          required: true,
+          evidence: ["pyproject.toml"],
+          workingDirectory: "packages/web"
+        }
+      ]
+    });
+    const plan = await planProjectChecks(root, project.id, repo);
+    const check = plan.checks.find((c) => c.name === "lint");
+    expect(check!.cwd).toBe("packages/web");
   });
 });
