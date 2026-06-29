@@ -25,7 +25,6 @@ function validationToParsed(result: IntakeValidationResult): ParsedIntakeReply |
 export function parseIntakeReply(raw: string, workflowIds?: ReadonlySet<string>): ParsedIntakeReply {
   const ids = workflowIds ?? new Set<string>();
   const validated = parseAndValidateIntakeReply(raw, ids, {
-    allowLegacyFence: true,
     requireKnownWorkflow: false
   });
   const parsed = validationToParsed(validated);

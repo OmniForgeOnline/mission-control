@@ -148,6 +148,23 @@ function ProjectIntake({ project }: { project: ProjectSummary }) {
     }
   }
 
+  async function retryItem(itemId: string): Promise<void> {
+    // Allow the re-classified item to toast again on its next completion/failure.
+    notified.current.delete(itemId);
+    try {
+      const result = await api<{ session?: IntakeSession }>(
+        `/api/projects/${project.id}/intake/queue/${itemId}/retry`,
+        { method: "POST", body: "{}" }
+      );
+      if (result?.session) {
+        setSession(result.session);
+      }
+      document.dispatchEvent(new CustomEvent("harness:refresh"));
+    } catch (err) {
+      toast(`Retry failed: ${(err as Error).message}`);
+    }
+  }
+
   function handleSubmit(event: Event): void {
     event.preventDefault();
     void submit();
@@ -170,6 +187,7 @@ function ProjectIntake({ project }: { project: ProjectSummary }) {
   const active = (session?.queue ?? []).filter(
     (item) => item.status === "pending" || item.status === "running"
   );
+  const failed = (session?.queue ?? []).filter((item) => item.status === "failed");
 
   return (
     <section class="project-intake">
@@ -189,6 +207,29 @@ function ProjectIntake({ project }: { project: ProjectSummary }) {
               </div>
             </div>
           ))}
+        </div>
+      ) : null}
+      {failed.length ? (
+        <div class="project-intake-queue project-intake-failed">
+          {failed.map((item) => {
+            const body = session?.messages.find((message) => message.id === item.messageId)?.body ?? "";
+            return (
+              <div class="intake-request-card intake-queue-failed" key={item.id}>
+                <div class="intake-failed-head">
+                  <span class="intake-failed-label">Classification failed</span>
+                  <button
+                    class="btn btn-secondary intake-retry-button"
+                    type="button"
+                    onClick={() => void retryItem(item.id)}
+                  >
+                    Retry
+                  </button>
+                </div>
+                {body ? <p class="intake-failed-text">{body}</p> : null}
+                {item.error ? <p class="intake-failed-error muted">{item.error}</p> : null}
+              </div>
+            );
+          })}
         </div>
       ) : null}
       <form class="intake-composer" onSubmit={(event) => void handleSubmit(event)}>

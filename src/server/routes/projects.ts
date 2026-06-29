@@ -31,6 +31,7 @@ import {
   dismissIntakeDraft,
   getIntakeSession,
   resetIntakeSession,
+  retryIntakeQueueItem,
   startIntakeQueue
 } from "../../core/intake/intake.ts";
 import { asyncRoute, asStringArray, param, turnOptions, type ServerOptions } from "./helpers.ts";
@@ -170,6 +171,18 @@ export function createProjectsRouter(options: ServerOptions): Router {
       }, scope);
       startIntakeQueue(options.root, { ...turnOptions(options), scope });
       res.status(202).json({ message, session: await getIntakeSession(options.root, scope) });
+    })
+  );
+
+  router.post(
+    "/projects/:id/intake/queue/:itemId/retry",
+    asyncRoute(async (req, res) => {
+      const projectId = param(req.params["id"], "id");
+      await requireProject(options.root, projectId);
+      const scope = projectScope(projectId);
+      const itemId = param(req.params["itemId"], "itemId");
+      const session = await retryIntakeQueueItem(options.root, scope, itemId, turnOptions(options));
+      res.json({ session });
     })
   );
 

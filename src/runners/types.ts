@@ -10,8 +10,10 @@ export interface AgentActivity {
 }
 
 export interface AgentTurnRequest {
-  /** When "plan", the runner uses the agent's planning mode (read-only, no edits). */
-  mode?: "execute" | "plan";
+  /** When "plan", the runner uses the agent's planning mode (read-only, no edits).
+   * "classify" is a read-only, non-planning mode for intent classification (no
+   * planning output, no edits) used by the intake classifier. */
+  mode?: "execute" | "plan" | "classify";
   task: HarnessTask;
   /** Prompt for this turn. For the first turn, this is the task prompt; for follow-ups, the operator's reply. */
   prompt: string;
