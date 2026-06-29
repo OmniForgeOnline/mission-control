@@ -6,6 +6,7 @@ import { createServer } from "./app.ts";
 import { resolveListenHost } from "./bind-address.ts";
 import { generateShutdownToken, removeServerInfo, resolveHarnessRoot, stopRunningServer, writeServerInfo } from "./control.ts";
 import { gracefulShutdown, setShutdownTarget } from "./lifecycle.ts";
+import { startListening } from "./listen.ts";
 import { DEFAULT_HARNESS_ROOT, ensureHarnessRepository } from "../core/bootstrap/repository.ts";
 import { ensureLoginShellEnvironment } from "../core/agents/resolver.ts";
 import { getConnectorVault } from "../connectors/vault/index.ts";
@@ -79,19 +80,22 @@ if (!existsSync(uiIndex)) {
   );
 }
 
-const daemonHandle = startDaemonLoop({ root, intervalMs, autonomy });
+// Bind before anything that assumes we're the live server. A second startup
+// against an already-owned port fails the bind here (EADDRINUSE) and aborts
+// before the daemon starts or server.json is written, so it can never overwrite
+// the running server's pid/token and strand it beyond `mission-control stop`.
+const server = await startListening(app, port, host);
 
-const server = app.listen(port, host, () => {
-  console.log(`OmniForge Mission Control running at http://${host}:${port}`);
-  console.log(`UI served at: http://${host}:${port}`);
-  console.log(`Mission Control root: ${root}`);
-  console.log(`Daemon: in-process (every ${intervalMs}ms, autonomy=${autonomy ? "on" : "off"})`);
-  console.log(`Stop with Ctrl+C, the UI shutdown button, or: mission-control stop`);
-});
+console.log(`OmniForge Mission Control running at http://${host}:${port}`);
+console.log(`UI served at: http://${host}:${port}`);
+console.log(`Mission Control root: ${root}`);
+console.log(`Daemon: in-process (every ${intervalMs}ms, autonomy=${autonomy ? "on" : "off"})`);
+console.log(`Stop with Ctrl+C, the UI shutdown button, or: mission-control stop`);
 
 // Register the live server + daemon with the shared shutdown path (used by the
 // signal handlers below and by the /api/shutdown route in app.ts) and record
 // our pid/port so `mission-control stop` can reach us.
+const daemonHandle = startDaemonLoop({ root, intervalMs, autonomy });
 setShutdownTarget({
   server,
   daemon: daemonHandle,
