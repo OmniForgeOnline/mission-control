@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.2.0
+
+### Minor Changes
+
+- b4e7ff3: Add an npm update pill in the header next to the Mission Control title. It compares the installed version against the npm registry latest and renders only when behind. Clicking Update offers two modes: update now (stops active work, installs, and restarts) or update when idle (installs and restarts on the next idle transition). A detached updater performs the global install and re-launches the server, with a safe degrade so a failed install never leaves the app dead.
+
+### Patch Changes
+
+- 1c95439: Surface Kiro ACP rate-limit details in blocked run diagnostics instead of showing only "Internal error".
+
 ## 0.1.3
 
 ### Patch Changes
