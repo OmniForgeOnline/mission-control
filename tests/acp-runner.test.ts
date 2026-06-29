@@ -65,6 +65,40 @@ process.stdin.on("data", async (chunk) => {
     } else if (msg.method === "session/prompt") {
       const sid = msg.params.sessionId || "fake-session";
       const text = (msg.params.prompt && msg.params.prompt[0] && msg.params.prompt[0].text) || "";
+      if (text.includes("RATE_LIMIT")) {
+        send({
+          jsonrpc: "2.0",
+          method: "_kiro.dev/session/update",
+          params: {
+            sessionId: sid,
+            update: {
+              sessionUpdate: "retry_warning",
+              attempt: 3,
+              maxAttempts: 3,
+              delaySecs: 10,
+              message: "Retrying in 10s (attempt 3/3)"
+            }
+          }
+        });
+        send({
+          jsonrpc: "2.0",
+          method: "_kiro.dev/error/rate_limit",
+          params: {
+            sessionId: sid,
+            message: "Rate limit exceeded. Please wait a moment before trying again."
+          }
+        });
+        send({
+          jsonrpc: "2.0",
+          id: msg.id,
+          error: {
+            code: -32603,
+            message: "Internal error",
+            data: "Encountered an error in the response stream: The request was throttled by the service (request_id: req-test)"
+          }
+        });
+        return;
+      }
       update(sid, { sessionUpdate: "agent_message_chunk", content: { type: "text", text: resumed ? "resumed:Hello " : "Hello " } });
       if (text.includes("MCP")) {
         update(sid, { sessionUpdate: "agent_message_chunk", content: { type: "text", text: "mcp:" + mcpNames.join(",") + " " } });
@@ -216,5 +250,23 @@ describe("AcpAgentRunner (fake ACP server)", () => {
     const result = await runner.runTurn(request({ prompt: "MCP check" }));
     expect(result.reply).toContain("mcp:"); // echoed, but empty list
     expect(result.reply).not.toContain("mcp:gbrain");
+  });
+
+  it("surfaces Kiro ACP rate-limit details instead of only Internal error", async () => {
+    const runner = new AcpAgentRunner("kiro", { tool: kiroTool(script), pool: kiroPool() });
+    const events: string[] = [];
+    const result = await runner.runTurn(
+      request({
+        prompt: "RATE_LIMIT please",
+        onEvent: (event) => {
+          if (event.type === "error") events.push(event.text ?? "");
+        }
+      })
+    );
+
+    expect(result.exitCode).toBe(1);
+    expect(result.blockedReason).toContain("request was throttled");
+    expect(result.blockedReason).toContain("req-test");
+    expect(events).toContain("Rate limit exceeded. Please wait a moment before trying again.");
   });
 });
