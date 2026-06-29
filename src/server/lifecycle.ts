@@ -69,19 +69,28 @@ export interface ShutdownResult {
 }
 
 /**
- * Tear the server down gracefully. Idempotent for the orchestrating effects; a
- * second invocation force-exits immediately so a repeated Ctrl+C always wins.
+ * Synchronously claim shutdown. Returns true if this caller is the first to
+ * request it (and so should drive the teardown), false if shutdown is already
+ * in progress. The /api/shutdown route claims synchronously so concurrent
+ * requests (UI + CLI, or two CLI calls) collapse into a single teardown instead
+ * of the second one hitting the force-exit branch below. Every entry point
+ * shares one teardown; only the repeat-handling differs (see gracefulShutdown).
  */
-export async function gracefulShutdown(reason: string): Promise<ShutdownResult> {
-  if (shuttingDown) {
-    // Second shutdown request: skip the grace period and exit now.
-    liveExit(target.exitCode ?? 130);
-    return { terminated: 0 };
-  }
+export function beginShutdown(reason: string): boolean {
+  if (shuttingDown) return false;
   shuttingDown = true;
-
-  const terminated = listInflightTaskIds().length;
   console.log(`Shutting down Mission Control (${reason})…`);
+  return true;
+}
+
+/**
+ * Run the graceful teardown: stop launching new turns, terminate every running
+ * agent child process, close the HTTP server, then arm the bounded force-exit.
+ * Callers must have already claimed via beginShutdown; the escalating signal
+ * path uses gracefulShutdown instead.
+ */
+export async function runShutdownTeardown(): Promise<ShutdownResult> {
+  const terminated = listInflightTaskIds().length;
   if (terminated > 0) {
     console.log(`Terminating ${terminated} running agent process(es)…`);
   }
@@ -121,4 +130,20 @@ export async function gracefulShutdown(reason: string): Promise<ShutdownResult> 
   }, FORCE_EXIT_DELAY_MS);
 
   return { terminated };
+}
+
+/**
+ * Escalating shutdown for repeated OS signals (Ctrl+C): the first call claims
+ * and tears down gracefully; a second call skips the grace period and exits now
+ * so a repeated Ctrl+C always wins. The /api/shutdown route must NOT use this,
+ * since a duplicate API request is a no-op (beginShutdown + runShutdownTeardown)
+ * rather than an escalation.
+ */
+export async function gracefulShutdown(reason: string): Promise<ShutdownResult> {
+  if (!beginShutdown(reason)) {
+    // Repeated signal: skip the grace period and exit now.
+    liveExit(target.exitCode ?? 130);
+    return { terminated: 0 };
+  }
+  return runShutdownTeardown();
 }

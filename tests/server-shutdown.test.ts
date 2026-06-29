@@ -168,18 +168,50 @@ describe("/api/shutdown route", () => {
     const app = createServer({ root, testMode: true });
     const t = fakeTarget();
     setShutdownTarget(t);
+    const closeSpy = t.server?.close as unknown as ReturnType<typeof vi.fn>;
 
     await request(app).post("/api/shutdown").expect(200);
+    // The route claims synchronously, so isShuttingDown() is already true here;
+    // poll for the deferred teardown (server.close) rather than the claim flag.
     const deadline = Date.now() + 500;
-    while (!isShuttingDown() && Date.now() < deadline) {
+    while (closeSpy.mock.calls.length === 0 && Date.now() < deadline) {
       await new Promise((resolve) => setImmediate(resolve));
     }
-    expect(t.server?.close).toHaveBeenCalledTimes(1);
+    expect(closeSpy).toHaveBeenCalledTimes(1);
 
     const res = await request(app).post("/api/shutdown").expect(200);
     expect(res.body.already).toBe(true);
-    // No second teardown.
-    expect(t.server?.close).toHaveBeenCalledTimes(1);
+    // No second teardown, and a duplicate API request never force-exits.
+    expect(closeSpy).toHaveBeenCalledTimes(1);
+    expect(t.exit).not.toHaveBeenCalled();
+  });
+
+  it("collapses concurrent shutdown requests into one teardown (no force-exit)", async () => {
+    const app = createServer({ root, testMode: true });
+    const t = fakeTarget();
+    setShutdownTarget(t);
+    const closeSpy = t.server?.close as unknown as ReturnType<typeof vi.fn>;
+
+    // Two requests back-to-back. Before the claim was made synchronous, the
+    // second could land before the first setImmediate fired, so both scheduled
+    // teardown and the second hit gracefulShutdown's force-exit branch.
+    const [a, b] = await Promise.all([
+      request(app).post("/api/shutdown"),
+      request(app).post("/api/shutdown")
+    ]);
+
+    // Exactly one request initiated shutdown; the other was told it's in progress.
+    expect([a.body.already, b.body.already].filter(Boolean)).toHaveLength(1);
+    // A duplicate API request must never take the escalating force-exit path.
+    expect(t.exit).not.toHaveBeenCalled();
+
+    // Exactly one teardown runs.
+    const deadline = Date.now() + 500;
+    while (closeSpy.mock.calls.length === 0 && Date.now() < deadline) {
+      await new Promise((resolve) => setImmediate(resolve));
+    }
+    expect(closeSpy).toHaveBeenCalledTimes(1);
+    expect(t.exit).not.toHaveBeenCalled();
   });
 });
 

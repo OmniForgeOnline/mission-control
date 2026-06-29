@@ -3,7 +3,7 @@ import path from "node:path";
 
 import { setConnectorVault } from "../connectors/vault/index.ts";
 import { subscribeStateEvents } from "./events.ts";
-import { gracefulShutdown, isShuttingDown } from "./lifecycle.ts";
+import { beginShutdown, runShutdownTeardown } from "./lifecycle.ts";
 import { createAutonomyRouter } from "./routes/autonomy.ts";
 import { createAgentConfigRouter } from "./routes/agent-config.ts";
 import { createAttachmentsRouter } from "./routes/attachments.ts";
@@ -58,13 +58,16 @@ export function createServer(options: ServerOptions): express.Express {
   app.use("/api", createVersionRouter(options));
 
   app.post("/api/shutdown", (_req, res) => {
-    res.json({ shutting_down: true, already: isShuttingDown() });
-    if (!isShuttingDown()) {
+    // Claim synchronously so concurrent requests (UI + CLI, or two CLI calls)
+    // collapse into one teardown: only the first claimant wins, and a duplicate
+    // request reports already:true instead of re-entering the escalating signal
+    // path that force-exits. Shares the same teardown as Ctrl+C.
+    const first = beginShutdown("api request");
+    res.json({ shutting_down: true, already: !first });
+    if (first) {
       // Defer so the response flushes before the server begins tearing down.
-      // Shares the same graceful path as Ctrl+C: terminates running agent
-      // processes, stops the daemon, closes the server.
       setImmediate(() => {
-        void gracefulShutdown("api request");
+        void runShutdownTeardown();
       });
     }
   });

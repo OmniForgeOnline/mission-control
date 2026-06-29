@@ -83,7 +83,6 @@ mission-control stop
 ```
 
 You can also stop from the UI: open **System → Maintenance → Power → Shut down Mission Control** and confirm the warning. From the terminal where it runs, `Ctrl+C` works too. After a shutdown the UI stays offline until you start the app again with `mission-control`.
- |
 
 ## Runtime State
 
