@@ -119,7 +119,10 @@ export function isRepoRelativePath(input: string): boolean {
  * spawn the `cd` builtin; pipes, redirections and substitution do nothing). An
  * operator that appears *inside* quotes is a literal argument and is fine, so the
  * scan is quote-aware. A leading `NAME=value` env assignment is rejected too: the
- * executor passes `env` only, never per-command assignments.
+ * executor passes `env` only, never per-command assignments. A leading `cd` is
+ * rejected as well: `cd` is a shell builtin, so spawning it directly either fails
+ * or silently no-ops instead of changing the command's directory; a subdirectory
+ * must be conveyed via `workingDirectory` instead.
  *
  * Returns a short label naming the first offending construct, or null when the
  * command is a single direct invocation. Enforced both at generation
@@ -129,6 +132,12 @@ export function isRepoRelativePath(input: string): boolean {
 export function findUnsupportedShellSyntax(command: string): string | null {
   const assignment = command.match(/^\s*([A-Za-z_][A-Za-z0-9_]*)=(?!=)\S/);
   if (assignment?.[1]) return `leading ${assignment[1]}= assignment`;
+
+  // `cd` is only meaningful as a shell builtin; spawned as a child it cannot move
+  // the executor into a subdirectory, so a leading `cd <dir>` (with or without a
+  // later operator) must be rejected in favour of `workingDirectory`. The word
+  // boundary avoids matching programs that merely start with "cd".
+  if (/^\s*cd(?:\s|$)/.test(command)) return "leading cd";
 
   let quote: '"' | "'" | null = null;
   for (let i = 0; i < command.length; i++) {

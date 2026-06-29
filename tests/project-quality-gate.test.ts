@@ -197,6 +197,16 @@ describe("parseAndValidateQualityGate shell-syntax contract", () => {
     expect(parseAndValidateQualityGate(readyWithCommand("cd packages/api && npm test")).ok).toBe(false);
   });
 
+  it("rejects a bare leading cd with no shell operator to catch it", () => {
+    // `cd` is a shell builtin: spawned directly it cannot change the executor's
+    // directory, so a leading `cd subdir` must use workingDirectory instead. The
+    // validator's own rejection message promises this, so a bare `cd` (no && or |
+    // to trip the operator scan) must still be rejected on its own.
+    const result = parseAndValidateQualityGate(readyWithCommand("cd packages/api"));
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.errors.join(" ")).toMatch(/\bcd\b/);
+  });
+
   it("rejects a redirection", () => {
     expect(parseAndValidateQualityGate(readyWithCommand("make test > build.log")).ok).toBe(false);
   });
