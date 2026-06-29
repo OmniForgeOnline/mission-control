@@ -19,6 +19,11 @@ import {
   readProjectQuickstarts,
   startProjectQuickstarts
 } from "../../core/projects/quickstarts.ts";
+import { readProjectQualityGate } from "../../core/projects/quality-gate.ts";
+import {
+  generateProjectQualityGate,
+  startProjectQualityGate
+} from "../../core/projects/quality-gate-generation.ts";
 import {
   computeProjectQualityGrades,
   type QualityFile
@@ -91,6 +96,9 @@ export function createProjectsRouter(options: ServerOptions): Router {
       // Tailor the quick starts to the repo in the background (read-only plan
       // turn); the response does not wait on it. The UI polls /quickstarts.
       startProjectQuickstarts(options.root, project, turnOptions(options));
+      // Generate a project-specific quality-gate config in the background by
+      // gathering repo intel; the UI polls /quality-gate.
+      startProjectQualityGate(options.root, project, turnOptions(options));
       res.json(project);
     })
   );
@@ -229,6 +237,31 @@ export function createProjectsRouter(options: ServerOptions): Router {
       }
       startProjectQuickstarts(options.root, project, opts);
       res.json(await readProjectQuickstarts(options.root, projectId));
+    })
+  );
+
+  router.get(
+    "/projects/:id/quality-gate",
+    asyncRoute(async (req, res) => {
+      const projectId = param(req.params["id"], "id");
+      await requireProject(options.root, projectId);
+      res.json(await readProjectQualityGate(options.root, projectId));
+    })
+  );
+
+  router.post(
+    "/projects/:id/quality-gate/regenerate",
+    asyncRoute(async (req, res) => {
+      const projectId = param(req.params["id"], "id");
+      const project = await getProject(options.root, projectId);
+      if (!project) throw new Error(`Project not found: ${projectId}`);
+      const opts = turnOptions(options);
+      if (opts.wait) {
+        res.json(await generateProjectQualityGate(options.root, project, opts));
+        return;
+      }
+      startProjectQualityGate(options.root, project, opts);
+      res.json(await readProjectQualityGate(options.root, projectId));
     })
   );
 
