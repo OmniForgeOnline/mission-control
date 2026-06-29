@@ -6,6 +6,7 @@ import { execSync } from "node:child_process";
 
 import { onboardProject } from "../src/core/projects/registry.ts";
 import { generateProjectQualityGate } from "../src/core/projects/quality-gate-generation.ts";
+import { writeQualityGate } from "../src/core/projects/quality-gate.ts";
 import { planProjectChecks } from "../src/core/projects/project-checks.ts";
 import { DeterministicAgentRunner } from "./helpers/deterministic-runner.ts";
 
@@ -106,19 +107,79 @@ describe("planProjectChecks (project-aware planner)", () => {
     expect(plan.checks).toEqual([{ name: "custom", command: "./my-gate.sh", available: true }]);
   });
 
-  it("falls back to generic detection when the generated gate is incomplete", async () => {
+  it("surfaces an incomplete gate as a no-blocking-checks plan, never generic detection", async () => {
     const repo = path.join(root, "repo");
     execSync(`git init -q ${repo}`);
     execSync("git config user.email t@t.com", { cwd: repo });
     execSync("git config user.name t", { cwd: repo });
     const project = await onboardProject(root, { repoPath: repo, name: "Empty" });
-    // No repo evidence + invalid agent -> incomplete gate.
+    // No repo evidence + invalid agent -> incomplete gate (no generic fallback).
     await generateProjectQualityGate(root, project, { runner: repliesRunner("nope") });
 
+    // A package.json is present, but the contract forbids substituting it for an
+    // incomplete gate: the project must surface its needs-resolution state.
+    await writeFile(path.join(workspace, "package.json"), JSON.stringify({ scripts: { test: "vitest run" } }), "utf8");
+    const plan = await planProjectChecks(root, project.id, workspace);
+    expect(plan.source).toBe("quality-gate");
+    expect(plan.checks).toEqual([]);
+  });
+
+  it("surfaces a failed gate as a no-blocking-checks plan, never generic detection", async () => {
+    const repo = path.join(root, "repo");
+    execSync(`git init -q ${repo}`);
+    execSync("git config user.email t@t.com", { cwd: repo });
+    execSync("git config user.name t", { cwd: repo });
+    const project = await onboardProject(root, { repoPath: repo, name: "Boom" });
+    await writeQualityGate(root, project.id, { status: "failed", checks: [], error: "intel gathering failed" });
+
+    await writeFile(path.join(workspace, "package.json"), JSON.stringify({ scripts: { test: "vitest run" } }), "utf8");
+    const plan = await planProjectChecks(root, project.id, workspace);
+    expect(plan.source).toBe("quality-gate");
+    expect(plan.checks).toEqual([]);
+  });
+
+  it("still uses baseline detection while the gate is pending (not yet generated)", async () => {
+    const repo = path.join(root, "repo");
+    execSync(`git init -q ${repo}`);
+    execSync("git config user.email t@t.com", { cwd: repo });
+    execSync("git config user.name t", { cwd: repo });
+    const project = await onboardProject(root, { repoPath: repo, name: "Fresh" });
+    // No generation run yet -> pending gate -> baseline detection is the interim.
     await writeFile(path.join(workspace, "package.json"), JSON.stringify({ scripts: { test: "vitest run" } }), "utf8");
     const plan = await planProjectChecks(root, project.id, workspace);
     expect(plan.source).toBe("package.json");
     expect(plan.checks.find((c) => c.name === "test")?.available).toBe(true);
+  });
+
+  it("preserves a generated check's workingDirectory as the planned cwd", async () => {
+    const repo = path.join(root, "repo");
+    execSync(`git init -q ${repo}`);
+    execSync("git config user.email t@t.com", { cwd: repo });
+    execSync("git config user.name t", { cwd: repo });
+    await writeFile(path.join(repo, "pyproject.toml"), "[tool.ruff]\n", "utf8");
+    const project = await onboardProject(root, { repoPath: repo, name: "Py" });
+    await generateProjectQualityGate(root, project, {
+      runner: repliesRunner(
+        JSON.stringify({
+          status: "ready",
+          checks: [
+            {
+              name: "lint",
+              category: "lint",
+              command: "ruff check .",
+              required: true,
+              evidence: ["pyproject.toml [tool.ruff]"],
+              workingDirectory: "services/api"
+            }
+          ],
+          rationale: "monorepo subdir"
+        })
+      )
+    });
+
+    const plan = await planProjectChecks(root, project.id, workspace);
+    expect(plan.source).toBe("quality-gate");
+    expect(plan.checks[0]?.cwd).toBe("services/api");
   });
 
   it("excludes advisory (required:false) checks from the blocking plan", async () => {

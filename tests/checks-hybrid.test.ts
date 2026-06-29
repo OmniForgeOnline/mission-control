@@ -7,7 +7,8 @@ import {
   describeCheckPlan,
   describeChecksOutcome,
   planChecks,
-  resolveCheckMaxRounds
+  resolveCheckMaxRounds,
+  runCheckPlan
 } from "../src/core/review/checks.ts";
 
 describe("checks outcome descriptions", () => {
@@ -281,5 +282,46 @@ describe("checks remediation helpers", () => {
     await mkdir(dir, { recursive: true });
     await writeFile(path.join(dir, "checks.yml"), "maxRounds: 5\nchecks:\n  - name: ok\n    command: echo pass\n", "utf8");
     await expect(resolveCheckMaxRounds(root)).resolves.toBe(5);
+  });
+});
+
+describe("runCheckPlan working directory", () => {
+  let workspace: string;
+
+  beforeEach(async () => {
+    workspace = await mkdtemp(path.join(tmpdir(), "harness-checks-cwd-"));
+  });
+
+  afterEach(async () => {
+    await rm(workspace, { recursive: true, force: true });
+  });
+
+  it("runs a check in its declared cwd, resolved against the workspace root", async () => {
+    const subdir = path.join(workspace, "services", "api");
+    await mkdir(subdir, { recursive: true });
+    const summary = await runCheckPlan(
+      {
+        source: "checks.yml",
+        maxRounds: DEFAULT_CHECK_REMEDIATION_ROUNDS,
+        checks: [
+          { name: "where", command: 'node -e "console.log(process.cwd())"', available: true, cwd: "services/api" }
+        ]
+      },
+      workspace
+    );
+    expect(summary.outcome).toBe("validated");
+    expect(summary.results[0]?.output).toContain(subdir);
+  });
+
+  it("runs a check at the workspace root when no cwd is declared", async () => {
+    const summary = await runCheckPlan(
+      {
+        source: "checks.yml",
+        maxRounds: DEFAULT_CHECK_REMEDIATION_ROUNDS,
+        checks: [{ name: "where", command: 'node -e "console.log(process.cwd())"', available: true }]
+      },
+      workspace
+    );
+    expect(summary.results[0]?.output).toContain(workspace);
   });
 });

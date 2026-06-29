@@ -23,14 +23,19 @@ function gateCheckToPlanned(check: QualityGateCheck): PlannedCheck {
   };
   const kind = gateCategoryToKind(check.category);
   if (kind) planned.kind = kind;
+  if (check.workingDirectory) planned.cwd = check.workingDirectory;
   return planned;
 }
 
 /**
  * Resolve the check plan for a project-scoped workspace. Precedence:
  *   1. Explicit `.harness/checks.yml` (operator override) — highest.
- *   2. The project's generated, evidence-backed quality-gate config when `ready`.
- *   3. Generic `package.json`/`Makefile` detection (the shared baseline).
+ *   2. The project's generated quality-gate config once it exists:
+ *        - `ready` -> its evidence-backed blocking checks.
+ *        - `incomplete`/`failed` -> a no-blocking-checks plan that surfaces the
+ *          needs-resolution state. The gate never substitutes a generic gate here.
+ *   3. Generic `package.json`/`Makefile` detection (the shared baseline), used
+ *      only while no config has been produced yet (`pending`/`generating`).
  *
  * Advisory (`required: false`) checks are informational and excluded from the
  * blocking plan. A `projectId` of `undefined` (harness-level tasks) always uses
@@ -46,7 +51,18 @@ export async function planProjectChecks(
   if (baseline.source === "checks.yml") return baseline; // explicit operator override wins
 
   const gate = await readProjectQualityGate(root, projectId);
-  if (gate.status !== "ready") return baseline;
+
+  // Nothing produced yet: baseline detection is the documented interim. Once a
+  // config exists it always wins, so evidence gaps surface instead of silently
+  // running a one-size-fits-all gate.
+  if (gate.status === "pending" || gate.status === "generating") return baseline;
+
+  if (gate.status !== "ready") {
+    // `incomplete` (insufficient evidence) or `failed` (could not gather intel):
+    // the operator must resolve. Surface a quality-gate plan with no blocking
+    // checks rather than substituting generic package.json/Makefile detection.
+    return { checks: [], maxRounds: DEFAULT_CHECK_REMEDIATION_ROUNDS, source: "quality-gate" };
+  }
 
   const blocking = gate.checks.filter((check) => check.required !== false);
   if (blocking.length === 0) {

@@ -26,6 +26,11 @@ export interface PlannedCheck {
   kind?: CheckKind;
   command: string;
   available: boolean;
+  /**
+   * Working directory for the command, relative to the workspace root (absolute
+   * paths are used as-is). Absent means run at the workspace root.
+   */
+  cwd?: string;
   /** Present when `available` is false; explains why the tooling is missing. */
   skipReason?: string;
   fatal?: boolean;
@@ -334,8 +339,9 @@ export async function runCheckPlan(
 
     const { cmd, args } = parseCommand(spec.command);
     if (!cmd) continue;
+    const runCwd = spec.cwd ? path.resolve(workspacePath, spec.cwd) : workspacePath;
     onChunk?.(`\n[check] ${spec.name}: ${spec.command}\n`);
-    const { exitCode, output } = await runShell(cmd, args, workspacePath, onChunk);
+    const { exitCode, output } = await runShell(cmd, args, runCwd, onChunk);
     results.push({
       name: spec.name,
       command: spec.command,
