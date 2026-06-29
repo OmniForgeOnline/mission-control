@@ -1,5 +1,6 @@
 import { pickDueAutomaticJob, runAutonomyJob } from "../autonomy/jobs.ts";
 import { reconcileStuckPushedTasks } from "../core/bootstrap/reconciliation.ts";
+import { reconcileStaleQualityGates } from "../core/projects/quality-gate-generation.ts";
 import { processAllApprovedTasks } from "./processor.ts";
 import { pickDueProjectJob, runProjectJob } from "../core/projects/scoped-autonomy.ts";
 
@@ -46,6 +47,18 @@ export function startDaemonLoop(options: DaemonOptions): DaemonHandle {
     }
   }
 
+  async function tickQualityGateRecovery(): Promise<void> {
+    if (stopped) return;
+    try {
+      const recovered = await reconcileStaleQualityGates(options.root);
+      if (recovered > 0) {
+        log(`daemon: re-kicked ${recovered} stale quality-gate generation(s)`);
+      }
+    } catch (error) {
+      onError(error);
+    }
+  }
+
   async function tickTasks(): Promise<void> {
     if (stopped) return;
     try {
@@ -84,6 +97,7 @@ export function startDaemonLoop(options: DaemonOptions): DaemonHandle {
   function tick(): Promise<void> {
     inflightTick = (async () => {
       await tickReconciliation();
+      await tickQualityGateRecovery();
       await tickTasks();
       await tickAutonomy();
     })();

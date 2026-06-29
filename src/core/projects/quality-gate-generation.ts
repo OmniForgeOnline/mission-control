@@ -5,10 +5,11 @@ import { createRunnerForTool } from "../../runners/index.ts";
 import type { AgentRunner } from "../../runners/types.ts";
 import type { HarnessTarget, HarnessTask, ToolId } from "../types.ts";
 import { gatherProjectIntel, type ProjectIntel } from "./intel.ts";
-import type { ProjectRecord } from "./registry.ts";
+import { listProjects, type ProjectRecord } from "./registry.ts";
 import {
   parseAndValidateQualityGate,
   pendingQualityGate,
+  readProjectQualityGate,
   synthesizeGateFromIntel,
   writeQualityGate,
   type QualityGateFile
@@ -19,6 +20,11 @@ const DEFAULT_QUALITY_GATE_TIMEOUT_MS = 3 * 60 * 1000;
 
 /** In-flight generation guard, keyed `${root}:${projectId}` (mirrors quickstarts). */
 const activeGenerations = new Set<string>();
+
+/** True when a generation for this project is currently in flight in this process. */
+function isGenerationActive(root: string, projectId: string): boolean {
+  return activeGenerations.has(`${root}:${projectId}`);
+}
 
 function now(): string {
   return new Date().toISOString();
@@ -268,6 +274,49 @@ export async function startProjectQualityGate(
   activeGenerations.add(key);
   await writeQualityGate(root, project.id, { ...pendingQualityGate(), status: "generating" });
   void generateProjectQualityGate(root, project, options)
-    .catch(() => {})
+    .catch(async (err) => {
+      // generateProjectQualityGate resolves for every code path except a throw from
+      // its terminal persist (stampAndStore -> writeQualityGate). Surface that as a
+      // terminal `failed` state instead of swallowing it: a swallowed rejection leaves
+      // the gate at `generating` forever, and planProjectChecks maps a non-ready gate
+      // to a silent no-checks pass, so the project quietly runs no quality gate with
+      // no error surfaced. The error-write is best-effort: if the filesystem is broken
+      // outright the write may also fail, in which case reconcileStaleQualityGates
+      // picks the orphaned `generating` gate up on the next daemon tick.
+      const failed: QualityGateFile = {
+        status: "failed",
+        checks: [],
+        error: `Quality-gate generation failed: ${(err as Error).message}`
+      };
+      await writeQualityGate(root, project.id, failed).catch(() => {});
+    })
     .finally(() => activeGenerations.delete(key));
+}
+
+/**
+ * Re-kick any project whose gate is still `generating` but not driven by this
+ * process. Generation is fire-and-forget with an in-memory in-flight guard, so a
+ * process restart mid-generation (or a generation whose terminal write threw and was
+ * not recoverable in place) leaves the gate at `generating` on disk with nothing
+ * moving it to a terminal state; planProjectChecks then maps it to a silent
+ * no-checks pass, so the project quietly runs no quality gate forever. This sweep
+ * re-kicks such orphaned gates: a gate that reads `generating` yet is not in the
+ * in-flight guard has no driver in this process. Returns the number re-kicked. Safe
+ * to call each daemon tick: startProjectQualityGate's guard prevents double-kicking
+ * a genuinely active generation, and the re-kick refreshes that guard.
+ */
+export async function reconcileStaleQualityGates(
+  root: string,
+  options?: GenerateQualityGateOptions
+): Promise<number> {
+  const projects = await listProjects(root).catch(() => []);
+  let reKicked = 0;
+  for (const project of projects) {
+    const gate = await readProjectQualityGate(root, project.id);
+    if (gate.status !== "generating") continue;
+    if (isGenerationActive(root, project.id)) continue;
+    void startProjectQualityGate(root, project, options);
+    reKicked++;
+  }
+  return reKicked;
 }
