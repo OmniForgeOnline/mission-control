@@ -393,6 +393,54 @@ const CATEGORY_LABELS: Record<GateCategory, string> = {
 };
 
 /**
+ * Recognized command verbs: the toolchain entry points and common programs a
+ * harvested docs/CI line may legitimately start with. Bare category words
+ * (`build`, `test`, `lint`, ...) are deliberately excluded: nothing invokes a
+ * program literally named `build`, so a harvested line starting with such a word is
+ * prose, not a command.
+ */
+const KNOWN_COMMAND_VERBS = new Set<string>([
+  // Node
+  "npm", "yarn", "pnpm", "bun", "npx",
+  // Python
+  "python", "python3", "pip", "pip3", "poetry", "uv", "hatch",
+  "pytest", "ruff", "mypy", "black", "isort", "pylint", "flake8", "bandit", "safety",
+  // Node tooling
+  "eslint", "biome", "prettier", "tsc", "tsx", "jest", "vitest", "mocha", "playwright",
+  // Rust
+  "cargo", "rustc",
+  // Go
+  "go",
+  // Ruby
+  "bundle", "gem", "rake", "ruby",
+  // PHP
+  "composer", "php",
+  // JVM
+  "mvn", "mvnw", "gradle", "gradlew", "java", "javac",
+  // .NET
+  "dotnet",
+  // Mobile
+  "flutter", "dart",
+  // Build automation
+  "make", "cmake", "ninja", "just",
+  // Containers / shells
+  "docker", "podman", "act", "sh", "bash", "zsh", "deno", "node"
+]);
+
+/**
+ * True when a harvested line plausibly starts with an executable command: its first
+ * token is a recognized command verb, or a path-like executable (`./x`, `scripts/x`,
+ * `/x`). Applied only to lower-confidence docs/CI sources, so a comment or prose line
+ * that merely contains a build/test keyword can never be emitted as a check.
+ */
+function looksLikeCommand(command: string): boolean {
+  const token = command.trim().split(/\s+/)[0] ?? "";
+  if (token.length === 0) return false;
+  if (token.includes("/")) return true;
+  return KNOWN_COMMAND_VERBS.has(token);
+}
+
+/**
  * Deterministically derive a quality-gate config from gathered intel. Used as the
  * safe fallback when the agent does not return valid output: it never fabricates a
  * gate. It folds every evidence source the intel layer gathered (manifest/Makefile
@@ -415,15 +463,29 @@ export function synthesizeGateFromIntel(intel: ProjectIntel): QualityGateFile {
    * shell-syntax vetting mirrors what is enforced on agent output, so a CI/docs
    * chain like `a && b` is rejected here rather than persisted to mis-run; the
    * mutating vetting keeps a CI step like `npm ci` or `npm publish` from becoming a
-   * blocking, network-dependent check. Only known verification categories are
-   * emitted as required; format and the catch-all 'other' are advisory, so a
-   * command whose effect we cannot pin down never fails the gate. Sources are
-   * walked highest confidence first: manifests/Makefile, then CI, then docs.
+   * blocking, network-dependent check.
+   *
+   * Provenance selects blocking vs advisory. `advisory` is set for the
+   * lower-confidence harvested sources (CI, docs): their commands are recorded for
+   * transparency but never block, because the fallback synthesis has no agent to
+   * verify they actually check the repo. Only declared manifests/Makefile evidence
+   * (`advisory === false`) may block, and only in a known verification category. An
+   * advisory line must additionally look like a command (a recognized verb or a
+   * path-like executable) before it is emitted, so a comment or prose line that
+   * merely contains a build/test keyword can never become a check the executor would
+   * spawn to a non-existent program. Sources are walked highest confidence first:
+   * manifests/Makefile, then CI, then docs.
    */
-  const addCheck = (command: string, category: GateCategory, source: string): void => {
+  const addCheck = (
+    command: string,
+    category: GateCategory,
+    source: string,
+    advisory: boolean
+  ): void => {
     if (seen.has(command)) return;
     if (findUnsupportedShellSyntax(command) !== null) return;
     if (isMutatingCommand(command)) return;
+    if (advisory && !looksLikeCommand(command)) return;
     seen.add(command);
     const base = CATEGORY_LABELS[category] ?? "check";
     const count = usedNames.get(base) ?? 0;
@@ -433,20 +495,20 @@ export function synthesizeGateFromIntel(intel: ProjectIntel): QualityGateFile {
       name,
       category,
       command,
-      required: isVerificationCategory(category),
+      required: !advisory && isVerificationCategory(category),
       evidence: [source]
     });
   };
 
   for (const detected of intel.commands) {
-    addCheck(detected.command, detected.category, detected.source);
+    addCheck(detected.command, detected.category, detected.source, false);
   }
   for (const detected of intel.ci) {
-    addCheck(detected.command, detected.category, detected.source);
+    addCheck(detected.command, detected.category, detected.source, true);
   }
   for (const doc of intel.docs) {
     for (const command of doc.commands) {
-      addCheck(command, inferCategoryFromToken(command), `docs ${doc.path}`);
+      addCheck(command, inferCategoryFromToken(command), `docs ${doc.path}`, true);
     }
   }
 

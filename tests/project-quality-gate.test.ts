@@ -15,6 +15,7 @@ import {
   writeQualityGate
 } from "../src/core/projects/quality-gate.ts";
 import { generateProjectQualityGate } from "../src/core/projects/quality-gate-generation.ts";
+import { collectDocCommands } from "../src/core/projects/intel-docs-ci.ts";
 import { planProjectChecks } from "../src/core/projects/project-checks.ts";
 import { DeterministicAgentRunner } from "./helpers/deterministic-runner.ts";
 
@@ -75,6 +76,29 @@ describe("synthesizeGateFromIntel", () => {
   });
 });
 
+describe("collectDocCommands harvest", () => {
+  it("drops full-line shell comments so they can never become checks", async () => {
+    // A fenced README block almost always opens with a `#` comment (`# Build the
+    // project`). Such a line is not a command: it carries a build/test keyword, so
+    // without stripping the `#` it would be harvested and, in the fallback synthesis,
+    // persisted as a required check whose program is `#` (ENOENT every turn).
+    const tmp = await mkdtemp(path.join(os.tmpdir(), "harness-qg-doc-"));
+    try {
+      await writeFile(
+        path.join(tmp, "README.md"),
+        ["```bash", "# Build the project", "npm run build", "```"].join("\n"),
+        "utf8"
+      );
+      const docs = await collectDocCommands(tmp);
+      const commands = docs.flatMap((d) => d.commands);
+      expect(commands).toContain("npm run build");
+      expect(commands).not.toContain("# Build the project");
+    } finally {
+      await rm(tmp, { recursive: true, force: true }).catch(() => {});
+    }
+  });
+});
+
 describe("synthesizeGateFromIntel docs/CI evidence", () => {
   // A minimal intel with no evidence in any bucket, reused as the base for the
   // docs/CI-only scenarios below.
@@ -104,6 +128,10 @@ describe("synthesizeGateFromIntel docs/CI evidence", () => {
     expect(file.checks.find((c) => c.command === "npm test")?.evidence).toContain(
       "CI ci.yml run step"
     );
+    // CI provenance is lower-confidence than a declared manifest command, so in the
+    // fallback synthesis (no agent to verify it) a CI command is advisory: recorded
+    // for transparency but never blocking.
+    expect(file.checks.every((c) => c.required === false)).toBe(true);
   });
 
   it("builds a ready config from doc excerpts (README-only repo)", () => {
@@ -119,6 +147,57 @@ describe("synthesizeGateFromIntel docs/CI evidence", () => {
     expect(file.checks.find((c) => c.command === "npm run build")?.evidence).toContain(
       "docs README.md"
     );
+    // Doc provenance is the lowest-confidence source and there is no agent to verify
+    // it in the fallback path, so doc commands are advisory, never blocking.
+    expect(file.checks.every((c) => c.required === false)).toBe(true);
+  });
+
+  it("keeps manifest/Makefile commands blockable while docs and CI are advisory", () => {
+    // Blocking status is reserved for the highest-confidence source (declared
+    // manifests / Makefile targets). Doc and CI commands are still recorded (so the
+    // operator/agent can promote them) but never block, since the fallback synthesis
+    // cannot verify they actually verify behaviour.
+    const intel: ProjectIntel = {
+      ...emptyIntel,
+      commands: [
+        { command: "npm run -s test", category: "test", source: "package.json script `test`" }
+      ],
+      docs: [{ path: "README.md", commands: ["npm run build"] }],
+      ci: [{ command: "ruff check .", category: "lint", source: "CI ci.yml run step" }]
+    };
+    const file = synthesizeGateFromIntel(intel);
+    expect(file.checks.find((c) => c.command === "npm run -s test")?.required).toBe(true);
+    expect(file.checks.find((c) => c.command === "npm run build")?.required).toBe(false);
+    expect(file.checks.find((c) => c.command === "ruff check .")?.required).toBe(false);
+  });
+
+  it("drops keyword-bearing non-command doc lines instead of persisting them as checks", () => {
+    // A fenced prose line ("Run the build like this:") or a stray comment carries a
+    // build/test keyword but is not an executable command. Without a command-verb
+    // guard it would infer a verification category and persist as a required check
+    // whose program is an English word (ENOENT every turn). Its first token is not a
+    // recognized command verb, so it is dropped rather than emitted.
+    const intel: ProjectIntel = {
+      ...emptyIntel,
+      docs: [{ path: "README.md", commands: ["Run the build like this:", "See tests below"] }]
+    };
+    const file = synthesizeGateFromIntel(intel);
+    const cmds = file.checks.map((c) => c.command);
+    expect(cmds).not.toContain("Run the build like this:");
+    expect(cmds).not.toContain("See tests below");
+  });
+
+  it("drops a leading-# comment and reports the gap when it is the only evidence", () => {
+    // Defence in depth: even if a `#` comment reached synthesis un-stripped, its
+    // first token (`#`) is not a command verb, so it is dropped; with no other
+    // evidence the gate stays incomplete rather than fabricating a check.
+    const intel: ProjectIntel = {
+      ...emptyIntel,
+      docs: [{ path: "README.md", commands: ["# Build the project"] }]
+    };
+    const file = synthesizeGateFromIntel(intel);
+    expect(file.checks.map((c) => c.command)).not.toContain("# Build the project");
+    expect(file.status).toBe("incomplete");
   });
 
   it("drops shell-chain docs/CI commands (same direct-invocation vetting as agent output)", () => {

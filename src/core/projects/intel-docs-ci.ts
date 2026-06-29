@@ -28,12 +28,17 @@ const DOC_SCAN_SKIP_DIRS = new Set([
 ]);
 
 function cleanDocCommand(raw: string): string {
-  return raw
+  const stripped = raw
     .replace(/^\s*[-*•]\s+/, "")
     .replace(/^\$?\s*/, "")
     .replace(/^>\s*/, "")
-    .replace(/`/g, "")
-    .trim();
+    .replace(/`/g, "");
+  // A leading `#` (after bullet/prompt/backtick stripping) is a shell comment, not a
+  // command. Drop it so a README/CI line like `# Build the project` is never harvested:
+  // it carries a build/test keyword but its program would be `#`, which the executor
+  // spawns to ENOENT (exit 1) every turn.
+  if (/^\s*#/.test(stripped)) return "";
+  return stripped.trim();
 }
 
 /** Extract build/test/lint shell commands from a doc's text, in encounter order. */
