@@ -10,6 +10,7 @@ import {
   resolveCheckMaxRounds,
   runCheckPlan
 } from "../src/core/review/checks.ts";
+import { runShell } from "../src/core/worktrees/worktrees.ts";
 
 describe("checks outcome descriptions", () => {
   it("makes a no-checks workspace loud, not a silent pass", () => {
@@ -373,5 +374,46 @@ describe("runCheckPlan working directory", () => {
       workspace
     );
     expect(summary.results[0]?.output).toContain(workspace);
+  });
+});
+
+describe("runShell per-command timeout", () => {
+  let workspace: string;
+
+  beforeEach(async () => {
+    workspace = await mkdtemp(path.join(tmpdir(), "harness-runshell-timeout-"));
+  });
+
+  afterEach(async () => {
+    await rm(workspace, { recursive: true, force: true });
+  });
+
+  it("does not time out a command that exits within the budget", async () => {
+    // A fast command is unaffected by the timeout: the timer is cleared on close and
+    // the normal exit code flows through, so the backstop never fires on real checks.
+    const result = await runShell("node", ["-e", "process.exit(0)"], workspace, undefined, 5000);
+    expect(result.exitCode).toBe(0);
+    expect(result.timedOut).toBeFalsy();
+  });
+
+  it("kills a command that does not exit within the timeout, instead of hanging", async () => {
+    // A watch-style process that never exits would hang the gate forever (the gate
+    // executor spawns with shell:false and, without this bound, resolves only on
+    // close). The timeout must SIGKILL the whole process group and resolve with a
+    // recognizable non-zero exit, so a hung check fails (bounded) rather than stalls.
+    const start = Date.now();
+    const result = await runShell(
+      "node",
+      ["-e", "setInterval(() => 0, 1000)"],
+      workspace,
+      undefined,
+      200
+    );
+    const elapsed = Date.now() - start;
+    expect(result.timedOut).toBe(true);
+    expect(result.exitCode).not.toBe(0);
+    expect(result.output).toMatch(/timed out/i);
+    // Bounded: the kill fires near the timeout, not after the process's own lifetime.
+    expect(elapsed).toBeLessThan(5000);
   });
 });

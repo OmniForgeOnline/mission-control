@@ -190,6 +190,26 @@ describe("synthesizeGateFromIntel docs/CI evidence", () => {
     expect(cmds).toContain("npm test");
   });
 
+  it("drops watch-mode scripts instead of persisting them as required checks", () => {
+    // A `test:watch` script resolves category "test" via the prefix rule, so without
+    // the watch guard it would persist required:true and the no-timeout executor
+    // would hang the gate on `jest --watch` every turn. Watch mode runs indefinitely
+    // instead of verifying behaviour (same class as `serve`), so it is dropped;
+    // only the real test step survives.
+    const intel: ProjectIntel = {
+      ...emptyIntel,
+      commands: [
+        { command: "npm run -s test:watch", category: "test", source: "package.json script `test:watch`" },
+        { command: "npm run -s test", category: "test", source: "package.json script `test`" }
+      ]
+    };
+    const file = synthesizeGateFromIntel(intel);
+    expect(file.status).toBe("ready");
+    const cmds = file.checks.map((c) => c.command);
+    expect(cmds).not.toContain("npm run -s test:watch");
+    expect(cmds).toContain("npm run -s test");
+  });
+
   it("emits non-verification ('other') commands as advisory, never blocking", () => {
     // An unrecognized command is not a known verification step, so the gate must not
     // block on it (we cannot tell what it does). It is still recorded as advisory so
@@ -291,6 +311,20 @@ describe("isMutatingCommand", () => {
     ["docker push ghcr.io/org/app", true],
     ["git push origin main", true],
     ["terraform destroy", true],
+    // watch mode: a process that never exits on its own (jest/tsc/webpack/esbuild
+    // --watch, or an npm/yarn/pnpm script named `*:watch`/`*-watch`/`watch`). It runs
+    // indefinitely instead of verifying behaviour, so like `serve` it must never
+    // become a blocking check the no-timeout executor would hang on.
+    ["npm run -s test:watch", true],
+    ["npm run -s build:watch", true],
+    ["yarn test:watch", true],
+    ["pnpm run build:watch", true],
+    ["npm run -s test-watch", true],
+    ["npm run -s watch", true],
+    ["jest --watch", true],
+    ["jest --watchAll", true],
+    ["tsc --watch", true],
+    ["webpack --watch", true],
     // verify commands and bare test/build/lint invocations are NOT mutating
     ["npm test", false],
     ["npm run build", false],
@@ -316,7 +350,11 @@ describe("isMutatingCommand", () => {
     ["make push-images", false],
     // mvn/gradle install run the test suite -> intentionally NOT classified as mutating
     ["mvn install", false],
-    ["gradle install", false]
+    ["gradle install", false],
+    // --no-watch negates watch mode, and a bare -w is ambiguous (npm/yarn/pnpm use it
+    // for the workspace flag), so neither is treated as watch mode.
+    ["jest --no-watch", false],
+    ["npm run build -w packages/web", false]
   ])("classifies %s as %s", (command, expected) => {
     expect(isMutatingCommand(command)).toBe(expected);
   });
@@ -526,6 +564,15 @@ describe("parseAndValidateQualityGate verify-don't-mutate", () => {
 
   it("coerces a deploy command mis-categorized as test to advisory", () => {
     const result = parseAndValidateQualityGate(readyCheck("make deploy", "test", true));
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.file.checks[0]!.required).toBe(false);
+  });
+
+  it("coerces a watch-mode script (mis-categorized as test) to advisory", () => {
+    // The agent emits `npm run -s test:watch` as a required test check. Category
+    // alone would let it block, but watch mode hangs the no-timeout executor, so the
+    // command-text guard must demote it to advisory so it never blocks and never runs.
+    const result = parseAndValidateQualityGate(readyCheck("npm run -s test:watch", "test", true));
     expect(result.ok).toBe(true);
     if (result.ok) expect(result.file.checks[0]!.required).toBe(false);
   });
@@ -802,6 +849,28 @@ describe("planProjectChecks verify-don't-mutate guard", () => {
       checks: [
         { name: "publish", category: "build", command: "npm publish", required: true, evidence: ["CI"] },
         { name: "deploy", category: "test", command: "make deploy", required: true, evidence: ["CI"] }
+      ]
+    });
+    const plan = await planProjectChecks(root, project.id, repo);
+    expect(plan.source).toBe("quality-gate");
+    expect(plan.checks).toEqual([]);
+  });
+
+  it("does not block on a stored watch-mode check, even required and categorized as test", async () => {
+    // Stored configs are re-read with only a loose shape check, so a pre-fix config
+    // may carry `npm run -s test:watch` as required:true under a verification
+    // category. The plan boundary must re-enforce the watch guard so a watch script
+    // never reaches the no-timeout executor (which would hang the gate).
+    await writeQualityGate(root, project.id, {
+      status: "ready",
+      checks: [
+        {
+          name: "test-watch",
+          category: "test",
+          command: "npm run -s test:watch",
+          required: true,
+          evidence: ["package.json"]
+        }
       ]
     });
     const plan = await planProjectChecks(root, project.id, repo);

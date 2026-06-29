@@ -190,10 +190,29 @@ export function isVerificationCategory(category: GateCategory): boolean {
  * `provision`, `upgrade`, `up`) as a standalone token as mutating. Verb boundaries are
  * anchored to start/space on both sides so a token that is merely part of a larger
  * target (`cargo build --release`, `make release-notes`, `make apply-migrations`,
- * `npm run deploy-tests`) is not mis-classified.
+ * `npm run deploy-tests`) is not mis-classified. Watch mode (`jest`/`tsc`/`webpack`
+ * `--watch`, or a script named `watch`/`test:watch`/`build-watch`) is treated the same
+ * way as `serve`: it runs indefinitely instead of verifying behaviour, and the gate
+ * executor spawns with no per-command bound, so a watch script would hang it forever.
+ * `--no-watch` is excluded (it negates watch), and bare `-w` is excluded (ambiguous:
+ * npm/yarn/pnpm use it for the workspace flag).
  */
 export function isMutatingCommand(command: string): boolean {
   const c = command.trim();
+  // Watch mode: never exits on its own. Caught in two shapes. (1) An npm/yarn/pnpm/bun
+  // script whose name is `watch` or ends in `:watch`/`-watch`: the wrapper exposes the
+  // name as the final token, so test it there, and skip it when that token is a `--flag`
+  // so `--no-watch` is not matched via its trailing `-watch`. (2) A `--watch*` flag
+  // (`--watch`, `--watchAll`, `--watch-poll`) on a direct jest/tsc/webpack invocation,
+  // anchored to an argument boundary so `--no-watch` (which starts `--no`, not `--watch`)
+  // is not matched. Watch mode runs indefinitely instead of verifying behaviour, the
+  // same class as `serve`, and the gate executor has no per-command bound, so a watch
+  // script left as required would hang the gate forever.
+  const lastToken = c.split(/\s+/).pop() ?? "";
+  if (lastToken.length > 0 && !lastToken.startsWith("--") && /(?:^|[:-])watch$/i.test(lastToken)) {
+    return true;
+  }
+  if (/(?:^|\s)--watch/i.test(c)) return true;
   // Dependency setup: install or fetch packages rather than verify behaviour.
   if (/^(?:npm|yarn|pnpm|bun)\s+(?:install|ci|i|add)\b/.test(c)) return true;
   if (/^(?:pip3?|poetry)\s+(?:install|add)\b/.test(c)) return true;

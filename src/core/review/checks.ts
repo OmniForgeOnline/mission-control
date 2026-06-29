@@ -95,6 +95,16 @@ export interface CheckSummary {
 
 const MAX_OUTPUT_BYTES = 32 * 1024;
 export const DEFAULT_CHECK_REMEDIATION_ROUNDS = 3;
+/**
+ * Per-command wall-clock backstop. The gate now runs commands discovered from
+ * manifests, docs, and CI (not just operator-authored ones), and the executor spawns
+ * with `shell: false`; a command that does not exit on its own would otherwise hang
+ * the gate indefinitely. Ten minutes is well beyond any single verification command
+ * expected within one turn, so it only ever bounds a genuine hang (a watch script that
+ * slipped classification, a dev server, a prompt blocking on stdin) rather than
+ * false-failing a legitimate suite.
+ */
+export const DEFAULT_CHECK_TIMEOUT_MS = 10 * 60 * 1000;
 
 function clipOutput(output: string): string {
   if (output.length <= MAX_OUTPUT_BYTES) return output;
@@ -351,7 +361,7 @@ export async function runCheckPlan(
     if (!cmd) continue;
     const runCwd = spec.cwd ? path.resolve(workspacePath, spec.cwd) : workspacePath;
     onChunk?.(`\n[check] ${spec.name}: ${spec.command}\n`);
-    const { exitCode, output } = await runShell(cmd, args, runCwd, onChunk);
+    const { exitCode, output } = await runShell(cmd, args, runCwd, onChunk, DEFAULT_CHECK_TIMEOUT_MS);
     results.push({
       name: spec.name,
       command: spec.command,
