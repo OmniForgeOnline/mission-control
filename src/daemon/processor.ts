@@ -1,5 +1,6 @@
 import { buildFollowupCapturePrompt } from "../core/review/followup-capture.ts";
-import { describeCheckPlan, planChecks } from "../core/review/checks.ts";
+import { describeCheckPlan } from "../core/review/checks.ts";
+import { planProjectChecks } from "../core/projects/project-checks.ts";
 import {
   formatWorkspaceArtifactsSection,
   gatherWorkspaceArtifacts
@@ -295,7 +296,7 @@ export async function runTaskTurn(
             skills,
             workspace,
             memorySection,
-            describeCheckPlan(await planChecks(workspace.cwd))
+            describeCheckPlan(await planProjectChecks(root, refreshed.projectId, workspace.cwd))
           )
         : buildFollowupPrompt(refreshed, root, memorySection);
     }

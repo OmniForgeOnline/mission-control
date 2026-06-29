@@ -1,12 +1,13 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import path from "node:path";
 import os from "node:os";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import request from "supertest";
 
 import { createServer } from "../src/server/app.ts";
 import { onboardProject, listProjects, removeProject, updateProject } from "../src/core/projects/registry.ts";
 import { pickerCommands, parsePickerOutput, pickFolder } from "../src/core/projects/folder-picker.ts";
+import { DeterministicAgentRunner } from "./helpers/deterministic-runner.ts";
 
 describe("project registry", () => {
   let tmp: string;
@@ -255,6 +256,127 @@ describe("project API", () => {
     const read = await request(app).get(`/api/projects/${id}/quality`);
     expect(read.status).toBe(200);
     expect(read.body).toHaveProperty("domains");
+  });
+
+  it("does not kick off background codex generation when onboarding in test mode", async () => {
+    const repoDir = path.join(tmp, "my-app");
+    const { execSync } = await import("node:child_process");
+    execSync("git init my-app", { cwd: tmp });
+    const created = await request(app).post("/api/projects").send({ repoPath: repoDir, name: "My App" });
+    const id = created.body.id as string;
+
+    // Onboarding must stay hermetic in test mode: no fire-and-forget generation
+    // that would spawn a real codex subprocess. The gate stays at its pending
+    // placeholder for the whole window instead of flipping to "generating".
+    for (let i = 0; i < 8; i++) {
+      const gate = await request(app).get(`/api/projects/${id}/quality-gate`);
+      expect(gate.status).toBe(200);
+      expect(gate.body.status).toBe("pending");
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+  });
+});
+
+describe("projects quality-gate API", () => {
+  let tmp: string;
+  let app: ReturnType<typeof createServer>;
+
+  beforeEach(async () => {
+    tmp = await mkdtemp(path.join(os.tmpdir(), "harness-qg-api-"));
+    const { execSync } = await import("node:child_process");
+    execSync("git init", { cwd: tmp });
+    execSync("git config user.email t@t.com", { cwd: tmp });
+    execSync("git config user.name t", { cwd: tmp });
+    execSync("git commit --allow-empty -m init", { cwd: tmp });
+  });
+
+  afterEach(async () => {
+    await rm(tmp, { recursive: true, force: true }).catch(() => {});
+  });
+
+  async function onboardPyProject(): Promise<string> {
+    const repoDir = path.join(tmp, "svc");
+    const { execSync } = await import("node:child_process");
+    execSync("git init svc", { cwd: tmp });
+    await writeFile(
+      path.join(repoDir, "pyproject.toml"),
+      "[tool.ruff]\nline-length = 100\n\n[tool.pytest.ini_options]\ntestpaths = [\"tests\"]\n",
+      "utf8"
+    );
+    const created = await request(app).post("/api/projects").send({ repoPath: repoDir, name: "svc" });
+    return created.body.id as string;
+  }
+
+  async function onboardEmptyRepo(): Promise<string> {
+    const repoDir = path.join(tmp, "blank");
+    const { execSync } = await import("node:child_process");
+    execSync("git init blank", { cwd: tmp });
+    const created = await request(app).post("/api/projects").send({ repoPath: repoDir, name: "blank" });
+    return created.body.id as string;
+  }
+
+  it("regenerates a ready gate from agent output for a Python repo", async () => {
+    const runner = new DeterministicAgentRunner("claude");
+    runner.setReplies([
+      JSON.stringify({
+        status: "ready",
+        checks: [
+          { name: "lint", category: "lint", command: "ruff check .", required: true, evidence: ["pyproject.toml [tool.ruff]"] },
+          { name: "tests", category: "test", command: "pytest", required: true, evidence: ["pyproject.toml [tool.pytest]"] }
+        ],
+        rationale: "declared"
+      })
+    ]);
+    app = createServer({ root: tmp, testMode: true, runner });
+
+    const id = await onboardPyProject();
+    const res = await request(app).post(`/api/projects/${id}/quality-gate/regenerate`);
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe("ready");
+    const cmds = res.body.checks.map((c: { command: string }) => c.command);
+    expect(cmds).toContain("ruff check .");
+    expect(cmds).toContain("pytest");
+  });
+
+  it("regenerates a ready gate from deterministic synthesis when the agent fails", async () => {
+    const runner = new DeterministicAgentRunner("claude");
+    runner.setReplies(["I cannot help with that"]);
+    app = createServer({ root: tmp, testMode: true, runner });
+
+    const id = await onboardPyProject();
+    const res = await request(app).post(`/api/projects/${id}/quality-gate/regenerate`);
+    expect(res.status).toBe(200);
+    // No generic gate: the correct per-project commands are synthesized from evidence.
+    expect(res.body.status).toBe("ready");
+    const cmds = res.body.checks.map((c: { command: string }) => c.command);
+    expect(cmds).toContain("ruff check .");
+    expect(cmds).toContain("pytest");
+  });
+
+  it("regenerates an incomplete gate (never generic) for an evidence-less repo", async () => {
+    const runner = new DeterministicAgentRunner("claude");
+    runner.setReplies(["nope"]);
+    app = createServer({ root: tmp, testMode: true, runner });
+
+    const id = await onboardEmptyRepo();
+    const res = await request(app).post(`/api/projects/${id}/quality-gate/regenerate`);
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe("incomplete");
+    expect(res.body.checks).toEqual([]);
+    expect(res.body.needsResolution.length).toBeGreaterThan(0);
+  });
+
+  it("GET /quality-gate returns the stored config after regeneration", async () => {
+    const runner = new DeterministicAgentRunner("claude");
+    runner.setReplies(["garbage"]);
+    app = createServer({ root: tmp, testMode: true, runner });
+
+    const id = await onboardPyProject();
+    await request(app).post(`/api/projects/${id}/quality-gate/regenerate`);
+    const read = await request(app).get(`/api/projects/${id}/quality-gate`);
+    expect(read.status).toBe(200);
+    expect(read.body.status).toBe("ready");
+    expect(read.body.generatedAt).toBeTruthy();
   });
 });
 

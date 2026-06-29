@@ -5,10 +5,10 @@ import { canResumeAgentSession, agentSessionFromTurn, hashStableInstructions } f
 import {
   buildCheckRemediationPrompt,
   describeChecksOutcome,
-  runChecks,
   summarizeFailures,
   type CheckSummary
 } from "../core/review/checks.ts";
+import { runProjectChecks } from "../core/projects/project-checks.ts";
 import {
   effortForRunner,
   stepModifiesRepo,
@@ -168,7 +168,12 @@ export async function runInlineChecksRemediationLoop(
     // re-runs these exact commands and blocks on failure", so a detected check
     // that fails must hold the workflow here rather than advancing after only
     // posting the outcome. noChecks and validated outcomes complete as usual.
-    const checks = await runChecks(params.workspace.cwd, params.onOutput);
+    const checks = await runProjectChecks(
+      params.root,
+      params.task.projectId,
+      params.workspace.cwd,
+      params.onOutput
+    );
     await postChecksOutcomeMessage(params.root, params.task, checks);
     if (!checks.pass) {
       await markTaskBlocked(params.root, params.task.id, "Mechanical checks failed");
@@ -183,7 +188,12 @@ export async function runInlineChecksRemediationLoop(
   let lastFingerprint = "";
 
   for (;;) {
-    const checks = await runChecks(params.workspace.cwd, params.onOutput);
+    const checks = await runProjectChecks(
+      params.root,
+      params.task.projectId,
+      params.workspace.cwd,
+      params.onOutput
+    );
     if (checks.skipped || checks.pass) {
       await postChecksOutcomeMessage(params.root, task, checks);
       return { ok: true, checks, task };

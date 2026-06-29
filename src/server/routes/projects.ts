@@ -19,6 +19,11 @@ import {
   readProjectQuickstarts,
   startProjectQuickstarts
 } from "../../core/projects/quickstarts.ts";
+import { readProjectQualityGate } from "../../core/projects/quality-gate.ts";
+import {
+  generateProjectQualityGate,
+  startProjectQualityGate
+} from "../../core/projects/quality-gate-generation.ts";
 import {
   computeProjectQualityGrades,
   type QualityFile
@@ -88,9 +93,18 @@ export function createProjectsRouter(options: ServerOptions): Router {
         input.name = body.name.trim();
       }
       const project = await onboardProject(options.root, input);
-      // Tailor the quick starts to the repo in the background (read-only plan
-      // turn); the response does not wait on it. The UI polls /quickstarts.
-      startProjectQuickstarts(options.root, project, turnOptions(options));
+      // Tailor quick starts and generate a quality-gate config in the background
+      // (read-only plan turns); the response does not wait on either. Skip both
+      // in test mode so the suite never spawns real codex subprocesses that
+      // outlive their temp dirs. Tests that need a generated config call the
+      // /quickstarts/regenerate or /quality-gate/regenerate routes with a runner.
+      const turns = turnOptions(options);
+      if (!turns.wait) {
+        startProjectQuickstarts(options.root, project, turns);
+        // Await the `generating` write so a project-scoped check plan read issued
+        // the moment onboarding responds never sees the `pending` baseline interim.
+        await startProjectQualityGate(options.root, project, turns);
+      }
       res.json(project);
     })
   );
@@ -229,6 +243,31 @@ export function createProjectsRouter(options: ServerOptions): Router {
       }
       startProjectQuickstarts(options.root, project, opts);
       res.json(await readProjectQuickstarts(options.root, projectId));
+    })
+  );
+
+  router.get(
+    "/projects/:id/quality-gate",
+    asyncRoute(async (req, res) => {
+      const projectId = param(req.params["id"], "id");
+      await requireProject(options.root, projectId);
+      res.json(await readProjectQualityGate(options.root, projectId));
+    })
+  );
+
+  router.post(
+    "/projects/:id/quality-gate/regenerate",
+    asyncRoute(async (req, res) => {
+      const projectId = param(req.params["id"], "id");
+      const project = await getProject(options.root, projectId);
+      if (!project) throw new Error(`Project not found: ${projectId}`);
+      const opts = turnOptions(options);
+      if (opts.wait) {
+        res.json(await generateProjectQualityGate(options.root, project, opts));
+        return;
+      }
+      await startProjectQualityGate(options.root, project, opts);
+      res.json(await readProjectQualityGate(options.root, projectId));
     })
   );
 
