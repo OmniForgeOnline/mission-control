@@ -117,6 +117,33 @@ describe("gatherProjectIntel", () => {
     expect(all).toContain("npm run build");
   });
 
+  it("collects root-level DEVELOPMENT.md and DEVELOPING.md as contributor docs", async () => {
+    // The DOC_GLOB filename allowlist must match the develop family beyond the bare
+    // `develop` token: DEVELOPMENT.md / DEVELOPING.md are common homes for the build,
+    // test, and lint instructions the synthesis fallback relies on. A trailing \b on
+    // the `develop` alternation silently drops them, degrading the gate to incomplete
+    // for a repo that genuinely documents its commands.
+    await writeFile(
+      path.join(root, "DEVELOPMENT.md"),
+      ["## Developing", "", "```", "npm test", "npm run lint", "```"].join("\n"),
+      "utf8"
+    );
+    await writeFile(
+      path.join(root, "DEVELOPING.md"),
+      "Build with `npm run build`.\n",
+      "utf8"
+    );
+
+    const intel = await gatherProjectIntel(root);
+    const paths = intel.docs.map((d) => d.path);
+    expect(paths).toContain("DEVELOPMENT.md");
+    expect(paths).toContain("DEVELOPING.md");
+
+    const dev = intel.docs.find((d) => d.path === "DEVELOPMENT.md");
+    expect(dev).toBeTruthy();
+    expect(dev!.commands.join(" ")).toContain("npm test");
+  });
+
   it("collects build/test/lint commands from docs/ and .github/ subdirectories", async () => {
     await mkdir(path.join(root, "docs"), { recursive: true });
     await mkdir(path.join(root, ".github"), { recursive: true });

@@ -275,6 +275,22 @@ describe("isMutatingCommand", () => {
     ["cargo publish", true],
     ["mvn deploy", true],
     ["gradle publish", true],
+    // tool-agnostic deploy/publish tools outside the curated npm/make/cargo/mvn/gradle
+    // list: cdk deploy, terraform apply, kubectl apply, helm upgrade, serverless/sam
+    // deploy, pulumi up, vercel deploy, docker push, git push, terraform destroy
+    // mutate published state or infrastructure, so they must be treated as mutating
+    // even though the tool is not enumerated (the agent may emit them despite intent).
+    ["cdk deploy", true],
+    ["terraform apply", true],
+    ["kubectl apply -f k8s.yaml", true],
+    ["helm upgrade --install release ./chart", true],
+    ["serverless deploy", true],
+    ["sam deploy", true],
+    ["pulumi up", true],
+    ["vercel deploy", true],
+    ["docker push ghcr.io/org/app", true],
+    ["git push origin main", true],
+    ["terraform destroy", true],
     // verify commands and bare test/build/lint invocations are NOT mutating
     ["npm test", false],
     ["npm run build", false],
@@ -293,6 +309,11 @@ describe("isMutatingCommand", () => {
     ["cargo build --release", false],
     ["make release-notes", false],
     ["npm run deploy-tests", false],
+    // a mutating *token* that is part of a larger hyphenated target is NOT a mutating
+    // verb: `make apply-migrations` / `make push-images` are bespoke targets, so the
+    // tool-agnostic clause's whitespace anchoring must not trip on the embedded verb.
+    ["make apply-migrations", false],
+    ["make push-images", false],
     // mvn/gradle install run the test suite -> intentionally NOT classified as mutating
     ["mvn install", false],
     ["gradle install", false]
@@ -505,6 +526,17 @@ describe("parseAndValidateQualityGate verify-don't-mutate", () => {
 
   it("coerces a deploy command mis-categorized as test to advisory", () => {
     const result = parseAndValidateQualityGate(readyCheck("make deploy", "test", true));
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.file.checks[0]!.required).toBe(false);
+  });
+
+  it("coerces a non-enumerated deploy tool (mis-categorized as build) to advisory", () => {
+    // The agent files `cdk deploy` under a verification category ("build") and marks
+    // it required. `cdk` is not in the curated npm/make/cargo/mvn/gradle verb list,
+    // so without the tool-agnostic mutating-verb guard this would be persisted
+    // required:true and would mutate infrastructure on every turn. The guard must
+    // still demote it to advisory so it never blocks and never runs.
+    const result = parseAndValidateQualityGate(readyCheck("cdk deploy", "build", true));
     expect(result.ok).toBe(true);
     if (result.ok) expect(result.file.checks[0]!.required).toBe(false);
   });

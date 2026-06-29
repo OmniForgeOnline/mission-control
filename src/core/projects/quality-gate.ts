@@ -184,10 +184,13 @@ export function isVerificationCategory(category: GateCategory): boolean {
  * and docs. `mvn install` / `gradle install` are deliberately excluded: in those
  * tools `install` runs the test suite and packages artifacts (a real verify/build
  * step), not a dependency install; only their `deploy`/`publish` (which ship
- * artifacts) are treated as mutating. Verb boundaries are anchored to a following
- * space or end-of-string so a token that is merely part of a larger target
- * (`cargo build --release`, `make release-notes`, `npm run deploy-tests`) is not
- * mis-classified.
+ * artifacts) are treated as mutating. Because the curated list cannot enumerate every
+ * deploy tool, a tool-agnostic clause also treats any command carrying a mutating verb
+ * (`deploy`, `publish`, `apply`, `destroy`, `push`, `ship`, `release`, `serve`,
+ * `provision`, `upgrade`, `up`) as a standalone token as mutating. Verb boundaries are
+ * anchored to start/space on both sides so a token that is merely part of a larger
+ * target (`cargo build --release`, `make release-notes`, `make apply-migrations`,
+ * `npm run deploy-tests`) is not mis-classified.
  */
 export function isMutatingCommand(command: string): boolean {
   const c = command.trim();
@@ -209,6 +212,20 @@ export function isMutatingCommand(command: string): boolean {
   // mvn/gradle `deploy` ships artifacts to a repository; `publish` does the same
   // (gradle maven-publish). `install` is excluded (see above) as it runs tests.
   if (/^(?:mvn|gradle)\s+(?:deploy|publish)(?:\s|$)/.test(c)) return true;
+  // Tool-agnostic mutating verb: any program invoked with a deploy/publish/provision
+  // verb as a standalone token mutates published state or infrastructure rather than
+  // verifying behaviour. The curated patterns above cover npm/make/cargo/mvn/gradle,
+  // but the agent (or a CI/doc source) can emit any deploy tool (`cdk deploy`,
+  // `terraform apply`, `kubectl apply`, `helm upgrade`, `serverless deploy`,
+  // `sam deploy`, `pulumi up`, `vercel deploy`, `docker push`, `git push`), and
+  // without this guard such a command would slip through as a required check and
+  // mutate state every turn. The verb is delimited by start/space on both sides, not
+  // \b, so a token that merely contains it (`make apply-migrations`, `cargo build
+  // --release`, `npm run deploy-tests`) is not matched; this mirrors the anchoring of
+  // the patterns above and accepts the benign trade-off that a verb appearing later as
+  // a standalone argument (e.g. `--namespace deploy`) is coerced to advisory.
+  if (/(?:^|\s)(?:deploy|publish|apply|destroy|push|ship|release|serve|provision|upgrade|up)(?:\s|$)/.test(c))
+    return true;
   return false;
 }
 

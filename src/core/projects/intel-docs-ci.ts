@@ -6,7 +6,7 @@ import type { DetectedCommand, DocExcerpt, GateCategory } from "./intel.ts";
 
 const DOC_KEYWORDS =
   /\b(test|tests|pytest|lint|lints|ruff|eslint|biome|typecheck|type-check|mypy|tsc|build|compile|check|ci|format|prettier|black|make|npm|yarn|pnpm|cargo|gradle|mvn|go test|rake)\b/i;
-const DOC_GLOB = /^(readme|contributing|develop|building|hacking)\b.*\.(md|markdown|rst|txt)$/i;
+const DOC_GLOB = /^(readme|contributing|develop(?:ment|ing)?|building|hacking)\b.*\.(md|markdown|rst|txt)$/i;
 /** Doc-home directories: their presence signals documentation, so any doc file
  *  inside them is a candidate (e.g. `docs/build.md`, `.github/CONTRIBUTING.md`). */
 const DOC_DIRS = ["docs", "doc", ".docs", ".github"];
