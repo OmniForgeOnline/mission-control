@@ -264,7 +264,7 @@ export class HeadlessAgentRunner implements AgentRunner {
       if (dir) allowedDirs.push(dir);
     }
     return buildLaunchArgs(this.tool, this.pool, {
-      mode: request.mode === "plan" ? "plan" : "execute",
+      mode: request.mode === "plan" ? "plan" : request.mode === "classify" ? "classify" : "execute",
       prompt: request.prompt,
       cwd: request.cwd,
       allowedDirs,
