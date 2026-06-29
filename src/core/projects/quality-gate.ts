@@ -162,16 +162,36 @@ export function findUnsupportedShellSyntax(command: string): string | null {
 }
 
 /**
- * Dependency/setup commands install or fetch packages rather than verify behaviour.
- * The gate exists to verify, not mutate, so such a command must never become a
- * persisted check: it would mutate the working tree, hit the network, and fail
- * spuriously on registry issues every turn. Matches the common install/fetch forms
- * across ecosystems. `mvn install` / `gradle install` are deliberately excluded:
- * in those tools `install` runs the test suite and packages artifacts (a real
- * verify/build step), not a dependency install.
+ * Categories whose commands verify behaviour and so may block the gate. `format`
+ * is advisory (cosmetic), and the catch-all `other` is advisory too: a command we
+ * cannot pin to a known verification step must never fail the gate, since we cannot
+ * tell whether it mutates state, hits the network, or does nothing useful.
  */
-export function isDependencySetupCommand(command: string): boolean {
+const VERIFICATION_CATEGORIES = new Set<GateCategory>(["lint", "test", "typecheck", "build", "security"]);
+
+/** True for a category whose command may be required (block the gate). */
+export function isVerificationCategory(category: GateCategory): boolean {
+  return VERIFICATION_CATEGORIES.has(category);
+}
+
+/**
+ * Commands that install/fetch dependencies OR publish/deploy/serve/release, i.e.
+ * mutate state, hit the network, or run indefinitely instead of verifying behaviour.
+ * The gate exists to verify, not mutate, so such a command must never become a
+ * persisted check: it would mutate the working tree or published state, hit the
+ * network, and fail spuriously (or hang) every turn. Matches the common install/fetch
+ * forms across ecosystems plus the release/deploy verbs harvested from CI run steps
+ * and docs. `mvn install` / `gradle install` are deliberately excluded: in those
+ * tools `install` runs the test suite and packages artifacts (a real verify/build
+ * step), not a dependency install; only their `deploy`/`publish` (which ship
+ * artifacts) are treated as mutating. Verb boundaries are anchored to a following
+ * space or end-of-string so a token that is merely part of a larger target
+ * (`cargo build --release`, `make release-notes`, `npm run deploy-tests`) is not
+ * mis-classified.
+ */
+export function isMutatingCommand(command: string): boolean {
   const c = command.trim();
+  // Dependency setup: install or fetch packages rather than verify behaviour.
   if (/^(?:npm|yarn|pnpm|bun)\s+(?:install|ci|i|add)\b/.test(c)) return true;
   if (/^(?:pip3?|poetry)\s+(?:install|add)\b/.test(c)) return true;
   if (/^uv\s+(?:pip\s+install|sync|add)\b/.test(c)) return true;
@@ -181,6 +201,14 @@ export function isDependencySetupCommand(command: string): boolean {
   if (/^go\s+(?:mod\s+download|get)\b/.test(c)) return true;
   if (/^flutter\s+pub\s+get\b/.test(c)) return true;
   if (/^make\s+(?:install|deps)\b/.test(c)) return true;
+  // Release/deploy: publish, ship, serve, or run externally rather than verify.
+  if (/^(?:npm|yarn|pnpm|bun)\s+(?:run\s+)?(?:publish|deploy|serve|release|distribute|ship)(?:\s|$)/.test(c))
+    return true;
+  if (/^make\s+(?:publish|deploy|serve|release|distribute|ship)(?:\s|$)/.test(c)) return true;
+  if (/^cargo\s+publish(?:\s|$)/.test(c)) return true;
+  // mvn/gradle `deploy` ships artifacts to a repository; `publish` does the same
+  // (gradle maven-publish). `install` is excluded (see above) as it runs tests.
+  if (/^(?:mvn|gradle)\s+(?:deploy|publish)(?:\s|$)/.test(c)) return true;
   return false;
 }
 
@@ -263,11 +291,18 @@ export function parseAndValidateQualityGate(raw: string): QualityGateValidation 
       );
       continue;
     }
+    // The gate verifies, not mutates: only a known verification category that is not
+    // a mutating/network command may be persisted as required. A release/deploy/serve
+    // command (even one the agent mis-categorizes as build/test) or an unrecognized
+    // 'other'/format command is coerced to advisory (required: false) rather than
+    // rejected, so one over-eager check cannot discard a whole response, but it can
+    // also never block the gate or run on every turn.
+    const required = !isMutatingCommand(command) && isVerificationCategory(category) && check["required"] !== false;
     const built: QualityGateCheck = {
       name,
       category,
       command,
-      required: check["required"] === false ? false : true,
+      required,
       evidence
     };
     const workingDirectory = trimmed(check["workingDirectory"]);
@@ -339,17 +374,20 @@ export function synthesizeGateFromIntel(intel: ProjectIntel): QualityGateFile {
   /**
    * Add a vetted command as a check. A command is dropped (not emitted) when it is
    * a duplicate of one already added, when it relies on shell syntax the direct
-   * executor cannot run, or when it is a dependency-setup command that would
-   * mutate state instead of verifying it. The shell-syntax vetting mirrors what is
-   * enforced on agent output, so a CI/docs chain like `a && b` is rejected here
-   * rather than persisted to mis-run; the setup vetting keeps a CI step like
-   * `npm ci` from becoming a blocking, network-dependent check. Sources are walked
-   * highest confidence first: manifests/Makefile, then CI, then docs.
+   * executor cannot run, or when it is a mutating/network command (install, publish,
+   * deploy, serve, release) that would mutate state instead of verifying it. The
+   * shell-syntax vetting mirrors what is enforced on agent output, so a CI/docs
+   * chain like `a && b` is rejected here rather than persisted to mis-run; the
+   * mutating vetting keeps a CI step like `npm ci` or `npm publish` from becoming a
+   * blocking, network-dependent check. Only known verification categories are
+   * emitted as required; format and the catch-all 'other' are advisory, so a
+   * command whose effect we cannot pin down never fails the gate. Sources are
+   * walked highest confidence first: manifests/Makefile, then CI, then docs.
    */
   const addCheck = (command: string, category: GateCategory, source: string): void => {
     if (seen.has(command)) return;
     if (findUnsupportedShellSyntax(command) !== null) return;
-    if (isDependencySetupCommand(command)) return;
+    if (isMutatingCommand(command)) return;
     seen.add(command);
     const base = CATEGORY_LABELS[category] ?? "check";
     const count = usedNames.get(base) ?? 0;
@@ -359,7 +397,7 @@ export function synthesizeGateFromIntel(intel: ProjectIntel): QualityGateFile {
       name,
       category,
       command,
-      required: category !== "format",
+      required: isVerificationCategory(category),
       evidence: [source]
     });
   };

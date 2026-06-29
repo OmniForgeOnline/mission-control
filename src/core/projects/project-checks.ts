@@ -9,7 +9,9 @@ import {
 } from "../review/checks.ts";
 import {
   findUnsupportedShellSyntax,
+  isMutatingCommand,
   isRepoRelativePath,
+  isVerificationCategory,
   readProjectQualityGate,
   type QualityGateCheck,
   type QualityGateFile
@@ -114,7 +116,17 @@ export async function planProjectChecks(
     };
   }
 
-  const blocking = gate.checks.filter((check) => check.required !== false);
+  // Re-enforce verify-don't-mutate at the plan boundary. Stored configs are re-read
+  // with only a loose shape check, so a pre-fix or hand-edited config may carry a
+  // mutating/network command (publish/deploy/serve/release) or an unrecognized
+  // 'other' command as required. Only a required check in a known verification
+  // category that is not a mutating command may block, mirroring how the
+  // path-containment and shell-syntax guards are re-applied here, never trusting a
+  // persisted field alone to decide what runs every turn.
+  const blocking = gate.checks.filter(
+    (check) =>
+      check.required !== false && isVerificationCategory(check.category) && !isMutatingCommand(check.command)
+  );
   if (blocking.length === 0) {
     return { checks: [], maxRounds: DEFAULT_CHECK_REMEDIATION_ROUNDS, source: "quality-gate" };
   }

@@ -74,6 +74,7 @@ ${intelPromptSection(intel)}
 ## Rules (strict)
 
 - The config schema is language/tool-agnostic. Emit categories from: lint, test, typecheck, build, format, security, other. Never hard-code a single toolchain.
+- The gate verifies, it does not mutate. Emit ONLY commands that check the repo (lint, test, typecheck, build, security, format). NEVER emit install/fetch, publish, deploy, serve, release, or ship commands; they mutate state or hit the network and have no place as a check. Categorize honestly: a command that does not verify belongs in no category, not smuggled under "build" or "test".
 - Prefer EXPLICIT repo-provided commands (docs, Makefile targets, package scripts, CI steps) over inferred invocations.
 - Every check MUST cite concrete evidence (the file/section/target it came from). A command with no repo evidence is a guess — do not emit it.
 - Each check command MUST be a single direct invocation: one program and its arguments, nothing more. The gate runs commands without a shell, so do NOT chain with && or ||, pipe, redirect, background with &, use command substitution ($(...) or backticks), prefix a leading NAME=value assignment, or prefix with cd. A chain like \`npm run lint && npm run test\` would silently run only the first stage; emit two separate checks instead, and set "workingDirectory" to run a command from a subdirectory.
