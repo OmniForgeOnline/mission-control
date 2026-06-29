@@ -54,7 +54,7 @@ if (stuckPushed.reconciled > 0) {
   console.log(`Reconciled ${stuckPushed.reconciled} stuck pushed task(s) on pre-review steps.`);
 }
 
-const app = createServer({ root, staticDir });
+const app = createServer({ root, staticDir, packageRoot });
 
 const uiIndex = path.join(staticDir, "index.html");
 if (!existsSync(uiIndex)) {
