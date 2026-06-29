@@ -14,6 +14,7 @@ import { createProjectsRouter } from "./routes/projects.ts";
 import { createRunsRouter } from "./routes/runs.ts";
 import { createSettingsRouter } from "./routes/settings.ts";
 import { createTasksRouter } from "./routes/tasks.ts";
+import { createVersionRouter } from "./routes/version.ts";
 import { createWorkflowsRouter } from "./routes/workflows.ts";
 import type { ServerOptions } from "./routes/helpers.ts";
 
@@ -53,6 +54,7 @@ export function createServer(options: ServerOptions): express.Express {
   app.use("/api", createProjectsRouter(options));
   app.use("/api", createConnectorsRouter(options));
   app.use("/api", createWorkflowsRouter(options));
+  app.use("/api", createVersionRouter(options));
 
   app.post("/api/shutdown", (_req, res) => {
     res.json({ shutting_down: true });

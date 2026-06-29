@@ -9,6 +9,7 @@ import { openPalette } from "@ui/overlays/palette.js";
 import { dismissTopmostOverlay, hasOpenOverlay } from "@ui/overlays/dialog.js";
 import { openShortcuts } from "@ui/overlays/shortcuts.js";
 import { initTargetSuggest } from "@ui/overlays/target-suggest.js";
+import { startVersionPolling } from "@ui/shell/update-pill.js";
 import { connectStateEvents, onConnectionChange } from "@ui/data/events.js";
 import {
   includesScope,
@@ -217,4 +218,5 @@ onConnectionChange(updateConnectionStatus);
 connectStateEvents(handleStateEvent);
 render();
 setupRailResize();
+startVersionPolling();
 void refresh(["all"]);

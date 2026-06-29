@@ -137,6 +137,61 @@
   gap: var(--s-2);
 }
 
+/* ---------- npm update dialog ---------- */
+
+.update-dialog {
+  width: min(460px, 92vw);
+  margin: auto;
+}
+
+.update-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-4);
+  padding: var(--s-5);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-lg);
+  background: var(--bg-elev);
+  box-shadow: var(--shadow-overlay);
+}
+
+.update-title {
+  margin: 0;
+  font-size: var(--t-lg);
+  font-weight: var(--w-semi);
+}
+
+.update-message {
+  margin: 0;
+  color: var(--ink);
+  font-size: var(--t-md);
+  line-height: 1.5;
+}
+
+.update-message strong {
+  color: var(--ink-strong);
+  font-weight: var(--w-semi);
+}
+
+.update-hint {
+  margin: 0;
+  color: var(--ink-muted);
+  font-size: var(--t-sm);
+}
+
+.update-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--s-2);
+}
+
+.update-status {
+  margin: 0;
+  color: var(--ink-muted);
+  font-size: var(--t-sm);
+}
+
 /* ---------- tail status banners ---------- */
 
 .tail-status {

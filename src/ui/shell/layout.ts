@@ -5,6 +5,7 @@ import { navigate } from "@ui/app/router.js";
 import { countTaskBuckets, type TaskFilter } from "@ui/features/tasks/filters.js";
 import { taskIsComplete, uiLegacyStatus } from "@ui/app/task-status.js";
 import type { HarnessTask } from "@ui/app/types.js";
+import { updatePillHtml, bindUpdatePill } from "@ui/shell/update-pill.js";
 
 let eventsConnected = true;
 const PROJECT_COLLAPSE_KEY = "harness:rail:collapsed-projects";
@@ -74,6 +75,7 @@ export function renderAppBar(): void {
         <span class="brand-sub">Mission Control</span>
       </span>
     </button>
+    ${updatePillHtml()}
     <div class="app-bar-spacer"></div>
     <button class="palette-trigger" id="paletteTrigger" title="Open command palette">
       ${icon("search", 14)}
@@ -120,6 +122,8 @@ export function renderAppBar(): void {
       }
     });
   });
+
+  bindUpdatePill();
 }
 
 interface RailItem {

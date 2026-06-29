@@ -16,6 +16,14 @@ export interface ServerOptions {
   vault?: ConnectorVault;
   /** Optional editor launcher used by tests to avoid spawning real desktop apps. */
   editorSpawner?: EditorSpawner;
+  /** Installed package root (where package.json + dist/ live). Drives version
+   * detection and the self-update flow. Defaults to a derivation from this
+   * module's location, which the server entry sets explicitly. */
+  packageRoot?: string;
+  /** Test injection for the detached updater spawn (avoids real process exit). */
+  updateSpawn?: (script: string, env: NodeJS.ProcessEnv) => boolean;
+  /** Test injection for the post-apply process exit (avoids real process exit). */
+  updateExit?: () => void;
 }
 
 export function asyncRoute(handler: express.RequestHandler): express.RequestHandler {
