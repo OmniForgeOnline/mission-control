@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 
 import { createServer } from "./app.ts";
 import { resolveListenHost } from "./bind-address.ts";
-import { removeServerInfo, resolveHarnessRoot, stopRunningServer, writeServerInfo } from "./control.ts";
+import { generateShutdownToken, removeServerInfo, resolveHarnessRoot, stopRunningServer, writeServerInfo } from "./control.ts";
 import { gracefulShutdown, setShutdownTarget } from "./lifecycle.ts";
 import { DEFAULT_HARNESS_ROOT, ensureHarnessRepository } from "../core/bootstrap/repository.ts";
 import { ensureLoginShellEnvironment } from "../core/agents/resolver.ts";
@@ -65,7 +65,11 @@ if (stuckPushed.reconciled > 0) {
   console.log(`Reconciled ${stuckPushed.reconciled} stuck pushed task(s) on pre-review steps.`);
 }
 
-const app = createServer({ root, staticDir, packageRoot });
+// Per-server shutdown token: required by /api/shutdown, written to server.json
+// for `mission-control stop`, and delivered to the UI through /api/state. One
+// value, generated once at boot, flows to all three carriers.
+const shutdownToken = generateShutdownToken();
+const app = createServer({ root, staticDir, packageRoot, shutdownToken });
 
 const uiIndex = path.join(staticDir, "index.html");
 if (!existsSync(uiIndex)) {
@@ -93,7 +97,7 @@ setShutdownTarget({
   daemon: daemonHandle,
   onShutdown: () => removeServerInfo(root)
 });
-await writeServerInfo(root, { pid: process.pid, port, host, startedAt: new Date().toISOString() });
+await writeServerInfo(root, { pid: process.pid, port, host, startedAt: new Date().toISOString(), shutdownToken });
 
 // Every entry point shares one graceful path: terminate running agent
 // processes, stop the daemon, close the server, then exit.

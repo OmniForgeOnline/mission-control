@@ -1,3 +1,4 @@
+import { randomBytes, timingSafeEqual } from "node:crypto";
 import { readFile, rm } from "node:fs/promises";
 import path from "node:path";
 
@@ -21,6 +22,32 @@ export interface ServerInfo {
   host: string;
   /** ISO timestamp the server started. */
   startedAt: string;
+  /**
+   * Unguessable per-server token a caller must present to trigger shutdown.
+   * Written to server.json so the CLI can read it; delivered to the same-origin
+   * UI via boot state. Together with the non-simple header it is sent in, this
+   * defeats CSRF (a cross-site form POST cannot set a custom header) and any
+   * remote caller that cannot read server.json.
+   */
+  shutdownToken: string;
+}
+
+/** Cryptographically random shutdown token: 256 bits, hex-encoded. */
+export function generateShutdownToken(): string {
+  return randomBytes(32).toString("hex");
+}
+
+/**
+ * Constant-time token comparison. Returns false when either side is absent or
+ * the lengths differ (the expected length is fixed per server, so the length
+ * check leaks nothing an attacker could exploit). Guards the /api/shutdown
+ * route against timing-based token recovery.
+ */
+export function verifyShutdownToken(provided: string | undefined, expected: string | undefined): boolean {
+  if (!provided || !expected) return false;
+  const providedBuf = Buffer.from(provided);
+  const expectedBuf = Buffer.from(expected);
+  return providedBuf.length === expectedBuf.length && timingSafeEqual(providedBuf, expectedBuf);
 }
 
 /** Location of the runtime server-info file under a harness root. */
@@ -52,7 +79,8 @@ export async function readServerInfo(root: string): Promise<ServerInfo | null> {
         pid: parsed.pid,
         port: parsed.port,
         host: parsed.host,
-        startedAt: typeof parsed.startedAt === "string" ? parsed.startedAt : ""
+        startedAt: typeof parsed.startedAt === "string" ? parsed.startedAt : "",
+        shutdownToken: typeof parsed.shutdownToken === "string" ? parsed.shutdownToken : ""
       };
     }
     return null;
@@ -103,14 +131,21 @@ export async function stopRunningServer(root: string = resolveHarnessRoot()): Pr
   try {
     const res = await fetch(url, {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      // The token read from server.json proves this caller is local and
+      // authorized; sent in a non-simple header so the request is never a
+      // browser-issued simple (CSRF-capable) POST.
+      headers: { "content-type": "application/json", "x-shutdown-token": info.shutdownToken },
       body: "{}",
       signal: AbortSignal.timeout(5_000)
     });
     if (!res.ok) {
+      const reason =
+        res.status === 401
+          ? "authentication token mismatch (server.json is stale or from another instance)"
+          : `HTTP ${res.status}`;
       return {
         ok: false,
-        message: `Mission Control did not acknowledge shutdown (HTTP ${res.status} at ${url}).`
+        message: `Mission Control did not acknowledge shutdown (${reason} at ${url}).`
       };
     }
     return {

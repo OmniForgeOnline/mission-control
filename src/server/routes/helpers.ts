@@ -14,6 +14,13 @@ export interface ServerOptions {
   staticDir?: string;
   homeRoot?: string;
   vault?: ConnectorVault;
+  /**
+   * Unguessable token a caller must present in the x-shutdown-token header to
+   * trigger /api/shutdown. When absent, createServer generates one and exposes
+   * it via /api/state boot state. Production sets it explicitly so the same
+   * value lands in server.json for the CLI.
+   */
+  shutdownToken?: string;
   /** Optional editor launcher used by tests to avoid spawning real desktop apps. */
   editorSpawner?: EditorSpawner;
   /** Installed package root (where package.json + dist/ live). Drives version
