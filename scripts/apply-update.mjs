@@ -140,32 +140,43 @@ async function main() {
   const install = await run("npm", ["install", "-g", `${PKG}@latest`], 300_000);
   log(`npm install exit=${install.code}; stderr tail=${install.stderr.slice(-300)}`);
 
+  // Report success only when the running app actually moved to the freshly
+  // installed package: install must exit 0 AND the new entry must be resolved.
+  // Otherwise we relaunch the current install and record a failed/degraded
+  // outcome, so the operator is never told the update succeeded while the old
+  // version keeps running.
   let launchRoot = ORIG_ROOT;
   let toVersion = null;
+  let applied = false;
+  const at = new Date().toISOString();
   if (install.code === 0) {
     const prefix = await npmPrefix();
     const candidate = prefix ? path.join(prefix, "lib", "node_modules", PKG) : "";
     if (candidate && existsSync(path.join(candidate, "dist", "server.js"))) {
       launchRoot = candidate;
       toVersion = readVersion(candidate);
+      applied = true;
+      writeStatus({ result: "ok", from: FROM_VERSION, to: toVersion, at });
     } else {
       // Installed but the new entry is not where we expect; relaunch the
-      // current install so the app stays alive.
+      // current install so the app stays alive, and surface a degraded
+      // outcome rather than claiming success.
       launchRoot = ORIG_ROOT;
-      log(`install ok but launch entry not found at ${candidate || "(no prefix)"}; falling back`);
+      const message =
+        `Installed ${PKG}@latest but the new entry could not be located at ` +
+        `${candidate || "(no prefix)"}; relaunched the current install. ` +
+        `Run "mission-control" again to confirm the new version.`;
+      writeStatus({ result: "failed", from: FROM_VERSION, to: null, at, message });
+      log(message);
     }
   } else {
     const message =
       `Global install failed (exit ${install.code}). ` +
       `Run manually: npm install -g ${PKG}@latest. ` +
       install.stderr.slice(0, 300);
-    writeStatus({ result: "failed", from: FROM_VERSION, to: null, at: new Date().toISOString(), message });
+    writeStatus({ result: "failed", from: FROM_VERSION, to: null, at, message });
     log(message);
     launchRoot = ORIG_ROOT;
-  }
-
-  if (install.code === 0) {
-    writeStatus({ result: "ok", from: FROM_VERSION, to: toVersion, at: new Date().toISOString() });
   }
 
   const entry = path.join(launchRoot, "dist", "server.js");
@@ -197,7 +208,7 @@ async function main() {
     log(`relaunched ${entry} (pid ${child.pid})`);
   } catch (err) {
     log(`relaunch failed: ${String(err)}`);
-    if (install.code === 0) {
+    if (applied) {
       writeStatus({
         result: "ok",
         from: FROM_VERSION,
