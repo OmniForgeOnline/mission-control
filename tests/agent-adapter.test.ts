@@ -101,6 +101,46 @@ describe("opencode runner adapter", () => {
   });
 });
 
+describe("claude runner adapter", () => {
+  function claudeSpec(mode: LaunchRequest["mode"]) {
+    const bundle = builtinAgentConfigBundle();
+    const tool = bundle.tools.find((t) => t.id === "claude")!;
+    const pool = bundle.pools.find((p) => p.id === "claude-default")!;
+    return buildLaunchArgs(tool, pool, { ...request, mode });
+  }
+
+  it("uses --permission-mode plan in plan mode", () => {
+    const args = claudeSpec("plan").args;
+    expect(args).toContain("--permission-mode");
+    expect(args[args.indexOf("--permission-mode") + 1]).toBe("plan");
+    expect(args).not.toContain("--dangerously-skip-permissions");
+  });
+
+  it("classify mode uses default permission (no planning session, not execute)", () => {
+    const args = claudeSpec("classify").args;
+    expect(args).toContain("--permission-mode");
+    expect(args[args.indexOf("--permission-mode") + 1]).toBe("default");
+    expect(args).not.toContain("--dangerously-skip-permissions");
+  });
+
+  it("execute mode bypasses permissions", () => {
+    const args = claudeSpec("execute").args;
+    expect(args).toContain("--dangerously-skip-permissions");
+    expect(args).not.toContain("--permission-mode");
+  });
+});
+
+describe("codex runner adapter", () => {
+  it("classify mode reuses the read-only sandbox", () => {
+    const bundle = builtinAgentConfigBundle();
+    const tool = bundle.tools.find((t) => t.id === "codex")!;
+    const pool = bundle.pools.find((p) => p.id === "codex-default")!;
+    const spec = buildLaunchArgs(tool, pool, { ...request, mode: "classify" });
+    expect(spec.args).toContain("-s");
+    expect(spec.args[spec.args.indexOf("-s") + 1]).toBe("read-only");
+  });
+});
+
 describe("session isolation by tool and model pool", () => {
   function taskWith(agent: string, modelPool?: string): HarnessTask {
     const ts = new Date().toISOString();

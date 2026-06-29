@@ -106,22 +106,55 @@ export function repairJsonStringLiterals(raw: string): string {
   return out;
 }
 
-export type IntakeJsonExtractFormat = "raw" | "fence";
+/** Find the first balanced {...} substring in `raw`, ignoring braces inside
+ * JSON string literals. Fallback for replies whose JSON object is embedded in
+ * prose (e.g. "Sure! Here it is:\n{...}\nLet me know."). */
+function firstJsonObject(raw: string): string | null {
+  const start = raw.indexOf("{");
+  if (start < 0) return null;
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  for (let i = start; i < raw.length; i++) {
+    const ch = raw[i];
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+      } else if (ch === "\\") {
+        escaped = true;
+      } else if (ch === '"') {
+        inString = false;
+      }
+      continue;
+    }
+    if (ch === '"') {
+      inString = true;
+    } else if (ch === "{") {
+      depth++;
+    } else if (ch === "}") {
+      depth--;
+      if (depth === 0) return raw.slice(start, i + 1);
+    }
+  }
+  return null;
+}
 
-function extractIntakeJsonText(raw: string): { text: string; format: IntakeJsonExtractFormat } | null {
+/** Extract the JSON payload from an intake reply. Accepts an object that starts
+ * the reply, a fenced code block, or an object embedded in surrounding prose. */
+function extractIntakeJsonText(raw: string): string | null {
   const trimmed = raw.trim();
   if (!trimmed) return null;
 
   if (trimmed.startsWith("{")) {
-    return { text: trimmed, format: "raw" };
+    return trimmed;
   }
 
   const fence = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/i)?.[1]?.trim();
   if (fence) {
-    return { text: fence, format: "fence" };
+    return fence;
   }
 
-  return null;
+  return firstJsonObject(trimmed);
 }
 
 function parseIntakeJsonText(text: string): { json: unknown } | { error: string } {
@@ -244,8 +277,6 @@ export function validateIntakeAgentOutput(
 }
 
 export interface ParseIntakeReplyOptions {
-  /** Accept ```json fences (legacy hydration only). Live turns require raw JSON. */
-  allowLegacyFence?: boolean;
   requireKnownWorkflow?: boolean;
 }
 
@@ -254,8 +285,8 @@ export function parseAndValidateIntakeReply(
   workflowIds: ReadonlySet<string>,
   options?: ParseIntakeReplyOptions
 ): IntakeValidationResult {
-  const extracted = extractIntakeJsonText(raw);
-  if (!extracted) {
+  const text = extractIntakeJsonText(raw);
+  if (!text) {
     return {
       ok: false,
       errors: [
@@ -264,14 +295,7 @@ export function parseAndValidateIntakeReply(
     };
   }
 
-  if (extracted.format === "fence" && !options?.allowLegacyFence) {
-    return {
-      ok: false,
-      errors: ["Do not wrap output in markdown code fences. Return raw JSON only."]
-    };
-  }
-
-  const parsed = parseIntakeJsonText(extracted.text);
+  const parsed = parseIntakeJsonText(text);
   if ("error" in parsed) {
     return { ok: false, errors: [`JSON parse error: ${parsed.error}`] };
   }

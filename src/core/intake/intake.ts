@@ -147,7 +147,7 @@ async function runValidatedIntakeAgentTurn(
     const result = await runAgentTurnWithTimeout(
       runner,
       {
-        mode: "plan",
+        mode: "classify",
         task: stubTask,
         prompt,
         cwd: workspace.cwd,
@@ -480,4 +480,40 @@ export async function drainIntakeQueue(root: string, options?: RunIntakeOptions)
 
 export function startIntakeQueue(root: string, options?: RunIntakeOptions): void {
   void drainIntakeQueue(root, options).catch(() => {});
+}
+
+/** Reset a failed intake queue item to pending and re-run its classification in
+ * place (the original operator message is reclassified, not duplicated). */
+export async function retryIntakeQueueItem(
+  root: string,
+  scope: IntakeScope,
+  itemId: string,
+  options?: RunIntakeOptions
+): Promise<IntakeSession> {
+  const session = await getIntakeSession(root, scope);
+  const item = (session.queue ?? []).find((queueItem) => queueItem.id === itemId);
+  if (!item) {
+    throw new Error("Intake item not found.");
+  }
+  if (item.status !== "failed") {
+    throw new Error("Only failed intake items can be retried.");
+  }
+  await updateIntakeSession(root, scope, (current) => ({
+    ...current,
+    queue: (current.queue ?? []).map((queueItem) => {
+      if (queueItem.id !== itemId) return queueItem;
+      const {
+        error: _error,
+        completedAt: _completedAt,
+        startedAt: _startedAt,
+        lastActivityAt: _lastActivityAt,
+        activity: _activity,
+        ...reset
+      } = queueItem;
+      return { ...reset, status: "pending" as const };
+    }),
+    updatedAt: intakeTimestamp()
+  }));
+  void startIntakeQueue(root, { ...options, scope });
+  return getIntakeSession(root, scope);
 }
