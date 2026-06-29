@@ -139,13 +139,20 @@ async function runTurnWithTimeout(
   }
 }
 
-function stampAndStore(
+/**
+ * Stamp a config (generatedAt/repoPath) and persist it, returning the exact object
+ * that was written. Callers must return this value rather than their pre-stamp input,
+ * so a wait-mode regenerate response is identical to a subsequent GET.
+ */
+async function stampAndStore(
   root: string,
   projectId: string,
   file: QualityGateFile,
   repoPath: string
-): Promise<void> {
-  return writeQualityGate(root, projectId, { ...file, generatedAt: now(), repoPath });
+): Promise<QualityGateFile> {
+  const stamped: QualityGateFile = { ...file, generatedAt: now(), repoPath };
+  await writeQualityGate(root, projectId, stamped);
+  return stamped;
 }
 
 /**
@@ -222,8 +229,7 @@ export async function generateProjectQualityGate(
 
       const validation = parseAndValidateQualityGate(result.reply);
       if (validation.ok) {
-        await stampAndStore(root, project.id, { ...validation.file, intel }, project.repoPath);
-        return validation.file;
+        return stampAndStore(root, project.id, { ...validation.file, intel }, project.repoPath);
       }
       lastErrors = validation.errors;
     }
@@ -238,8 +244,7 @@ export async function generateProjectQualityGate(
     agentError !== null
       ? `${fallback.rationale ?? ""} Agent generation failed (${agentError}); fell back to deterministic synthesis.`
       : `${fallback.rationale ?? ""} Agent did not return valid output; fell back to deterministic synthesis.`;
-  await stampAndStore(root, project.id, { ...fallback, rationale: note.trim(), intel }, project.repoPath);
-  return fallback;
+  return stampAndStore(root, project.id, { ...fallback, rationale: note.trim(), intel }, project.repoPath);
 }
 
 /**

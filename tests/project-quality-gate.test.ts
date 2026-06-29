@@ -288,6 +288,37 @@ describe("generateProjectQualityGate lifecycle", () => {
     expect(file.checks).toEqual([]);
     expect(file.needsResolution?.length).toBeGreaterThan(0);
   });
+
+  it("returns the same stamped config it persists on success (matches a later GET)", async () => {
+    // The wait-mode regenerate route serializes this return value straight to the
+    // HTTP response, while a subsequent GET reads the persisted file. They must be
+    // identical, so the returned object carries the same generatedAt/repoPath/intel
+    // that were written — not the raw, unstamped agent output.
+    await writeFile(path.join(repo, "pyproject.toml"), "[tool.ruff]\n", "utf8");
+    const runner = repliesRunner(READY_RUFF);
+    const file = await generateProjectQualityGate(root, project, { runner });
+
+    const stored = await readProjectQualityGate(root, project.id);
+    expect(file).toEqual(stored);
+    expect(file.generatedAt).toBeTruthy();
+    expect(file.repoPath).toBe(project.repoPath);
+    expect(file.intel).toBeTruthy();
+  });
+
+  it("returns the same stamped config it persists on fallback (carries the amended rationale)", async () => {
+    // The fallback path amends the rationale and stamps the file before writing.
+    // The return value must reflect those same amendments, not the pre-amendment
+    // synthesis object the caller would otherwise receive.
+    await writeFile(path.join(repo, "pyproject.toml"), "[tool.ruff]\n[tool.pytest.ini_options]\n", "utf8");
+    const runner = repliesRunner("nope, can't help");
+    const file = await generateProjectQualityGate(root, project, { runner });
+
+    const stored = await readProjectQualityGate(root, project.id);
+    expect(file).toEqual(stored);
+    expect(file.rationale).toContain("deterministic");
+    expect(file.intel).toBeTruthy();
+    expect(file.generatedAt).toBeTruthy();
+  });
 });
 
 describe("planProjectChecks workingDirectory containment", () => {
