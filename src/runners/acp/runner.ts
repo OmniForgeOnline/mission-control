@@ -6,8 +6,8 @@ import { resolveGbrainLauncher } from "../../mcp/launcher.ts";
 import type { AgentToolConfig, ModelPoolConfig } from "../../core/agents/config/types.ts";
 import type { ToolId } from "../../core/types.ts";
 import type { AgentRunner, AgentTurnRequest, AgentTurnResult } from "../types.ts";
-import { AcpConnection } from "./client.ts";
-import { runEventsFromAcpUpdate } from "./events.ts";
+import { AcpConnection, AcpResponseError } from "./client.ts";
+import { runEventsFromAcpNotification, runEventsFromAcpUpdate } from "./events.ts";
 import { resolveAgentLaunchPlan } from "../../core/agents/runtime/launch.ts";
 
 type Json = Record<string, unknown>;
@@ -79,9 +79,10 @@ export class AcpAgentRunner implements AgentRunner {
 
     let reply = "";
     connection.onNotification((method, params) => {
-      if (method !== "session/update") return;
-      const update = (params as Json)["update"];
-      for (const event of runEventsFromAcpUpdate(update)) {
+      const events = method === "session/update"
+        ? runEventsFromAcpUpdate((params as Json)["update"])
+        : runEventsFromAcpNotification(method, params);
+      for (const event of events) {
         request.onEvent?.(event);
         if (event.type === "text_delta" && event.text) {
           reply += event.text;
@@ -118,7 +119,7 @@ export class AcpAgentRunner implements AgentRunner {
       return this.buildResult(reply, result?.stopReason, fullCommand, stderr);
     } catch (err) {
       connection.close();
-      const reason = this.aborted ? "Stopped by operator" : err instanceof Error ? err.message : String(err);
+      const reason = this.aborted ? "Stopped by operator" : formatAcpError(err);
       return {
         reply: reply.trim(),
         ...(this.sessionId !== undefined ? { sessionId: this.sessionId } : {}),
@@ -192,6 +193,15 @@ export class AcpAgentRunner implements AgentRunner {
       return {};
     });
   }
+}
+
+function formatAcpError(err: unknown): string {
+  if (err instanceof AcpResponseError) {
+    const detail = typeof err.data === "string" ? err.data.trim() : "";
+    if (detail && detail !== err.message) return `${err.message}: ${detail}`;
+    return err.message;
+  }
+  return err instanceof Error ? err.message : String(err);
 }
 
 /** Resolve a file path and reject anything escaping the turn's working dir. */

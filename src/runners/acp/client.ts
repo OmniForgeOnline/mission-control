@@ -7,6 +7,18 @@ interface Pending {
   reject: (error: Error) => void;
 }
 
+export class AcpResponseError extends Error {
+  readonly data?: unknown;
+  readonly code?: number;
+
+  constructor(message: string, options?: { code?: number; data?: unknown }) {
+    super(message);
+    this.name = "AcpResponseError";
+    if (options?.code !== undefined) this.code = options.code;
+    if (options?.data !== undefined) this.data = options.data;
+  }
+}
+
 /** Handles a client-bound request from the agent; returns the JSON-RPC result. */
 export type RequestHandler = (params: Json) => Promise<unknown> | unknown;
 
@@ -126,8 +138,11 @@ export class AcpConnection {
     if (!pending) return;
     this.pending.delete(id);
     if (message["error"]) {
-      const error = message["error"] as { message?: string };
-      pending.reject(new Error(error.message ?? "ACP request failed"));
+      const error = message["error"] as { code?: number; message?: string; data?: unknown };
+      pending.reject(new AcpResponseError(error.message ?? "ACP request failed", {
+        ...(typeof error.code === "number" ? { code: error.code } : {}),
+        ...(error.data !== undefined ? { data: error.data } : {})
+      }));
     } else {
       pending.resolve(message["result"]);
     }

@@ -34,9 +34,28 @@ export function runEventsFromAcpUpdate(update: unknown): RunEventInput[] {
       const result = record["content"] ?? record["status"];
       return [{ type: "tool_result", tool, ...(result !== undefined ? { toolResult: result } : {}) }];
     }
+    case "retry_warning": {
+      const text = typeof record["message"] === "string" ? record["message"] : undefined;
+      return text ? [{ type: "agent_status", text }] : [];
+    }
     default:
       return [];
   }
+}
+
+export function runEventsFromAcpNotification(method: string, params: unknown): RunEventInput[] {
+  if (method === "_kiro.dev/error/rate_limit") {
+    const record = params && typeof params === "object" ? params as Record<string, unknown> : {};
+    const text = typeof record["message"] === "string" ? record["message"] : "Kiro rate limit exceeded.";
+    return [{ type: "error", text }];
+  }
+
+  if (method === "_kiro.dev/session/update") {
+    const record = params && typeof params === "object" ? params as Record<string, unknown> : {};
+    return runEventsFromAcpUpdate(record["update"]);
+  }
+
+  return [];
 }
 
 /** Extract plain text from an ACP content block or array of blocks. */
