@@ -159,6 +159,23 @@ describe("planProjectChecks (project-aware planner)", () => {
     expect(plan.checks.find((c) => c.name === "test")?.available).toBe(true);
   });
 
+  it("does not fall back to generic detection while the gate is generating", async () => {
+    const repo = path.join(root, "repo");
+    execSync(`git init -q ${repo}`);
+    execSync("git config user.email t@t.com", { cwd: repo });
+    execSync("git config user.name t", { cwd: repo });
+    const project = await onboardProject(root, { repoPath: repo, name: "Gen" });
+    // Generation is in flight -> the no-generic-gate contract holds before
+    // generation completes, not only after it: a package.json must NOT stand in
+    // while the project-specific gate has yet to land.
+    await writeQualityGate(root, project.id, { status: "generating", checks: [] });
+    await writeFile(path.join(workspace, "package.json"), JSON.stringify({ scripts: { test: "vitest run" } }), "utf8");
+    const plan = await planProjectChecks(root, project.id, workspace);
+    expect(plan.source).toBe("quality-gate");
+    expect(plan.checks).toEqual([]);
+    expect(plan.resolutionNote).toMatch(/generat/i);
+  });
+
   it("preserves a generated check's workingDirectory as the planned cwd", async () => {
     const repo = path.join(root, "repo");
     execSync(`git init -q ${repo}`);

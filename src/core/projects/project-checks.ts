@@ -23,11 +23,15 @@ function gateCategoryToKind(category: QualityGateCheck["category"]): CheckKind |
 
 /**
  * Build the operator-facing note for a gate that cannot drive the gate as-is.
- * Carries the `needsResolution` gaps (`incomplete`) or the `error` (`failed`)
- * through the check plan so they reach the author prompt and checks-outcome
- * message instead of collapsing to an ordinary no-checks run.
+ * Covers `generating` (turn in flight), the `needsResolution` gaps
+ * (`incomplete`), or the `error` (`failed`), carrying each through the check
+ * plan so they reach the author prompt and checks-outcome message instead of
+ * collapsing to an ordinary no-checks run.
  */
 function describeGateResolution(gate: QualityGateFile): string {
+  if (gate.status === "generating") {
+    return "The project's quality gate is still being generated; it has not produced checks yet.";
+  }
   if (gate.status === "incomplete") {
     const gaps = (gate.needsResolution ?? []).map((gap) => gap.trim()).filter((gap) => gap.length > 0);
     const detail =
@@ -69,10 +73,10 @@ function gateCheckToPlanned(check: QualityGateCheck): PlannedCheck {
  *   1. Explicit `.harness/checks.yml` (operator override) — highest.
  *   2. The project's generated quality-gate config once it exists:
  *        - `ready` -> its evidence-backed blocking checks.
- *        - `incomplete`/`failed` -> a no-blocking-checks plan that surfaces the
- *          needs-resolution state. The gate never substitutes a generic gate here.
+ *        - `generating`/`incomplete`/`failed` -> a no-blocking-checks plan that
+ *          surfaces the gate state. The gate never substitutes a generic gate here.
  *   3. Generic `package.json`/`Makefile` detection (the shared baseline), used
- *      only while no config has been produced yet (`pending`/`generating`).
+ *      only before generation has started (`pending`).
  *
  * Advisory (`required: false`) checks are informational and excluded from the
  * blocking plan. A `projectId` of `undefined` (harness-level tasks) always uses
@@ -89,17 +93,19 @@ export async function planProjectChecks(
 
   const gate = await readProjectQualityGate(root, projectId);
 
-  // Nothing produced yet: baseline detection is the documented interim. Once a
-  // config exists it always wins, so evidence gaps surface instead of silently
-  // running a one-size-fits-all gate.
-  if (gate.status === "pending" || gate.status === "generating") return baseline;
+  // `pending` means generation has not started yet, so baseline detection is the
+  // documented interim. Once generation begins the no-generic-gate contract
+  // holds: a project-specific gate is pending (not absent), so evidence gaps and
+  // in-flight state surface instead of a one-size-fits-all gate running in the
+  // meantime.
+  if (gate.status === "pending") return baseline;
 
   if (gate.status !== "ready") {
-    // `incomplete` (insufficient evidence) or `failed` (could not gather intel):
-    // the operator must resolve. Surface a quality-gate plan with no blocking
-    // checks, but carry the resolution state as a note so the author prompt and
-    // the checks-outcome message explain what the operator must do rather than
-    // reading as an ordinary no-checks pass.
+    // `generating` (turn in flight), `incomplete` (insufficient evidence), or
+    // `failed` (could not gather intel): the gate cannot drive blocking checks.
+    // Surface a quality-gate plan with no blocking checks, carrying the state as
+    // a note so the author prompt and checks-outcome message explain it rather
+    // than reading as an ordinary no-checks pass.
     return {
       checks: [],
       maxRounds: DEFAULT_CHECK_REMEDIATION_ROUNDS,
