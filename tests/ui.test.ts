@@ -610,6 +610,13 @@ describe("mission-control client surface", () => {
     expect(tree).not.toContain("setup-wizard");
   });
 
+  it("lets the operator dismiss the first-run setup checklist so it stays gone", async () => {
+    const tree = await readClientTree();
+    expect(tree).toContain("harness:setup-dismissed");
+    expect(tree).toContain("Dismiss first run setup");
+    expect(tree).toContain("home-setup-dismiss");
+  });
+
   it("uses icon-only intake controls for attachments and send", async () => {
     const attachments = await readFile(
       path.join(process.cwd(), "src/ui/shared/components/attachments.tsx"),

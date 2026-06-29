@@ -74,6 +74,16 @@ On macOS and Linux, `./mc` is a shorthand for `npm start`.
 | `npm test` | Run the Vitest suite. |
 | `npm run check` | Full local quality gate: lint, typecheck, tests, knip, UI build, server build. |
 
+### Stopping Mission Control
+
+Stop the running server gracefully (it terminates all in-flight agent processes, stops the daemon, and closes the UI):
+
+```sh
+mission-control stop
+```
+
+You can also stop from the UI: open **System → Maintenance → Power → Shut down Mission Control** and confirm the warning. From the terminal where it runs, `Ctrl+C` works too. After a shutdown the UI stays offline until you start the app again with `mission-control`.
+
 ## Runtime State
 
 Runtime state is not stored in the source checkout by default. Mission Control uses a platform-standard state directory:

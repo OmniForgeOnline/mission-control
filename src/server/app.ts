@@ -2,7 +2,9 @@ import express from "express";
 import path from "node:path";
 
 import { setConnectorVault } from "../connectors/vault/index.ts";
+import { generateShutdownToken, verifyShutdownToken } from "./control.ts";
 import { subscribeStateEvents } from "./events.ts";
+import { beginShutdown, runShutdownTeardown } from "./lifecycle.ts";
 import { createAutonomyRouter } from "./routes/autonomy.ts";
 import { createAgentConfigRouter } from "./routes/agent-config.ts";
 import { createAttachmentsRouter } from "./routes/attachments.ts";
@@ -27,6 +29,14 @@ export function createServer(options: ServerOptions): express.Express {
     setConnectorVault(options.vault);
   }
 
+  // Per-server shutdown token. Resolved once here so the /api/shutdown guard and
+  // the /api/state boot payload (which the same-origin UI reads and echoes back)
+  // can never diverge. Production (src/server/index.ts) passes it in so the
+  // identical value is also written to server.json for the CLI; otherwise one is
+  // generated so the route is always authenticated, even in tests.
+  const shutdownToken = options.shutdownToken ?? generateShutdownToken();
+  const settingsOptions: ServerOptions = { ...options, shutdownToken };
+
   // Attachments are uploaded as base64 JSON; allow a larger body only on that
   // path. Registered before the default parser, which skips bodies it has
   // already consumed, so other endpoints keep the 1mb ceiling.
@@ -42,7 +52,7 @@ export function createServer(options: ServerOptions): express.Express {
     subscribeStateEvents(res);
   });
 
-  app.use("/api", createSettingsRouter(options));
+  app.use("/api", createSettingsRouter(settingsOptions));
   app.use("/api", createAgentConfigRouter(options));
   app.use("/api", createAttachmentsRouter(options));
   app.use("/api", createIntakeRouter(options));
@@ -56,9 +66,28 @@ export function createServer(options: ServerOptions): express.Express {
   app.use("/api", createWorkflowsRouter(options));
   app.use("/api", createVersionRouter(options));
 
-  app.post("/api/shutdown", (_req, res) => {
-    res.json({ shutting_down: true });
-    setTimeout(() => process.exit(0), 100);
+  app.post("/api/shutdown", (req, res) => {
+    // Authenticate before any side effect: the caller must present this server's
+    // shutdown token in a non-simple header. A browser-issued cross-site form
+    // POST cannot set a custom header (and there is no CORS preflight that would
+    // allow it), so the CSRF vector is closed. Without this check any reachable
+    // caller could terminate every managed process.
+    if (!verifyShutdownToken(req.get("x-shutdown-token"), shutdownToken)) {
+      res.status(401).json({ error: "Shutdown not authorized." });
+      return;
+    }
+    // Claim synchronously so concurrent requests (UI + CLI, or two CLI calls)
+    // collapse into one teardown: only the first claimant wins, and a duplicate
+    // request reports already:true instead of re-entering the escalating signal
+    // path that force-exits. Shares the same teardown as Ctrl+C.
+    const first = beginShutdown("api request");
+    res.json({ shutting_down: true, already: !first });
+    if (first) {
+      // Defer so the response flushes before the server begins tearing down.
+      setImmediate(() => {
+        void runShutdownTeardown();
+      });
+    }
   });
 
   app.use("/api", (_req, res) => {

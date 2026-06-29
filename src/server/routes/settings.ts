@@ -76,6 +76,9 @@ export function createSettingsRouter(options: ServerOptions): Router {
       const defaultWorkflow = await loadWorkflow(options.root, DEFAULT_WORKFLOW_ID);
       res.json({
         root: options.root,
+        // Per-server shutdown token for the same-origin UI, which echoes it back
+        // in the x-shutdown-token header when the operator confirms shutdown.
+        shutdownToken: options.shutdownToken ?? "",
         connectors: await loadConnectorsState(options.root),
         tasks,
         runs,

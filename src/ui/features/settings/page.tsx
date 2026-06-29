@@ -225,9 +225,6 @@ function ProjectsSection(): VNode {
 
 function SettingsView() {
   const settings = ui.data?.settings ?? DEFAULT_SETTINGS;
-  const agentAvailability: Array<{ id: string; enabled: boolean }> =
-    ui.data?.agentConfig?.tools?.map((tool) => ({ id: tool.id, enabled: tool.enabled })) ??
-    (ui.data?.agents ?? []).map((agent) => ({ id: agent.id, enabled: true }));
   const [activeSection, setActiveSection] = useState<SettingsSection>("agents");
   const [theme, setThemeValue] = useState<HarnessSettings["theme"]>(settings.theme);
   const [version, setVersion] = useState<VersionStatus | null>(null);
@@ -477,20 +474,6 @@ function SettingsView() {
                     <div class="settings-fact-k">Settings file</div>
                     <div class="settings-fact-v settings-fact-mono">data/state/settings.json</div>
                     <div class="settings-fact-desc">On-disk location for persisted preferences.</div>
-                  </div>
-                  <div class="settings-fact-wide">
-                    <div class="settings-fact-k">Agent availability</div>
-                    <div class="settings-agent-availability">
-                      {agentAvailability.map((agent) => (
-                        <span
-                          key={agent.id}
-                          class={`settings-agent-chip ${agent.enabled ? "is-available" : "is-missing"}`}
-                        >
-                          {agent.enabled ? "✓" : "✗"} {agent.id}
-                        </span>
-                      ))}
-                    </div>
-                    <div class="settings-fact-desc">Agent CLIs configured for this instance — green is enabled, red is disabled.</div>
                   </div>
                 </div>
               )}

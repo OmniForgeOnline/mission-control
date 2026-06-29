@@ -177,6 +177,36 @@
   display: inline-flex;
 }
 
+/* App-bar power button: always-visible entry point to the confirm-gated
+   shutdown. Ghost by default so it doesn't compete with the wordmark; turns
+   danger-red on hover to signal the destructive action before the modal. */
+.app-bar-power {
+  display: inline-grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  flex-shrink: 0;
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  color: var(--ink-muted);
+  cursor: pointer;
+  transition: border-color var(--d-fast) var(--ease-out),
+    color var(--d-fast) var(--ease-out), background var(--d-fast) var(--ease-out);
+}
+
+.app-bar-power:hover {
+  color: var(--danger);
+  border-color: color-mix(in srgb, var(--danger) 50%, var(--hairline));
+  background: color-mix(in srgb, var(--danger) 12%, transparent);
+}
+
+.app-bar-power:focus-visible {
+  outline: none;
+  box-shadow: var(--ring);
+}
+
 @keyframes pulse-dot {
   0%,
   100% {

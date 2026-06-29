@@ -150,6 +150,20 @@
   font-size: var(--t-sm);
 }
 
+.home-setup-head-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+}
+
+.home-setup-dismiss {
+  color: var(--ink-muted);
+}
+
+.home-setup-dismiss:hover {
+  color: var(--ink);
+}
+
 .home-setup-grid {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
