@@ -15,6 +15,8 @@ import {
   resolveStepAgent,
   type WorkflowDefinition
 } from "../workflows/index.ts";
+import { resolveStepExtensions } from "./extensions/launch.ts";
+import type { ToolExtension } from "./extensions/types.ts";
 
 export interface StageAgentOverrides {
   overrides: Record<string, ToolId>;
@@ -35,6 +37,10 @@ export interface ResolvedRouting {
   preferred: ToolId;
   source: "preferred" | "optimizer-fallback";
   supportsEffort: boolean;
+  /** Resolved extension ids to enable for this launch. */
+  extensions: string[];
+  /** Full extension entries for launch injection. */
+  extensionEntries: ToolExtension[];
 }
 
 function stageAgentsPath(root: string): string {
@@ -144,7 +150,9 @@ function routeWithPreferred(
   bundle: AgentConfigBundle,
   usage: Awaited<ReturnType<typeof loadUsageSnapshots>>,
   preferred: ToolId,
-  capability: string
+  capability: string,
+  extensions: string[],
+  extensionEntries: ResolvedRouting["extensionEntries"]
 ): ResolvedRouting | null {
   const pool = bestPoolForTool(bundle, usage, preferred, capability);
   if (pool) {
@@ -153,7 +161,9 @@ function routeWithPreferred(
       modelPoolId: pool.id,
       preferred,
       source: "preferred",
-      supportsEffort: toolSupportsEffort(bundle, preferred)
+      supportsEffort: toolSupportsEffort(bundle, preferred),
+      extensions,
+      extensionEntries
     };
   }
   const routed = routeAgent(bundle, usage, { role: capability, capability });
@@ -163,7 +173,9 @@ function routeWithPreferred(
     modelPoolId: routed.modelPoolId,
     preferred,
     source: "optimizer-fallback",
-    supportsEffort: toolSupportsEffort(bundle, routed.toolId)
+    supportsEffort: toolSupportsEffort(bundle, routed.toolId),
+    extensions,
+    extensionEntries
   };
 }
 
@@ -171,7 +183,8 @@ export async function resolveStepRouting(
   root: string,
   workflowId: string,
   stepId: string,
-  taskOverrides?: Partial<Record<string, ToolId>>
+  taskOverrides?: Partial<Record<string, ToolId>>,
+  cwd?: string
 ): Promise<ResolvedRouting | null> {
   const [workflow, overrides, settings, bundle, usage] = await Promise.all([
     loadWorkflow(root, workflowId),
@@ -180,9 +193,25 @@ export async function resolveStepRouting(
     loadAgentConfig(root),
     loadUsageSnapshots(root)
   ]);
+  const step = workflow.steps[stepId];
   const preferred = resolveStepAgent(workflow, overrides, stepId, settings.defaultAgent, taskOverrides);
   if (!preferred) return null;
-  return routeWithPreferred(bundle, usage, preferred, roleCapability(workflow.steps[stepId]?.agent));
+
+  const resolvedExtensions = await resolveStepExtensions({
+    root,
+    toolId: preferred,
+    ...(step ? { step } : {}),
+    ...(cwd ? { cwd } : {})
+  });
+
+  return routeWithPreferred(
+    bundle,
+    usage,
+    preferred,
+    roleCapability(step?.agent),
+    resolvedExtensions.enabledIds,
+    resolvedExtensions.entries
+  );
 }
 
 export async function resolveHarnessDefaultRouting(root: string): Promise<ResolvedRouting | null> {
@@ -191,7 +220,15 @@ export async function resolveHarnessDefaultRouting(root: string): Promise<Resolv
     loadAgentConfig(root),
     loadUsageSnapshots(root)
   ]);
-  return routeWithPreferred(bundle, usage, settings.defaultAgent, "author");
+  const resolvedExtensions = await resolveStepExtensions({ root, toolId: settings.defaultAgent });
+  return routeWithPreferred(
+    bundle,
+    usage,
+    settings.defaultAgent,
+    "author",
+    resolvedExtensions.enabledIds,
+    resolvedExtensions.entries
+  );
 }
 
 export async function formatStepNoRouteMessage(

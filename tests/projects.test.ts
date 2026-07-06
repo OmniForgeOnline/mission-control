@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import path from "node:path";
 import os from "node:os";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, realpath, rm } from "node:fs/promises";
 import request from "supertest";
 
 import { createServer } from "../src/server/app.ts";
@@ -79,6 +79,65 @@ describe("project registry", () => {
     const updated = await updateProject(tmp, project.id, { name: "Renamed", status: "paused" });
     expect(updated.name).toBe("Renamed");
     expect(updated.status).toBe("paused");
+  });
+
+  it("repoints a project to a new valid repo path without changing its id", async () => {
+    const { execSync } = await import("node:child_process");
+    execSync("git init old-repo", { cwd: tmp });
+    execSync("git init new-repo", { cwd: tmp });
+
+    const project = await onboardProject(tmp, { repoPath: path.join(tmp, "old-repo") });
+    const updated = await updateProject(tmp, project.id, { repoPath: path.join(tmp, "new-repo") });
+
+    // git resolves the macOS /var -> /private/var symlink, so compare real paths.
+    expect(updated.repoPath).toBe(await realpath(path.join(tmp, "new-repo")));
+    expect(updated.id).toBe(project.id);
+  });
+
+  it("rejects repoint to a non-git path", async () => {
+    const { execSync } = await import("node:child_process");
+    execSync("git init my-repo", { cwd: tmp });
+
+    const project = await onboardProject(tmp, { repoPath: repoDir });
+    await expect(
+      updateProject(tmp, project.id, { repoPath: "/nonexistent/path" })
+    ).rejects.toThrow(/does not resolve to a git worktree/);
+  });
+
+  it("rejects repoint to a path owned by another project", async () => {
+    const { execSync } = await import("node:child_process");
+    execSync("git init repo-a", { cwd: tmp });
+    execSync("git init repo-b", { cwd: tmp });
+
+    const a = await onboardProject(tmp, { repoPath: path.join(tmp, "repo-a") });
+    await onboardProject(tmp, { repoPath: path.join(tmp, "repo-b") });
+
+    await expect(
+      updateProject(tmp, a.id, { repoPath: path.join(tmp, "repo-b") })
+    ).rejects.toThrow(/already registered/);
+  });
+
+  it("rejects repoint to a path nested with another project", async () => {
+    const { execSync } = await import("node:child_process");
+    execSync("git init parent-repo", { cwd: tmp });
+    execSync("git init child-repo", { cwd: path.join(tmp, "parent-repo") });
+    execSync("git init my-repo", { cwd: tmp });
+
+    await onboardProject(tmp, { repoPath: path.join(tmp, "parent-repo") });
+    const outer = await onboardProject(tmp, { repoPath: repoDir });
+
+    await expect(
+      updateProject(tmp, outer.id, { repoPath: path.join(tmp, "parent-repo", "child-repo") })
+    ).rejects.toThrow(/nested/);
+  });
+
+  it("leaves the path unchanged when repointed to its own current path", async () => {
+    const { execSync } = await import("node:child_process");
+    execSync("git init my-repo", { cwd: tmp });
+
+    const project = await onboardProject(tmp, { repoPath: repoDir });
+    const updated = await updateProject(tmp, project.id, { repoPath: project.repoPath });
+    expect(updated.repoPath).toBe(project.repoPath);
   });
 
   it("removes a project and its state directory", async () => {
@@ -196,6 +255,38 @@ describe("project API", () => {
     const res = await request(app).patch(`/api/projects/${id}`).send({ status: "paused" });
     expect(res.status).toBe(200);
     expect(res.body.status).toBe("paused");
+  });
+
+  it("PATCH /api/projects/:id repoints the project and cascades to its tasks", async () => {
+    const { execSync } = await import("node:child_process");
+    const { createTask, getTask } = await import("../src/core/tasks/tasks.ts");
+    const repoA = path.join(tmp, "repo-a");
+    const repoB = path.join(tmp, "repo-b");
+    execSync("git init repo-a", { cwd: tmp });
+    execSync("git init repo-b", { cwd: tmp });
+    const realA = await realpath(repoA);
+    const realB = await realpath(repoB);
+
+    const createRes = await request(app).post("/api/projects").send({ repoPath: repoA });
+    const id = createRes.body.id as string;
+
+    const task = await createTask(tmp, {
+      title: "Repoint cascade",
+      description: "d",
+      workflowId: "code-feature",
+      source: "manual",
+      projectId: id,
+      repoPath: realA,
+      targets: [{ raw: "@a", path: realA, kind: "directory" }]
+    });
+
+    const res = await request(app).patch(`/api/projects/${id}`).send({ repoPath: repoB });
+    expect(res.status).toBe(200);
+    expect(res.body.repoPath).toBe(realB);
+
+    const after = await getTask(tmp, task.id);
+    expect(after?.repoPath).toBe(realB);
+    expect(after?.targets[0]?.path).toBe(realB);
   });
 
   it("DELETE /api/projects/:id removes a project", async () => {

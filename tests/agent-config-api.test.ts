@@ -78,4 +78,52 @@ describe("agent config API", () => {
     expect(response.status).toBe(200);
     expect(Array.isArray(response.body.usage.snapshots)).toBe(true);
   });
+
+  it("CRUDs extension registry entries", async () => {
+    const app = createServer({ root, testMode: true });
+    const created = await request(app)
+      .put("/api/agent-config/extensions")
+      .send({
+        id: "claude:plugin:demo@market",
+        toolId: "claude",
+        kind: "plugin",
+        displayName: "Demo",
+        source: "demo@market",
+        detectedFrom: "manual",
+        defaultEnabled: false
+      });
+    expect(created.status).toBe(200);
+    expect(created.body.registry.extensions.some((entry: { id: string }) => entry.id === "claude:plugin:demo@market")).toBe(
+      true
+    );
+
+    const listed = await request(app).get("/api/agent-config/extensions");
+    expect(listed.status).toBe(200);
+    expect(listed.body.registry.extensions.some((entry: { id: string }) => entry.id === "claude:plugin:demo@market")).toBe(
+      true
+    );
+
+    const deleted = await request(app).delete("/api/agent-config/extensions/claude%3Aplugin%3Ademo%40market");
+    expect(deleted.status).toBe(200);
+    expect(deleted.body.registry.extensions.some((entry: { id: string }) => entry.id === "claude:plugin:demo@market")).toBe(
+      false
+    );
+  });
+
+  it("installs marketplace plugins with operator confirmation in test mode", async () => {
+    const app = createServer({ root, testMode: true });
+    const denied = await request(app)
+      .post("/api/agent-config/extensions/install")
+      .send({ toolId: "claude", source: "demo@market" });
+    expect(denied.status).toBe(400);
+
+    const installed = await request(app)
+      .post("/api/agent-config/extensions/install")
+      .send({ toolId: "claude", source: "demo@market", confirmed: true });
+    expect(installed.status).toBe(200);
+    expect(installed.body.install.selector).toBe("demo@market");
+    expect(
+      installed.body.registry.extensions.some((entry: { id: string }) => entry.id === "claude:plugin:demo@market")
+    ).toBe(true);
+  });
 });

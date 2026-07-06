@@ -235,11 +235,12 @@ export async function cleanupMergedTaskWorktrees(
       continue;
     }
 
-    let state: Awaited<ReturnType<typeof getMergeRequestState>>;
+    let result: Awaited<ReturnType<typeof getMergeRequestState>>;
     try {
-      state = await getMergeRequestState({
+      result = await getMergeRequestState({
         root,
         repoPath: taskWithMr.repoPath!,
+        ...(taskWithMr.mergeRequest.url ? { url: taskWithMr.mergeRequest.url } : {}),
         provider: taskWithMr.mergeRequest.provider,
         number: taskWithMr.mergeRequest.number
       });
@@ -248,11 +249,11 @@ export async function cleanupMergedTaskWorktrees(
       continue;
     }
 
-    if (state !== "merged") {
+    if (result.state !== "merged") {
       results.push({
         taskId: task.id,
         cleaned: false,
-        reason: state ? `merge request ${state}` : "merge status unknown"
+        reason: result.state ? `merge request ${result.state}` : "merge status unknown"
       });
       continue;
     }

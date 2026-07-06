@@ -52,6 +52,20 @@ export function validateWorkflow(raw: unknown): WorkflowDefinition {
       throw new Error(`Workflow step "${stepId}" has invalid approval "${String(step["approval"])}".`);
     }
     const skill = typeof step["skill"] === "string" ? step["skill"].trim() || undefined : undefined;
+    let extensions: string[] | undefined;
+    if (step["extensions"] !== undefined) {
+      if (!Array.isArray(step["extensions"])) {
+        throw new Error(`Workflow step "${stepId}" extensions must be an array.`);
+      }
+      extensions = [];
+      for (const value of step["extensions"]) {
+        if (typeof value !== "string" || !value.trim()) {
+          throw new Error(`Workflow step "${stepId}" extension entries must be non-empty strings.`);
+        }
+        extensions.push(value.trim());
+      }
+      if (extensions.length === 0) extensions = undefined;
+    }
     const modifiesRepo =
       step["modifies_repo"] === true ? true : step["modifies_repo"] === false ? false : undefined;
     const effort = parseEffortLevel(step["effort"], `Workflow step "${stepId}"`);
@@ -109,6 +123,7 @@ export function validateWorkflow(raw: unknown): WorkflowDefinition {
       agent,
       approval,
       ...(skill !== undefined ? { skill } : {}),
+      ...(extensions !== undefined ? { extensions } : {}),
       ...(modifiesRepo !== undefined ? { modifiesRepo } : {}),
       ...(effort !== undefined ? { effort } : {}),
       ...(mergeRequestTitle ? { mergeRequestTitle } : {}),

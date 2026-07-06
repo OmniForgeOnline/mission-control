@@ -141,7 +141,9 @@ export async function completeAgentTurn(params: CompleteAgentTurnParams): Promis
     onEvent,
     harnessRoot: root,
     runId: run.id,
-    runDir
+    runDir,
+    ...(internal.enabledExtensionIds !== undefined ? { enabledExtensionIds: internal.enabledExtensionIds } : {}),
+    ...(internal.extensionEntries !== undefined ? { extensionEntries: internal.extensionEntries } : {})
   });
 
   await logWrite;

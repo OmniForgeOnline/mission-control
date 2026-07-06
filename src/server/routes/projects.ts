@@ -25,6 +25,7 @@ import {
 } from "../../core/quality/quality.ts";
 import { readJsonFile, writeJsonFile } from "../../core/infra/fs.ts";
 import { pickFolder } from "../../core/projects/folder-picker.ts";
+import { repointProjectTasks } from "../../core/tasks/tasks.ts";
 import {
   addIntakeMessage,
   confirmIntakeDraft,
@@ -98,15 +99,31 @@ export function createProjectsRouter(options: ServerOptions): Router {
   router.patch(
     "/projects/:id",
     asyncRoute(async (req, res) => {
-      const body = req.body as { name?: string; status?: "active" | "paused" };
-      const input: { name?: string; status?: "active" | "paused" } = {};
+      const projectId = param(req.params["id"], "id");
+      const body = req.body as { name?: string; status?: "active" | "paused"; repoPath?: string };
+      const input: { name?: string; status?: "active" | "paused"; repoPath?: string } = {};
       if (body.name?.trim()) {
         input.name = body.name.trim();
       }
       if (body.status) {
         input.status = body.status;
       }
-      const project = await updateProject(options.root, param(req.params["id"], "id"), input);
+      if (body.repoPath !== undefined && body.repoPath.trim()) {
+        input.repoPath = body.repoPath.trim();
+      }
+
+      // Capture the pre-update path so a repoint can cascade onto the project's
+      // existing tasks. updateProject is the single source of truth for path
+      // validation (git worktree, collisions, nesting).
+      const before = await getProject(options.root, projectId);
+      if (!before) {
+        res.status(404).json({ error: `Project not found: ${projectId}` });
+        return;
+      }
+      const project = await updateProject(options.root, projectId, input);
+      if (project.repoPath !== before.repoPath) {
+        await repointProjectTasks(options.root, projectId, before.repoPath, project.repoPath);
+      }
       res.json(project);
     })
   );

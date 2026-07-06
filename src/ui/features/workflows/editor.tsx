@@ -25,6 +25,8 @@ import {
 } from "./options.js";
 import { WorkflowCanvas } from "../tasks/detail/workflow/canvas.js";
 import type { HarnessTask, WorkflowSummary } from "@ui/app/types.js";
+import { ExtensionPicker } from "../extensions/picker.js";
+import type { ToolExtension } from "../../../core/agents/extensions/types.ts";
 
 interface EditorProps {
   initial: WorkflowDefinition;
@@ -56,6 +58,7 @@ export function WorkflowEditor({ initial, isNew, onClose, onSaved }: EditorProps
   const [selectedStepId, setSelectedStepId] = useState<string | null>(null);
   const [showSettings, setShowSettings] = useState(false);
   const agents: AgentOption[] = (ui.data?.agents ?? []) as AgentOption[];
+  const registryExtensions: ToolExtension[] = ui.data?.agentExtensions?.extensions ?? [];
 
   // When entering the YAML tab, serialize the current draft so the text mirrors the graph.
   useEffect(() => {
@@ -339,6 +342,7 @@ export function WorkflowEditor({ initial, isNew, onClose, onSaved }: EditorProps
                     step={selectedStep}
                     stepIds={stepIds.filter((other) => other !== selectedStepId)}
                     agents={agents}
+                    extensions={registryExtensions}
                     onPatch={(patch) => patchStep(selectedStepId, patch)}
                     onKind={(kind) => changeKind(selectedStepId, kind)}
                     onBranch={(branch) => setBranch(selectedStepId, branch)}
@@ -381,13 +385,24 @@ interface StepRowProps {
   step: WorkflowStep;
   stepIds: string[];
   agents: AgentOption[];
+  extensions: ToolExtension[];
   onPatch: (patch: StepPatch) => void;
   onKind: (kind: WorkflowStepKind) => void;
   onBranch: (branch: Record<string, string> | undefined) => void;
   onRemove: () => void;
 }
 
-function StepRow({ id, step, stepIds, agents, onPatch, onKind, onBranch, onRemove }: StepRowProps) {
+function StepRow({
+  id,
+  step,
+  stepIds,
+  agents,
+  extensions,
+  onPatch,
+  onKind,
+  onBranch,
+  onRemove
+}: StepRowProps) {
   const branchEntries = step.branch ? Object.entries(step.branch) : [];
   const isTerminal = step.kind === "terminal";
   const hasParallel = Boolean(step.parallel);
@@ -491,6 +506,14 @@ function StepRow({ id, step, stepIds, agents, onPatch, onKind, onBranch, onRemov
             onInput={(e) => onPatch({ skill: (e.currentTarget as HTMLInputElement).value || undefined })}
           />
         </label>
+      </div>
+
+      <div class="wf-field wf-field-full">
+        <ExtensionPicker
+          selectedIds={step.extensions ?? []}
+          extensions={extensions}
+          onChange={(ids) => onPatch(ids ? { extensions: ids } : { extensions: undefined })}
+        />
       </div>
 
       {!isTerminal && !hasParallel ? (
@@ -675,6 +698,7 @@ function defToSummary(def: WorkflowDefinition): WorkflowSummary {
       agent: step.agent,
       approval: step.approval,
       ...(step.skill ? { skill: step.skill } : {}),
+      ...(step.extensions ? { extensions: step.extensions } : {}),
       ...(step.effort ? { effort: step.effort } : {}),
       ...(step.next ? { next: step.next } : {}),
       ...(step.parallel ? { parallel: step.parallel } : {}),
