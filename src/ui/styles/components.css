@@ -466,47 +466,6 @@
   gap: var(--s-3);
 }
 
-.grade-card {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding: var(--s-4);
-  border: 1px solid var(--hairline);
-  border-radius: var(--r-lg);
-  background: var(--surface);
-}
-
-.grade-card .grade {
-  display: inline-grid;
-  place-items: center;
-  width: 32px;
-  height: 32px;
-  border-radius: var(--r-md);
-  font-weight: var(--w-bold);
-  font-size: var(--t-lg);
-  color: var(--accent-ink);
-}
-
-.grade-A {
-  background: var(--status-completed);
-}
-
-.grade-B {
-  background: color-mix(in srgb, var(--status-completed) 70%, var(--status-await-review));
-}
-
-.grade-C {
-  background: var(--status-await-review);
-}
-
-.grade-D {
-  background: color-mix(in srgb, var(--status-await-review) 50%, var(--status-blocked));
-}
-
-.grade-F {
-  background: var(--status-blocked);
-}
-
 .icon-spin {
   animation: icon-spin 0.9s linear infinite;
 }

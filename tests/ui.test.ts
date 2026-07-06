@@ -1,7 +1,6 @@
 /* global HTMLButtonElement, window */
 import { readFileSync } from "node:fs";
-import { mkdtemp, mkdir, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { readdir, readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -12,8 +11,6 @@ vi.stubGlobal("localStorage", {
   clear: vi.fn()
 });
 
-import { computeQualityGrades } from "../src/core/quality/quality.ts";
-import { ensureHarnessRepository } from "../src/core/bootstrap/repository.ts";
 import {
   blockedReasonHtml,
   formatBlockedReason
@@ -1383,33 +1380,6 @@ describe("ui slice 1 safety and theme", () => {
   });
 });
 
-describe("ui quality grading", () => {
-  let root: string;
-
-  beforeEach(async () => {
-    root = await mkdtemp(path.join(tmpdir(), "harness-ui-quality-"));
-    await ensureHarnessRepository(root);
-    await mkdir(path.join(root, "src", "ui"), { recursive: true });
-    await writeFile(path.join(root, "src", "ui", "example.ts"), "export const ui = 1;\n", "utf8");
-    await mkdir(path.join(root, "tests"), { recursive: true });
-    await writeFile(
-      path.join(root, "tests", "ui.test.ts"),
-      "import '../src/ui/example.ts';\n",
-      "utf8"
-    );
-  });
-
-  afterEach(async () => {
-    await rm(root, { recursive: true, force: true });
-  });
-
-  it("grades ui domain A when tests/ui.test.ts exists", async () => {
-    const quality = await computeQualityGrades(root);
-    expect(quality.domains['ui']?.grade).toBe("A");
-    expect(quality.domains['ui']?.rationale).toContain("tests reference this domain");
-  });
-});
-
 describe("ui project surfaces", () => {
   it("adds projects from the sidebar via a native folder picker, not a settings form", async () => {
     const tree = await readClientTree();
@@ -1425,6 +1395,38 @@ describe("ui project surfaces", () => {
     expect(tree).toContain("Remove project?");
     expect(tree).not.toContain("projects-form");
     expect(tree).not.toContain("handleAddProject");
+  });
+
+  it("keeps the projects table from clipping row actions on narrow detail panes", async () => {
+    const settingsCss = await readFile(path.join(process.cwd(), "src/ui/styles/settings.css"), "utf8");
+    // Fixed layout + min-width + a scroll wrapper: the table truncates the path
+    // and scrolls rather than pushing the Repoint/Pause/Remove actions off-screen.
+    expect(settingsCss).toContain(".projects-table-scroll");
+    expect(settingsCss).toContain("overflow-x: auto");
+    expect(settingsCss).toContain("table-layout: fixed");
+    expect(settingsCss).toContain("min-width: 620px");
+    // The Settings detail pane is wrapped in the scroll container.
+    const tree = await readClientTree();
+    expect(tree).toContain("projects-table-scroll");
+  });
+
+  it("stacks the shared catalog rail above the detail on laptop-width screens", async () => {
+    const responsiveCss = await readFile(path.join(process.cwd(), "src/ui/styles/responsive.css"), "utf8");
+    // Raised from 900px so Settings/Connectors/Skills/Workflows get a full-width
+    // detail pane before the two-column shell squeezes it to ~460px.
+    expect(responsiveCss).toContain("@media (max-width: 1080px)");
+    expect(responsiveCss).not.toContain("@media (max-width: 900px)");
+  });
+
+  it("truncates gate-check evidence chips instead of clipping them off the card", async () => {
+    const projectsCss = await readFile(path.join(process.cwd(), "src/ui/styles/projects.css"), "utf8");
+    // Long file-path chips in gate cards wrap and truncate with ellipsis.
+    expect(projectsCss).toContain(".gate-check .meta-line .chip");
+    expect(projectsCss).toContain("text-overflow: ellipsis");
+    // Card + meta row can shrink inside the auto-fill grid track.
+    expect(projectsCss).toContain("min-width: 0");
+    // Section head actions wrap below the heading on narrow widths.
+    expect(projectsCss).toMatch(/\.project-section-head \{[^}]*flex-wrap: wrap/);
   });
 
   it("always renders the Projects rail heading with an add button", async () => {
@@ -1496,13 +1498,13 @@ describe("ui project surfaces", () => {
     const state = await import("../src/ui/app/state.ts");
     const projectJobs: AutonomyJob[] = [
       {
-        id: "quality-grade-update",
-        title: "Quality grade update",
+        id: "quality-gate-sweep",
+        title: "Quality gate sweep",
         description: "Test",
-        schedule: "every-7d",
+        schedule: "every-1d",
         status: "active",
         runMode: "manual",
-        approvalPolicy: "read-only",
+        approvalPolicy: "synthetic-task",
         scope: "project",
         scopeId: "proj-abc12345",
         scopeLabel: "My App"
@@ -1666,7 +1668,8 @@ describe("ui navigation restructure", () => {
     expect(projectView).toContain("RunsPanel");
     expect(projectView).toContain("AutonomyPanel");
     expect(projectView).toContain("MemoryPanel");
-    expect(projectView).toContain("QualityPanel");
+    expect(projectView).toContain("QualityGatePanel");
+    expect(projectView).not.toContain("QualityPanel");
     expect(projectView).toContain('navigate("project", project.id, { projectTab');
   });
 
@@ -1697,16 +1700,6 @@ describe("ui navigation restructure", () => {
     router.parseHash();
     expect(state.ui.view).toBe("home");
     vi.unstubAllGlobals();
-  });
-
-  it("fetches per-project quality lazily through the project quality route", async () => {
-    const quality = await readFile(
-      path.join(process.cwd(), "src/ui/features/quality/page.tsx"),
-      "utf8"
-    );
-    expect(quality).toContain("export function QualityPanel");
-    expect(quality).toContain("/api/projects/${projectId}/quality");
-    expect(quality).toContain("/api/projects/${projectId}/quality/recompute");
   });
 });
 

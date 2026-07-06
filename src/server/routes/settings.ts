@@ -10,7 +10,6 @@ import { loadAgentConfig } from "../../core/agents/config/store.ts";
 import { loadAllMergedExtensions } from "../../core/agents/extensions/launch.ts";
 import { loadUsageSnapshots } from "../../core/agents/config/usage-store.ts";
 import { getIntakeSession } from "../../core/intake/intake.ts";
-import { readQualityFile, computeQualityGrades } from "../../core/quality/quality.ts";
 import { ensureHarnessRepository } from "../../core/bootstrap/repository.ts";
 import { loadHarnessSettings, updateHarnessSettings, type HarnessSettings } from "../../core/settings.ts";
 import { completeTargets } from "../../core/paths/targets.ts";
@@ -30,13 +29,12 @@ export function createSettingsRouter(options: ServerOptions): Router {
     "/state",
     asyncRoute(async (_req, res) => {
       await ensureHarnessRepository(options.root);
-      const [tasks, runs, memoryPages, autonomyJobList, quality, workflows, intakeSession, settings, agentConfig, agentUsageSnapshots, agentExtensions] =
+      const [tasks, runs, memoryPages, autonomyJobList, workflows, intakeSession, settings, agentConfig, agentUsageSnapshots, agentExtensions] =
         await Promise.all([
           listTasks(options.root),
           listAllRuns(options.root),
           listAllMemoryPages(options.root),
           listAutonomyJobs(options.root),
-          readQualityFile(options.root),
           listWorkflowSummaries(options.root),
           getIntakeSession(options.root),
           loadHarnessSettings(options.root),
@@ -87,7 +85,6 @@ export function createSettingsRouter(options: ServerOptions): Router {
         memoryPages,
         autonomyJobs: autonomyJobsWithScope,
         projects,
-        quality,
         workflows,
         workflow: await toWorkflowMetadata(options.root, defaultWorkflow),
         stageAgentOverrides: (await loadStageAgentOverrides(options.root)).overrides,
@@ -161,13 +158,6 @@ export function createSettingsRouter(options: ServerOptions): Router {
           harnessRoot: options.root
         })
       );
-    })
-  );
-
-  router.post(
-    "/quality/recompute",
-    asyncRoute(async (_req, res) => {
-      res.json(await computeQualityGrades(options.root));
     })
   );
 

@@ -386,16 +386,47 @@ export async function inspectPostTurnGit(prepared: PreparedWorkspace): Promise<P
   };
 }
 
-/** Run a child process and capture combined stdout/stderr. Used by checks. */
+/**
+ * Run a child process and capture combined stdout/stderr. Used by checks.
+ *
+ * When `timeoutMs` is given, a command that has not exited by then is SIGKILLed and
+ * the promise resolves with a non-zero `exitCode` (124) and `timedOut: true`. The kill
+ * targets the whole process group (`detached`): a check like `npm run dev` spawns its
+ * real command as a grandchild, and killing only the direct child leaves that
+ * grandchild orphaned, holding the stdio pipes open so `close` never fires and the
+ * timeout never actually bounds the run (seen on Linux where the wrapper forks rather
+ * than execs). Mirrors `runSingleHook` in review/hooks.ts. Omitting `timeoutMs`
+ * preserves the unbounded behaviour git operations rely on; `detached` is applied only
+ * when a timeout is set so those callers spawn byte-for-byte as before.
+ */
 export function runShell(
   command: string,
   args: string[],
   cwd: string,
-  onChunk?: (chunk: string) => void
-): Promise<{ exitCode: number; output: string }> {
+  onChunk?: (chunk: string) => void,
+  timeoutMs?: number
+): Promise<{ exitCode: number; output: string; timedOut?: boolean }> {
   return new Promise((resolve) => {
-    const child = spawn(command, args, { cwd, env: process.env, shell: false });
+    const child = spawn(command, args, {
+      cwd,
+      env: process.env,
+      shell: false,
+      ...(timeoutMs && timeoutMs > 0 ? { detached: true } : {})
+    });
     let output = "";
+    let timedOut = false;
+    let timer: NodeJS.Timeout | undefined;
+    if (timeoutMs && timeoutMs > 0) {
+      timer = setTimeout(() => {
+        timedOut = true;
+        try {
+          process.kill(-child.pid!, "SIGKILL");
+        } catch {
+          child.kill("SIGKILL");
+        }
+        resolve({ exitCode: 124, output: `${output}\n[timed out after ${timeoutMs}ms, killed]`, timedOut: true });
+      }, timeoutMs);
+    }
     child.stdout.setEncoding("utf8");
     child.stderr.setEncoding("utf8");
     child.stdout.on("data", (chunk: string) => {
@@ -406,7 +437,13 @@ export function runShell(
       output += chunk;
       onChunk?.(chunk);
     });
-    child.on("error", (err) => resolve({ exitCode: 1, output: `${output}\n${err.message}` }));
-    child.on("close", (code) => resolve({ exitCode: typeof code === "number" ? code : 1, output }));
+    child.on("error", (err) => {
+      if (timer) clearTimeout(timer);
+      resolve({ exitCode: 1, output: `${output}\n${err.message}` });
+    });
+    child.on("close", (code) => {
+      if (timer) clearTimeout(timer);
+      resolve({ exitCode: typeof code === "number" ? code : 1, output, ...(timedOut ? { timedOut } : {}) });
+    });
   });
 }

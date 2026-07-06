@@ -7,7 +7,6 @@ import {
   listInflightTaskIds,
   registerInflightTurn
 } from "../src/runtime/sessions.ts";
-import { computeQualityGrades } from "../src/core/quality/quality.ts";
 import type { AgentRunner } from "../src/runners/types.ts";
 
 class MockRunner implements AgentRunner {
@@ -89,12 +88,3 @@ describe("runtime sessions", () => {
   });
 });
 
-describe("runtime quality grade", () => {
-  it("grades the runtime domain A when tests/runtime.test.ts exists", async () => {
-    const quality = await computeQualityGrades(process.cwd());
-    expect(quality.domains['runtime']?.grade).toBe("A");
-    expect(quality.domains['runtime']?.rationale).toBe(
-      "Healthy: no oversized files, tests reference this domain."
-    );
-  });
-});

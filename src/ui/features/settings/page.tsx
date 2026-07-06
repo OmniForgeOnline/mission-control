@@ -197,6 +197,7 @@ function ProjectsSection(): VNode {
   }
 
   return (
+    <div class="projects-table-scroll">
     <table class="projects-table">
       <thead>
         <tr>
@@ -251,6 +252,7 @@ function ProjectsSection(): VNode {
         ))}
       </tbody>
     </table>
+    </div>
   );
 }
 

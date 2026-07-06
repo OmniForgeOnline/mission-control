@@ -837,7 +837,7 @@ button.catalog-group-head[aria-expanded="true"] .catalog-group-chevron {
 }
 
 /* ---------- responsive ---------- */
-@media (max-width: 900px) {
+@media (max-width: 1080px) {
   .catalog-shell {
     grid-template-columns: 1fr;
   }

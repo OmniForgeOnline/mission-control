@@ -26,17 +26,36 @@ export interface PlannedCheck {
   kind?: CheckKind;
   command: string;
   available: boolean;
+  /**
+   * Working directory for the command, relative to the workspace root (absolute
+   * paths are used as-is). Absent means run at the workspace root.
+   */
+  cwd?: string;
   /** Present when `available` is false; explains why the tooling is missing. */
   skipReason?: string;
   fatal?: boolean;
 }
 
-export type CheckPlanSource = "checks.yml" | "package.json" | "makefile" | "hybrid" | "none";
+export type CheckPlanSource =
+  | "checks.yml"
+  | "quality-gate"
+  | "package.json"
+  | "makefile"
+  | "hybrid"
+  | "none";
 
 export interface CheckPlan {
   checks: PlannedCheck[];
   maxRounds: number;
   source: CheckPlanSource;
+  /**
+   * Present when the plan deliberately runs no blocking checks because the
+   * project's generated gate is not actionable (`incomplete`/`failed`): a
+   * human-readable note naming what the operator must resolve. Rendered in the
+   * author prompt and the checks-outcome message so the gap is never mistaken for
+   * an ordinary no-checks run. Absent for workspace-local detection.
+   */
+  resolutionNote?: string;
 }
 
 export type CheckResultStatus = "passed" | "failed" | "skipped";
@@ -70,10 +89,22 @@ export interface CheckSummary {
   results: CheckRunResult[];
   /** Cap on how many remediation rounds the processor should attempt. */
   maxRounds: number;
+  /** Mirrors {@link CheckPlan.resolutionNote} so the outcome message can surface it. */
+  resolutionNote?: string;
 }
 
 const MAX_OUTPUT_BYTES = 32 * 1024;
 export const DEFAULT_CHECK_REMEDIATION_ROUNDS = 3;
+/**
+ * Per-command wall-clock backstop. The gate now runs commands discovered from
+ * manifests, docs, and CI (not just operator-authored ones), and the executor spawns
+ * with `shell: false`; a command that does not exit on its own would otherwise hang
+ * the gate indefinitely. Ten minutes is well beyond any single verification command
+ * expected within one turn, so it only ever bounds a genuine hang (a watch script that
+ * slipped classification, a dev server, a prompt blocking on stdin) rather than
+ * false-failing a legitimate suite.
+ */
+export const DEFAULT_CHECK_TIMEOUT_MS = 10 * 60 * 1000;
 
 function clipOutput(output: string): string {
   if (output.length <= MAX_OUTPUT_BYTES) return output;
@@ -301,15 +332,16 @@ function parseCommand(command: string): { cmd: string | null; args: string[] } {
 }
 
 /**
- * Run the planned checks for `workspacePath`. Unavailable checks are recorded as
- * explicit skips (never a silent pass). A workspace with no runnable checks
- * returns `outcome: "noChecks"` rather than pretending to pass.
+ * Execute a resolved check plan against `workspacePath`. Unavailable checks are
+ * recorded as explicit skips (never a silent pass). A plan with no runnable
+ * checks returns `outcome: "noChecks"` rather than pretending to pass. Extracted
+ * so both the workspace-local and project-scoped runners share one execution path.
  */
-export async function runChecks(
+export async function runCheckPlan(
+  plan: CheckPlan,
   workspacePath: string,
   onChunk?: (chunk: string) => void
 ): Promise<CheckSummary> {
-  const plan = await planChecks(workspacePath);
   const results: CheckRunResult[] = [];
 
   for (const spec of plan.checks) {
@@ -327,8 +359,9 @@ export async function runChecks(
 
     const { cmd, args } = parseCommand(spec.command);
     if (!cmd) continue;
+    const runCwd = spec.cwd ? path.resolve(workspacePath, spec.cwd) : workspacePath;
     onChunk?.(`\n[check] ${spec.name}: ${spec.command}\n`);
-    const { exitCode, output } = await runShell(cmd, args, workspacePath, onChunk);
+    const { exitCode, output } = await runShell(cmd, args, runCwd, onChunk, DEFAULT_CHECK_TIMEOUT_MS);
     results.push({
       name: spec.name,
       command: spec.command,
@@ -349,8 +382,21 @@ export async function runChecks(
     skipped: outcome === "noChecks",
     source: plan.source,
     results,
-    maxRounds: plan.maxRounds
+    maxRounds: plan.maxRounds,
+    ...(plan.resolutionNote ? { resolutionNote: plan.resolutionNote } : {})
   };
+}
+
+/**
+ * Run the planned checks for `workspacePath`. Unavailable checks are recorded as
+ * explicit skips (never a silent pass). A workspace with no runnable checks
+ * returns `outcome: "noChecks"` rather than pretending to pass.
+ */
+export async function runChecks(
+  workspacePath: string,
+  onChunk?: (chunk: string) => void
+): Promise<CheckSummary> {
+  return runCheckPlan(await planChecks(workspacePath), workspacePath, onChunk);
 }
 
 export function summarizeFailures(summary: CheckSummary): string {
@@ -365,6 +411,8 @@ function describeNoChecksSource(source: CheckPlanSource): string {
   switch (source) {
     case "checks.yml":
       return "`.harness/checks.yml` declared no checks";
+    case "quality-gate":
+      return "the generated quality-gate config declared no required checks";
     case "package.json":
       return "`package.json` declared no lint/test/typecheck scripts";
     case "makefile":
@@ -378,6 +426,11 @@ function describeNoChecksSource(source: CheckPlanSource): string {
 
 export function describeChecksOutcome(summary: CheckSummary): string {
   if (summary.outcome === "noChecks") {
+    if (summary.resolutionNote) {
+      // An incomplete/failed gate ran nothing because the operator must resolve it
+      // first; surface that reason rather than the generic detection line.
+      return `${summary.resolutionNote} Nothing was validated.`;
+    }
     return `No mechanical checks detected for this project (${describeNoChecksSource(summary.source)}). Nothing was validated.`;
   }
 
@@ -410,6 +463,14 @@ export function describeCheckPlan(plan: CheckPlan): string {
   const unavailable = plan.checks.filter((check) => !check.available);
 
   if (available.length === 0) {
+    if (plan.resolutionNote) {
+      // An incomplete/failed gate: tell the author the operator action that is
+      // blocking the automated gate, so the gap is visible in the prompt rather
+      // than reading as an ordinary empty repo.
+      return `## Detected mechanical checks
+
+${plan.resolutionNote} The harness runs no automated gate for this project until this is resolved; run whatever validation makes sense by hand before you finish.`;
+    }
     const note = unavailable.length
       ? `None of the probed checks are available: ${unavailable
           .map((check) => `${check.name} (${check.skipReason ?? "unavailable"})`)
@@ -420,7 +481,13 @@ export function describeCheckPlan(plan: CheckPlan): string {
 ${note} The harness will not run an automated gate for this project. Run whatever validation makes sense by hand before you finish.`;
   }
 
-  const lines = available.map((check) => `- \`${check.command}\``);
+  // Mirror runCheckPlan: when a check carries a cwd the gate runs it from that
+  // subdirectory, so the author-facing command must `cd` there too. Otherwise the
+  // rendered command would pass or fail differently than the enforced gate.
+  const lines = available.map((check) => {
+    const command = check.cwd ? `cd ${check.cwd} && ${check.command}` : check.command;
+    return `- \`${command}\``;
+  });
   const skipLines = unavailable.length
     ? `\n\nUnavailable (do not invent substitutes): ${unavailable
         .map((check) => `${check.name}: ${check.skipReason ?? "unavailable"}`)

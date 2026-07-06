@@ -1,13 +1,20 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import path from "node:path";
 import os from "node:os";
-import { mkdtemp, mkdir, rm } from "node:fs/promises";
+import { mkdtemp, rm } from "node:fs/promises";
 import { onboardProject, projectDir } from "../src/core/projects/registry.ts";
 import { listProjectJobs, runProjectJob, setProjectJobRunMode } from "../src/core/projects/scoped-autonomy.ts";
 import { writeJsonFile } from "../src/core/infra/fs.ts";
 import { listTasks } from "../src/core/tasks/tasks.ts";
 import { runAutonomyAgentTurn } from "../src/autonomy/agent-run.ts";
+import {
+  buildProjectSelfImprovementContext,
+  buildProjectSelfImprovementPrompt
+} from "../src/autonomy/handlers/project-self-improvement.ts";
+import { writeQualityGate, writeProjectQualityGateRun } from "../src/core/projects/quality-gate.ts";
 import type { AgentRunner, AgentTurnRequest } from "../src/runners/types.ts";
+
+type ProjectRef = { id: string; name: string; repoPath: string };
 
 describe("project autonomy", () => {
   let tmp: string;
@@ -32,12 +39,11 @@ describe("project autonomy", () => {
     await rm(tmp, { recursive: true, force: true }).catch(() => {});
   });
 
-  it("seeds 8 project jobs with manual runMode", async () => {
+  it("seeds 7 project jobs with manual runMode", async () => {
     const jobs = await listProjectJobs(tmp, projectId);
-    expect(jobs).toHaveLength(8);
+    expect(jobs).toHaveLength(7);
     expect(jobs.every((j) => j.runMode === "manual")).toBe(true);
     const ids = jobs.map((j) => j.id);
-    expect(ids).toContain("quality-grade-update");
     expect(ids).toContain("quality-gate-sweep");
     expect(ids).toContain("tech-debt-sweep");
     expect(ids).toContain("turn-evolution-review");
@@ -82,17 +88,14 @@ describe("project autonomy", () => {
     });
   });
 
-  it("anchors project quality-gate tasks to the project", async () => {
-    await mkdir(path.join(projectDir(tmp, projectId)), { recursive: true });
-    await writeJsonFile(path.join(projectDir(tmp, projectId), "quality.json"), {
-      updatedAt: new Date().toISOString(),
-      domains: {
-        core: {
-          grade: "C",
-          evidence: [path.join(tmp, "my-repo", "src", "core")],
-          summary: "No tests reference this domain."
-        }
-      }
+  it("anchors project quality-gate remediation tasks to the project", async () => {
+    // A failing check in the last gate run → the sweep files a remediation task
+    // anchored to this project (projectId + repoPath), not the harness root.
+    await writeProjectQualityGateRun(tmp, projectId, {
+      runAt: new Date().toISOString(),
+      outcome: "failed",
+      pass: false,
+      results: [{ name: "lint", command: "ruff check .", status: "failed", exitCode: 1, output: "boom" }]
     });
 
     await runProjectJob(tmp, projectId, "quality-gate-sweep");
@@ -102,6 +105,7 @@ describe("project autonomy", () => {
       projectId,
       repoPath: projectRepoPath
     });
+    expect(task?.title).toBe("Quality gate: lint");
   });
 
   it("passes project context to project autonomy agent turns", async () => {
@@ -141,5 +145,37 @@ describe("project autonomy", () => {
       projectId,
       repoPath: projectRepoPath
     });
+  });
+
+  it("feeds the quality-gate state and last run results into self-improvement context", async () => {
+    const project: ProjectRef = { id: projectId, name: "Test Project", repoPath: projectRepoPath };
+    await writeQualityGate(tmp, projectId, {
+      status: "incomplete",
+      checks: [],
+      needsResolution: ["no lint command documented"]
+    });
+    await writeProjectQualityGateRun(tmp, projectId, {
+      runAt: "2026-01-01T00:00:00.000Z",
+      outcome: "failed",
+      pass: false,
+      results: [{ name: "tests", command: "pytest", status: "failed", exitCode: 1, output: "boom" }]
+    });
+
+    const context = await buildProjectSelfImprovementContext(tmp, project);
+
+    expect(context).toContain("Quality gate");
+    expect(context).toContain("incomplete");
+    expect(context).toContain("no lint command documented");
+    // The last run's failing check is surfaced so the agent can act on real pass/fail.
+    expect(context).toContain("tests");
+    expect(context).toContain("failed");
+  });
+
+  it("instructs the self-improvement agent to resolve gate gaps and failing checks", async () => {
+    const project: ProjectRef = { id: projectId, name: "Test Project", repoPath: projectRepoPath };
+    const prompt = buildProjectSelfImprovementPrompt(project, "ctx");
+
+    expect(prompt).toContain("quality gate");
+    expect(prompt).toContain("failing");
   });
 });

@@ -24,6 +24,23 @@ function nowIso(): string {
   return new Date().toISOString();
 }
 
+/**
+ * Format the spawn notice for an agent turn. The label (when set by the caller,
+ * e.g. "quality-gate", "quickstarts") disambiguates concurrent turns whose
+ * command lines are otherwise identical — the prompt travels over stdin, so two
+ * different features spawn the agent with the same argv. The turn number
+ * surfaces retries within one generation.
+ */
+export function formatSpawnNotice(
+  agent: string,
+  turnNumber: number,
+  label: string | undefined,
+  fullCommand: string
+): string {
+  const tag = label ? `(${label}, turn ${turnNumber})` : `(turn ${turnNumber})`;
+  return `[${agent}] spawning ${tag}: ${fullCommand}`;
+}
+
 /** Explicit tool + model pool the runner should launch. */
 export interface RunnerLaunchContext {
   tool: AgentToolConfig;
@@ -158,7 +175,7 @@ export class HeadlessAgentRunner implements AgentRunner {
         }
         this.liveStdinOpen = false;
       };
-      console.log(`[${this.agent}] spawning: ${fullCommand}`);
+      console.log(formatSpawnNotice(this.agent, request.turnNumber, request.label, fullCommand));
 
       let stdout = "";
       let stderr = "";

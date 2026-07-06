@@ -7,7 +7,7 @@ import type { AutonomyJob, AutonomyRunMode } from "../../autonomy/job-types.ts";
 import type { AutonomyJobContext, AutonomyJobHandler } from "../../autonomy/registry.ts";
 import { markAutonomyJobRunning, clearAutonomyJobRunning } from "../../autonomy/runtime.ts";
 import { emitStateChange } from "../../core/infra/state-bus.ts";
-import { runProjectQualityGradeUpdate, runProjectQualityGateSweep } from "../../autonomy/handlers/project-quality.ts";
+import { runProjectQualityGateSweep } from "../../autonomy/handlers/project-quality.ts";
 import { runProjectTechDebtSweep } from "../../autonomy/handlers/project-tech-debt-sweep.ts";
 import { runProjectEvolutionReview } from "../../autonomy/handlers/project-evolution-review.ts";
 import { runProjectSelfImprovement } from "../../autonomy/handlers/project-self-improvement.ts";
@@ -19,18 +19,9 @@ import type { AutonomyRunResult } from "../../autonomy/job-types.ts";
 
 export const PROJECT_JOB_DEFAULTS: AutonomyJob[] = [
   {
-    id: "quality-grade-update",
-    title: "Quality grade update",
-    description: "Recompute quality grades for the project source roots.",
-    schedule: "every-7d",
-    status: "active",
-    runMode: "manual",
-    approvalPolicy: "read-only"
-  },
-  {
     id: "quality-gate-sweep",
     title: "Quality gate sweep",
-    description: "Queue synthetic remediation for every project domain below grade A.",
+    description: "Queue synthetic remediation for failing quality-gate checks from the last run.",
     schedule: "every-1d",
     status: "active",
     runMode: "manual",
@@ -149,7 +140,6 @@ export async function setProjectJobRunMode(
 }
 
 const PROJECT_JOB_HANDLERS: Record<string, AutonomyJobHandler> = {
-  "quality-grade-update": runProjectQualityGradeUpdate,
   "quality-gate-sweep": runProjectQualityGateSweep,
   "tech-debt-sweep": runProjectTechDebtSweep,
   "turn-evolution-review": runProjectEvolutionReview,

@@ -1,13 +1,10 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { createInterface } from "node:readline";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
-import { existsSync } from "node:fs";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { computeQualityGrades } from "../src/core/quality/quality.ts";
 import { ensureHarnessRepository } from "../src/core/bootstrap/repository.ts";
 import { builtinAgentConfigBundle } from "../src/core/agents/config/templates.ts";
 import { captureMemoryPage } from "../src/memory/store.ts";
@@ -361,7 +358,6 @@ describe("gbrain MCP server", () => {
       expect.arrayContaining([
         "gbrain_search",
         "gbrain_list",
-        "quality_grades",
         "list_hooks",
         "propose_skill",
         "list_skills"
@@ -369,38 +365,6 @@ describe("gbrain MCP server", () => {
     );
   });
 
-  it("quality_grades returns a domain payload", async () => {
-    const qualityPath = path.join(harnessRoot, "data", "state", "quality.json");
-    await writeFile(
-      qualityPath,
-      JSON.stringify({
-        updatedAt: new Date().toISOString(),
-        domains: {
-          mcp: {
-            grade: "A",
-            rationale: "Healthy: no oversized files, tests reference this domain.",
-            evidence: ["src/mcp"],
-            lastComputedAt: new Date().toISOString()
-          }
-        }
-      }),
-      "utf8"
-    );
-
-    const proc = await startServer();
-    await mcpRequest(proc, { jsonrpc: "2.0", id: 1, method: "initialize", params: {} });
-
-    const response = await mcpRequest(proc, {
-      jsonrpc: "2.0",
-      id: 2,
-      method: "tools/call",
-      params: { name: "quality_grades", arguments: { domain: "mcp" } }
-    });
-
-    expect(response.error).toBeUndefined();
-    const payload = parseToolText(response.result) as Record<string, unknown>;
-    expect(payload).toHaveProperty("mcp");
-  });
 
   it("list_hooks returns an empty array when hooks.yml is absent", async () => {
     const proc = await startServer();
@@ -527,13 +491,3 @@ describe("gbrain MCP server", () => {
   });
 });
 
-describe("mcp quality grade", () => {
-  it("assigns grade A once tests/mcp.test.ts exists in the harness repo", async () => {
-    const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-    expect(existsSync(path.join(repoRoot, "tests", "mcp.test.ts"))).toBe(true);
-
-    const quality = await computeQualityGrades(repoRoot);
-    expect(quality.domains['mcp']?.grade).toBe("A");
-    expect(quality.domains['mcp']?.rationale).toContain("tests reference this domain");
-  });
-});

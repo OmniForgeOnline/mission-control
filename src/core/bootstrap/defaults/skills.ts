@@ -27,7 +27,6 @@ The harness has prepared a workspace cwd, an MCP server (\`gbrain\`), optional c
 | Durable lesson | \`proposal-first\` |
 | Out-of-scope debt | \`tech-debt-capture\` |
 | Mechanical checks failed | \`harness-checks\` |
-| Picking domains by health | \`harness-quality\` |
 | Picking up a stalled task | \`debug-prior-runs\` |
 | Authoring a new skill | \`harness-skill-author\` |
 | Final message | \`operator-handoff\` |
@@ -191,32 +190,6 @@ Whenever prior preferences/decisions/projects/entities might apply. Always befor
 ## Programmatic surface
 
 \`gbrain_search\`, \`gbrain_index_search\`, \`gbrain_read\`, \`gbrain_list\`, \`gbrain_propose\`.
-`,
-  "harness-quality/SKILL.md": `---
-name: harness-quality
-description: Read computed quality grades and prioritize where to push.
----
-
-# Harness Quality
-
-## When to use
-
-Choosing where to invest effort across domains, or reviewing cross-domain work.
-
-## How
-
-1. \`quality_grades()\` — full map per domain.
-2. \`quality_grades(domain="<name>")\` — focused read.
-3. Worse grades have priority. The autonomy \`quality-gate-sweep\` job queues synthetic tasks for domains below grade A.
-
-## Anti-patterns
-
-- Editing \`state/quality.json\` directly.
-- Suppressing tests to lift a grade.
-
-## Programmatic surface
-
-\`quality_grades(domain?)\`, \`tech_debt_capture(...)\`.
 `,
   "harness-checks/SKILL.md": `---
 name: harness-checks

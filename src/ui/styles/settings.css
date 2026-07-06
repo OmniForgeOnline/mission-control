@@ -829,6 +829,8 @@
 
 .projects-table {
   width: 100%;
+  table-layout: fixed;
+  min-width: 620px;
   border: 1px solid var(--hairline);
   border-radius: var(--r-lg);
   background: var(--surface);
@@ -836,6 +838,41 @@
   border-collapse: separate;
   border-spacing: 0;
   margin-top: var(--s-4);
+}
+
+/* Horizontal scroll fallback: when the detail pane is too narrow for the
+   table's min-width (e.g. Settings on a laptop where the section rail still
+   sits beside the detail), the table scrolls instead of clipping the row
+   actions off the right edge. */
+.projects-table-scroll {
+  margin-top: var(--s-4);
+  overflow-x: auto;
+}
+
+.projects-table-scroll .projects-table {
+  margin-top: 0;
+}
+
+/* Fixed-layout column sizing: Path takes the remaining space and truncates;
+   the rest are sized to their content so the action buttons never crush. */
+.projects-table th:nth-child(1),
+.projects-table td:nth-child(1) {
+  width: 18%;
+}
+
+.projects-table th:nth-child(3),
+.projects-table td:nth-child(3) {
+  width: 104px;
+}
+
+.projects-table th:nth-child(4),
+.projects-table td:nth-child(4) {
+  width: 92px;
+}
+
+.projects-table th:nth-child(5),
+.projects-table td:nth-child(5) {
+  width: 208px;
 }
 
 .projects-table th {
@@ -869,7 +906,7 @@
   font-family: var(--font-mono);
   font-size: var(--t-xs);
   color: var(--ink-muted);
-  max-width: 280px;
+  max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

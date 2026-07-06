@@ -1,12 +1,14 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import path from "node:path";
 import os from "node:os";
-import { mkdtemp, realpath, rm } from "node:fs/promises";
+import { mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import request from "supertest";
 
 import { createServer } from "../src/server/app.ts";
 import { onboardProject, listProjects, removeProject, updateProject } from "../src/core/projects/registry.ts";
 import { pickerCommands, parsePickerOutput, pickFolder } from "../src/core/projects/folder-picker.ts";
+import { DeterministicAgentRunner } from "./helpers/deterministic-runner.ts";
+import { writeQualityGate, readProjectQualityGateRun } from "../src/core/projects/quality-gate.ts";
 
 describe("project registry", () => {
   let tmp: string;
@@ -332,20 +334,208 @@ describe("project API", () => {
     }
   });
 
-  it("reads and recomputes quality for a real project under its project dir", async () => {
+  it("does not kick off background codex generation when onboarding in test mode", async () => {
     const repoDir = path.join(tmp, "my-app");
     const { execSync } = await import("node:child_process");
     execSync("git init my-app", { cwd: tmp });
     const created = await request(app).post("/api/projects").send({ repoPath: repoDir, name: "My App" });
     const id = created.body.id as string;
 
-    const recompute = await request(app).post(`/api/projects/${id}/quality/recompute`);
-    expect(recompute.status).toBe(200);
-    expect(recompute.body).toHaveProperty("domains");
+    // Onboarding must stay hermetic in test mode: no fire-and-forget generation
+    // that would spawn a real codex subprocess. The gate stays at its pending
+    // placeholder for the whole window instead of flipping to "generating".
+    for (let i = 0; i < 8; i++) {
+      const gate = await request(app).get(`/api/projects/${id}/quality-gate`);
+      expect(gate.status).toBe(200);
+      expect(gate.body.status).toBe("pending");
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+  });
+});
 
-    const read = await request(app).get(`/api/projects/${id}/quality`);
+describe("projects quality-gate API", () => {
+  let tmp: string;
+  let app: ReturnType<typeof createServer>;
+
+  beforeEach(async () => {
+    tmp = await mkdtemp(path.join(os.tmpdir(), "harness-qg-api-"));
+    const { execSync } = await import("node:child_process");
+    execSync("git init", { cwd: tmp });
+    execSync("git config user.email t@t.com", { cwd: tmp });
+    execSync("git config user.name t", { cwd: tmp });
+    execSync("git commit --allow-empty -m init", { cwd: tmp });
+  });
+
+  afterEach(async () => {
+    await rm(tmp, { recursive: true, force: true }).catch(() => {});
+  });
+
+  async function onboardPyProject(): Promise<string> {
+    const repoDir = path.join(tmp, "svc");
+    const { execSync } = await import("node:child_process");
+    execSync("git init svc", { cwd: tmp });
+    await writeFile(
+      path.join(repoDir, "pyproject.toml"),
+      "[tool.ruff]\nline-length = 100\n\n[tool.pytest.ini_options]\ntestpaths = [\"tests\"]\n",
+      "utf8"
+    );
+    const created = await request(app).post("/api/projects").send({ repoPath: repoDir, name: "svc" });
+    return created.body.id as string;
+  }
+
+  async function onboardEmptyRepo(): Promise<string> {
+    const repoDir = path.join(tmp, "blank");
+    const { execSync } = await import("node:child_process");
+    execSync("git init blank", { cwd: tmp });
+    const created = await request(app).post("/api/projects").send({ repoPath: repoDir, name: "blank" });
+    return created.body.id as string;
+  }
+
+  it("regenerates a ready gate from agent output for a Python repo", async () => {
+    const runner = new DeterministicAgentRunner("claude");
+    runner.setReplies([
+      JSON.stringify({
+        status: "ready",
+        checks: [
+          { name: "lint", category: "lint", command: "ruff check .", required: true, evidence: ["pyproject.toml [tool.ruff]"] },
+          { name: "tests", category: "test", command: "pytest", required: true, evidence: ["pyproject.toml [tool.pytest]"] }
+        ],
+        rationale: "declared"
+      })
+    ]);
+    app = createServer({ root: tmp, testMode: true, runner });
+
+    const id = await onboardPyProject();
+    const res = await request(app).post(`/api/projects/${id}/quality-gate/regenerate`);
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe("ready");
+    const cmds = res.body.checks.map((c: { command: string }) => c.command);
+    expect(cmds).toContain("ruff check .");
+    expect(cmds).toContain("pytest");
+  });
+
+  it("regenerates as failed when the agent output is invalid (no fallback)", async () => {
+    const runner = new DeterministicAgentRunner("claude");
+    runner.setReplies(["I cannot help with that"]);
+    app = createServer({ root: tmp, testMode: true, runner });
+
+    const id = await onboardPyProject();
+    const res = await request(app).post(`/api/projects/${id}/quality-gate/regenerate`);
+    expect(res.status).toBe(200);
+    // No deterministic fallback: an agent failure is a failure the operator re-triggers.
+    expect(res.body.status).toBe("failed");
+    expect(res.body.checks).toEqual([]);
+    expect(res.body.error).toBeTruthy();
+  });
+
+  it("regenerates an incomplete gate when the agent reports insufficient evidence", async () => {
+    const runner = new DeterministicAgentRunner("claude");
+    runner.setReplies([
+      JSON.stringify({
+        status: "incomplete",
+        checks: [],
+        needsResolution: ["No lint/test/build commands documented."],
+        rationale: "insufficient evidence"
+      })
+    ]);
+    app = createServer({ root: tmp, testMode: true, runner });
+
+    const id = await onboardEmptyRepo();
+    const res = await request(app).post(`/api/projects/${id}/quality-gate/regenerate`);
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe("incomplete");
+    expect(res.body.checks).toEqual([]);
+    expect(res.body.needsResolution.length).toBeGreaterThan(0);
+  });
+
+  it("GET /quality-gate returns the stored config after regeneration", async () => {
+    const runner = new DeterministicAgentRunner("claude");
+    runner.setReplies(["garbage"]);
+    app = createServer({ root: tmp, testMode: true, runner });
+
+    const id = await onboardPyProject();
+    await request(app).post(`/api/projects/${id}/quality-gate/regenerate`);
+    const read = await request(app).get(`/api/projects/${id}/quality-gate`);
     expect(read.status).toBe(200);
-    expect(read.body).toHaveProperty("domains");
+    expect(read.body.status).toBe("failed");
+    expect(read.body.generatedAt).toBeTruthy();
+  });
+
+  it("runs all gate checks on demand and returns per-check results", async () => {
+    app = createServer({ root: tmp, testMode: true });
+    const id = await onboardEmptyRepo();
+    await writeQualityGate(tmp, id, {
+      status: "ready",
+      checks: [
+        { name: "ok", category: "test", command: "true", required: true, evidence: ["t"] },
+        { name: "boom", category: "test", command: "false", required: true, evidence: ["t"] }
+      ]
+    });
+
+    const res = await request(app).post(`/api/projects/${id}/quality-gate/run`);
+    expect(res.status).toBe(200);
+    expect(res.body.outcome).toBe("failed");
+    const byName = new Map(res.body.results.map((r: { name: string; status: string }) => [r.name, r.status]));
+    expect(byName.get("ok")).toBe("passed");
+    expect(byName.get("boom")).toBe("failed");
+    // A full run is persisted so the self-improvement agent can see actual pass/fail.
+    const persisted = await readProjectQualityGateRun(tmp, id);
+    expect(persisted).not.toBeNull();
+    expect(persisted?.pass).toBe(false);
+    expect(persisted?.results.some((r) => r.name === "boom" && r.status === "failed")).toBe(true);
+  });
+
+  it("runs a single gate check when {check} names it", async () => {
+    app = createServer({ root: tmp, testMode: true });
+    const id = await onboardEmptyRepo();
+    await writeQualityGate(tmp, id, {
+      status: "ready",
+      checks: [
+        { name: "ok", category: "test", command: "true", required: true, evidence: ["t"] },
+        { name: "boom", category: "test", command: "false", required: true, evidence: ["t"] }
+      ]
+    });
+
+    const res = await request(app).post(`/api/projects/${id}/quality-gate/run`).send({ check: "ok" });
+    expect(res.status).toBe(200);
+    expect(res.body.results).toHaveLength(1);
+    expect(res.body.results[0].name).toBe("ok");
+    expect(res.body.results[0].status).toBe("passed");
+    // Single-check spot checks are not persisted as the "last run" (they would
+    // shadow a full run's picture the self-improvement agent relies on).
+    expect(await readProjectQualityGateRun(tmp, id)).toBeNull();
+  });
+
+  it("edits/removes checks via PUT /quality-gate/checks", async () => {
+    app = createServer({ root: tmp, testMode: true });
+    const id = await onboardEmptyRepo();
+    await writeQualityGate(tmp, id, {
+      status: "ready",
+      checks: [
+        { name: "a", category: "test", command: "true", required: true, evidence: [] },
+        { name: "b", category: "test", command: "false", required: true, evidence: [] }
+      ]
+    });
+    // Remove "b" by sending only "a"; the gate stays ready with the surviving check.
+    const res = await request(app)
+      .put(`/api/projects/${id}/quality-gate/checks`)
+      .send({ checks: [{ name: "a", category: "test", command: "true", required: true }] });
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe("ready");
+    expect(res.body.checks.map((c: { name: string }) => c.name)).toEqual(["a"]);
+    // Persisted: a later GET reflects the edit.
+    const read = await request(app).get(`/api/projects/${id}/quality-gate`);
+    expect(read.body.checks.map((c: { name: string }) => c.name)).toEqual(["a"]);
+  });
+
+  it("rejects invalid edited checks (mutating) with 400", async () => {
+    app = createServer({ root: tmp, testMode: true });
+    const id = await onboardEmptyRepo();
+    const res = await request(app)
+      .put(`/api/projects/${id}/quality-gate/checks`)
+      .send({ checks: [{ name: "install", category: "build", command: "npm install", required: true }] });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBeTruthy();
   });
 });
 

@@ -7,8 +7,10 @@ import {
   describeCheckPlan,
   describeChecksOutcome,
   planChecks,
-  resolveCheckMaxRounds
+  resolveCheckMaxRounds,
+  runCheckPlan
 } from "../src/core/review/checks.ts";
+import { runShell } from "../src/core/worktrees/worktrees.ts";
 
 describe("checks outcome descriptions", () => {
   it("makes a no-checks workspace loud, not a silent pass", () => {
@@ -91,6 +93,24 @@ describe("checks outcome descriptions", () => {
     expect(message).toContain("Skipped");
     expect(message).toContain("typecheck");
     expect(message).toContain("tooling unavailable");
+  });
+
+  it("surfaces a quality-gate resolution note instead of a generic no-checks pass", () => {
+    const message = describeChecksOutcome({
+      outcome: "noChecks",
+      pass: true,
+      skipped: true,
+      source: "quality-gate",
+      results: [],
+      maxRounds: DEFAULT_CHECK_REMEDIATION_ROUNDS,
+      resolutionNote:
+        "The project's quality gate is incomplete and needs operator resolution: declare how to lint/test/build."
+    });
+    // The operator-action gap must reach the message, not the generic "declared no
+    // required checks" line that reads as an ordinary no-checks run.
+    expect(message).toContain("needs operator resolution");
+    expect(message).toContain("Nothing was validated");
+    expect(message).not.toContain("declared no required checks");
   });
 });
 
@@ -250,6 +270,23 @@ describe("checks plan prompt rendering", () => {
     expect(text).not.toContain("`npm run -s typecheck`");
   });
 
+  it("prefixes a check's command with its cwd so the author runs it where the gate does", () => {
+    const text = describeCheckPlan({
+      source: "quality-gate",
+      maxRounds: DEFAULT_CHECK_REMEDIATION_ROUNDS,
+      checks: [
+        { name: "lint", kind: "lint", command: "ruff check .", available: true, cwd: "services/api" },
+        { name: "typecheck", kind: "typecheck", command: "tsc --noEmit", available: true }
+      ]
+    });
+    // A cwd-bearing check must point the author at the subdirectory the gate runs
+    // from; otherwise a bare `ruff check .` at the workspace root does not reproduce it.
+    expect(text).toContain("cd services/api && ruff check .");
+    // A check without a cwd stays bare, so the author is not sent to a phantom directory.
+    expect(text).toContain("`tsc --noEmit`");
+    expect(text).not.toMatch(/cd .+ && tsc --noEmit/);
+  });
+
   it("states plainly when no checks are available and there is no automated gate", () => {
     const text = describeCheckPlan({
       source: "none",
@@ -258,6 +295,21 @@ describe("checks plan prompt rendering", () => {
     });
     expect(text).toContain("No");
     expect(text).toContain("will not run an automated gate");
+  });
+
+  it("surfaces a quality-gate resolution note so an incomplete gate is not mistaken for no tooling", () => {
+    const text = describeCheckPlan({
+      source: "quality-gate",
+      maxRounds: DEFAULT_CHECK_REMEDIATION_ROUNDS,
+      checks: [],
+      resolutionNote:
+        "The project's quality gate is incomplete and needs operator resolution: declare how to lint/test/build."
+    });
+    expect(text).toContain("needs operator resolution");
+    expect(text).toContain("no automated gate");
+    // The generic "no package.json/Makefile detected" line must not leak in here,
+    // or the operator-action state is indistinguishable from an ordinary empty repo.
+    expect(text).not.toContain("package.json");
   });
 });
 
@@ -281,5 +333,87 @@ describe("checks remediation helpers", () => {
     await mkdir(dir, { recursive: true });
     await writeFile(path.join(dir, "checks.yml"), "maxRounds: 5\nchecks:\n  - name: ok\n    command: echo pass\n", "utf8");
     await expect(resolveCheckMaxRounds(root)).resolves.toBe(5);
+  });
+});
+
+describe("runCheckPlan working directory", () => {
+  let workspace: string;
+
+  beforeEach(async () => {
+    workspace = await mkdtemp(path.join(tmpdir(), "harness-checks-cwd-"));
+  });
+
+  afterEach(async () => {
+    await rm(workspace, { recursive: true, force: true });
+  });
+
+  it("runs a check in its declared cwd, resolved against the workspace root", async () => {
+    const subdir = path.join(workspace, "services", "api");
+    await mkdir(subdir, { recursive: true });
+    const summary = await runCheckPlan(
+      {
+        source: "checks.yml",
+        maxRounds: DEFAULT_CHECK_REMEDIATION_ROUNDS,
+        checks: [
+          { name: "where", command: 'node -e "console.log(process.cwd())"', available: true, cwd: "services/api" }
+        ]
+      },
+      workspace
+    );
+    expect(summary.outcome).toBe("validated");
+    expect(summary.results[0]?.output).toContain(subdir);
+  });
+
+  it("runs a check at the workspace root when no cwd is declared", async () => {
+    const summary = await runCheckPlan(
+      {
+        source: "checks.yml",
+        maxRounds: DEFAULT_CHECK_REMEDIATION_ROUNDS,
+        checks: [{ name: "where", command: 'node -e "console.log(process.cwd())"', available: true }]
+      },
+      workspace
+    );
+    expect(summary.results[0]?.output).toContain(workspace);
+  });
+});
+
+describe("runShell per-command timeout", () => {
+  let workspace: string;
+
+  beforeEach(async () => {
+    workspace = await mkdtemp(path.join(tmpdir(), "harness-runshell-timeout-"));
+  });
+
+  afterEach(async () => {
+    await rm(workspace, { recursive: true, force: true });
+  });
+
+  it("does not time out a command that exits within the budget", async () => {
+    // A fast command is unaffected by the timeout: the timer is cleared on close and
+    // the normal exit code flows through, so the backstop never fires on real checks.
+    const result = await runShell("node", ["-e", "process.exit(0)"], workspace, undefined, 5000);
+    expect(result.exitCode).toBe(0);
+    expect(result.timedOut).toBeFalsy();
+  });
+
+  it("kills a command that does not exit within the timeout, instead of hanging", async () => {
+    // A watch-style process that never exits would hang the gate forever (the gate
+    // executor spawns with shell:false and, without this bound, resolves only on
+    // close). The timeout must SIGKILL the whole process group and resolve with a
+    // recognizable non-zero exit, so a hung check fails (bounded) rather than stalls.
+    const start = Date.now();
+    const result = await runShell(
+      "node",
+      ["-e", "setInterval(() => 0, 1000)"],
+      workspace,
+      undefined,
+      200
+    );
+    const elapsed = Date.now() - start;
+    expect(result.timedOut).toBe(true);
+    expect(result.exitCode).not.toBe(0);
+    expect(result.output).toMatch(/timed out/i);
+    // Bounded: the kill fires near the timeout, not after the process's own lifetime.
+    expect(elapsed).toBeLessThan(5000);
   });
 });

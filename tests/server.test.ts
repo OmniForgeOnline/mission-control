@@ -11,7 +11,6 @@ import {
   registerInflightTurn
 } from "../src/runtime/sessions.ts";
 import { emitStateChange, taskScopes } from "../src/core/infra/state-bus.ts";
-import { computeQualityGrades } from "../src/core/quality/quality.ts";
 import { ensureHarnessRepository } from "../src/core/bootstrap/repository.ts";
 import { createRun } from "../src/core/tasks/runs.ts";
 import { approveTask, setTaskStatus } from "../src/core/tasks/tasks.ts";
@@ -121,12 +120,6 @@ describe("server routes", () => {
     await request(app).get("/api/kernel/not-a-real-section").expect(404);
   });
 
-  it("recomputes quality grades including the server domain", async () => {
-    const app = createServer({ root: process.cwd(), testMode: true });
-    const res = await request(app).post("/api/quality/recompute").expect(200);
-    expect(res.body.domains.server?.grade).toBe("A");
-    expect(res.body.domains.server?.rationale).toContain("tests reference this domain");
-  });
 
   it("reports inflight task ids in /api/state", async () => {
     const app = createServer({ root, testMode: true });
@@ -166,15 +159,5 @@ describe("server routes", () => {
     expect(killed.body.aborted).toBe(true);
     expect(runner.aborted).toBe(true);
     expect(listInflightTaskIds()).toEqual([]);
-  });
-});
-
-describe("server quality grade", () => {
-  it("grades the server domain A when tests/server.test.ts exists", async () => {
-    const quality = await computeQualityGrades(process.cwd());
-    expect(quality.domains['server']?.grade).toBe("A");
-    expect(quality.domains['server']?.rationale).toBe(
-      "Healthy: no oversized files, tests reference this domain."
-    );
   });
 });

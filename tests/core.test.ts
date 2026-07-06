@@ -14,8 +14,6 @@ import {
   writeFileIfMissing,
   writeJsonFile
 } from "../src/core/infra/fs.ts";
-import { computeQualityGrades } from "../src/core/quality/quality.ts";
-import { ensureHarnessRepository } from "../src/core/bootstrap/repository.ts";
 
 describe("core activity constants", () => {
   it("exposes positive heartbeat and ordered activity thresholds", () => {
@@ -161,32 +159,5 @@ checks:
     expect(text).toContain("Exit code: 2");
     expect(text).toContain("lint failed");
     expect(text).not.toContain("typecheck");
-  });
-});
-
-describe("core quality grading", () => {
-  let root: string;
-
-  beforeEach(async () => {
-    root = await mkdtemp(path.join(tmpdir(), "harness-core-quality-"));
-    await ensureHarnessRepository(root);
-    await mkdir(path.join(root, "src", "core"), { recursive: true });
-    await writeFile(path.join(root, "src", "core", "example.ts"), "export const core = 1;\n", "utf8");
-    await mkdir(path.join(root, "tests"), { recursive: true });
-    await writeFile(
-      path.join(root, "tests", "core.test.ts"),
-      "import '../src/core/example.ts';\n",
-      "utf8"
-    );
-  });
-
-  afterEach(async () => {
-    await rm(root, { recursive: true, force: true });
-  });
-
-  it("grades core domain A when tests/core.test.ts exists", async () => {
-    const quality = await computeQualityGrades(root);
-    expect(quality.domains['core']?.grade).toBe("A");
-    expect(quality.domains['core']?.rationale).toContain("tests reference this domain");
   });
 });

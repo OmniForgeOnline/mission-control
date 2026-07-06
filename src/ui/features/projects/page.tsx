@@ -11,7 +11,7 @@ import { toast, errorToast } from "@ui/overlays/toast.js";
 import { AttachmentInput } from "@ui/shared/components/attachments.js";
 import { AutonomyPanel } from "@ui/features/autonomy/page.js";
 import { MemoryPanel } from "@ui/features/memory/page.js";
-import { QualityPanel } from "@ui/features/quality/page.js";
+import { QualityGatePanel } from "@ui/features/quality/gate-panel.js";
 import { RunsPanel } from "@ui/features/runs/page.js";
 import {
   DEFAULT_TICKET_FILTER,
@@ -412,7 +412,7 @@ function ProjectTabPanel({ project, tab }: { project: ProjectSummary; tab: Proje
     return <MemoryPanel projectId={project.id} />;
   }
   if (tab === "quality") {
-    return <QualityPanel projectId={project.id} />;
+    return <QualityGatePanel projectId={project.id} />;
   }
   return <ProjectOverview project={project} />;
 }

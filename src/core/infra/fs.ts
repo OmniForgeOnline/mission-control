@@ -138,6 +138,25 @@ export async function readJsonFile<T>(filePath: string, fallback: T): Promise<T>
   }
 }
 
+/** Whether a path exists on disk (swallows ENOENT and other stat errors). */
+export async function pathExists(filePath: string): Promise<boolean> {
+  try {
+    await stat(filePath);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Read a UTF-8 file, or `null` when it is missing or unreadable. */
+export async function readTextFile(filePath: string): Promise<string | null> {
+  try {
+    return await readFile(filePath, "utf8");
+  } catch {
+    return null;
+  }
+}
+
 export async function writeJsonFile<T>(filePath: string, data: T): Promise<void> {
   await ensureDir(path.dirname(filePath));
   const unique = `${process.pid}.${Date.now()}.${Math.random().toString(36).slice(2)}`;

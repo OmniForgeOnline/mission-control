@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { createAgentRunner } from "../src/runners/index.ts";
 import { DeterministicAgentRunner } from "./helpers/deterministic-runner.ts";
-import { HeadlessAgentRunner, type RunnerLaunchContext } from "../src/runners/headless.ts";
+import { HeadlessAgentRunner, formatSpawnNotice, type RunnerLaunchContext } from "../src/runners/headless.ts";
 import { builtinAgentConfigBundle } from "../src/core/agents/config/templates.ts";
 import type { HarnessTask } from "../src/core/types.ts";
 import type { AgentTurnRequest } from "../src/runners/types.ts";
@@ -53,6 +53,25 @@ describe("createAgentRunner", () => {
   it("requires a launch context", () => {
     expect(() => createAgentRunner("claude")).toThrow(
       'A launch context (tool + model pool) is required to run "claude".'
+    );
+  });
+});
+
+describe("formatSpawnNotice", () => {
+  // The spawn log must disambiguate concurrent agent turns (e.g. quickstarts +
+  // quality-gate both fire on onboarding) and surface retries, since the prompt
+  // travels over stdin and the command line is otherwise identical across turns.
+  const cmd = "claude -p --output-format stream-json --add-dir /repo";
+
+  it("includes the label and turn number when a label is present", () => {
+    expect(formatSpawnNotice("claude", 1, "quality-gate", cmd)).toBe(
+      "[claude] spawning (quality-gate, turn 1): claude -p --output-format stream-json --add-dir /repo"
+    );
+  });
+
+  it("falls back to just the turn number when no label is set", () => {
+    expect(formatSpawnNotice("grok", 2, undefined, cmd)).toBe(
+      "[grok] spawning (turn 2): claude -p --output-format stream-json --add-dir /repo"
     );
   });
 });
