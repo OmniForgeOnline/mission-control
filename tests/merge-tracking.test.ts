@@ -221,6 +221,7 @@ describe("merge-state refresh", () => {
 
     const result = await refreshTaskMergeState(root, task);
     expect(result.outcome).toBe("unknown");
+    expect(result.reason).toBe("api_error");
 
     const persisted = await getTask(root, task.id);
     expect(persisted?.resolution).toBeUndefined();
@@ -251,10 +252,21 @@ describe("merge-state refresh", () => {
     const closed = await makePendingTask(root, "github", repoDir, 23);
 
     const summary = await refreshMergeStates(root, [merged, open, closed]);
-    expect(summary).toEqual({ scanned: 3, merged: 1, open: 1, closed: 1, unknown: 0 });
+    expect(summary).toEqual({ scanned: 3, merged: 1, open: 1, closed: 1, unknown: 0, unknownReasons: [] });
 
     expect((await getTask(root, merged.id))?.resolution).toBe("completed");
     expect((await getTask(root, open.id))?.resolution).toBeUndefined();
+  });
+
+  it("surfaces the failure reason in the sweep summary", async () => {
+    // No connector token configured: the pending task resolves to auth_missing
+    // and the summary must say why instead of a bare "unknown".
+    const repoDir = await makeRepoDir("https://github.com/acme/repo.git");
+    const task = await makePendingTask(root, "github", repoDir, 51);
+
+    const summary = await refreshMergeStates(root, [task]);
+    expect(summary.unknown).toBe(1);
+    expect(summary.unknownReasons).toContain("GitHub auth missing");
   });
 
   it("self-heals a task whose merge another sweep already recorded, without a forge poll", async () => {
@@ -295,7 +307,7 @@ describe("merge-state refresh", () => {
     }));
 
     const summary = await refreshMergeStates(root, [task]);
-    expect(summary).toEqual({ scanned: 1, merged: 1, open: 0, closed: 0, unknown: 0 });
+    expect(summary).toEqual({ scanned: 1, merged: 1, open: 0, closed: 0, unknown: 0, unknownReasons: [] });
 
     const persisted = await getTask(root, task.id);
     expect(persisted?.resolution).toBe("completed");

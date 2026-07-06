@@ -646,6 +646,179 @@
   color: var(--ink-muted);
 }
 
+.agent-config-extensions-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-3);
+  margin-top: var(--s-3);
+}
+
+.tool-extensions {
+  display: grid;
+  gap: var(--s-3);
+  padding-top: var(--s-2);
+  border-top: 1px solid var(--hairline);
+}
+
+.extension-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--s-2);
+}
+
+.extension-row,
+.extension-picker-option {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  flex-wrap: wrap;
+  padding: var(--s-2) var(--s-3);
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+  border: 1px solid var(--hairline);
+}
+
+.extension-kind {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 2px 6px;
+  border-radius: var(--r-pill);
+  border: 1px solid var(--hairline);
+  color: var(--ink-muted);
+}
+
+.extension-name,
+.extension-picker-name {
+  font-size: var(--t-sm);
+  font-weight: var(--w-medium);
+  color: var(--ink);
+}
+
+.extension-source,
+.extension-picker-id {
+  font-size: var(--t-xs);
+  color: var(--ink-muted);
+  margin-left: auto;
+}
+
+.extension-install-form {
+  display: grid;
+  gap: var(--s-2);
+  padding: var(--s-3);
+  border-radius: var(--r-md);
+  border: 1px dashed var(--hairline-strong);
+  background: color-mix(in srgb, var(--surface-2) 80%, transparent);
+}
+
+.extension-install-label {
+  font-size: var(--t-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--ink-muted);
+}
+
+.extension-install-row {
+  display: flex;
+  gap: var(--s-2);
+  align-items: center;
+}
+
+.extension-install-row .input {
+  flex: 1;
+}
+
+.extension-install-marketplace {
+  font-size: var(--t-sm);
+}
+
+.extension-picker {
+  display: grid;
+  gap: var(--s-3);
+  padding: var(--s-3);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-lg);
+  background: var(--surface-2);
+}
+
+.extension-picker-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s-2);
+}
+
+.extension-picker-title {
+  font-size: var(--t-sm);
+  font-weight: var(--w-semi);
+  color: var(--ink-strong);
+}
+
+.extension-picker-count {
+  font-size: var(--t-xs);
+  color: var(--ink-muted);
+}
+
+.extension-picker-hint,
+.extension-picker-empty,
+.extension-picker-missing {
+  font-size: var(--t-sm);
+  margin: 0;
+}
+
+.extension-chips {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+}
+
+.extension-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-1);
+  padding: 2px 8px;
+  border-radius: var(--r-pill);
+  border: 1px solid var(--hairline-strong);
+  background: var(--surface);
+  font-size: var(--t-xs);
+}
+
+.extension-chip-remove {
+  border: none;
+  background: transparent;
+  color: var(--ink-muted);
+  cursor: pointer;
+  font-size: var(--t-md);
+  line-height: 1;
+  padding: 0 2px;
+}
+
+.extension-picker-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--s-2);
+  max-height: 240px;
+  overflow: auto;
+}
+
+.extension-picker-option {
+  cursor: pointer;
+}
+
+.extension-picker-tool {
+  font-size: var(--t-xs);
+  color: var(--ink-faint);
+  text-transform: uppercase;
+}
+
 .wf-agent-capacity {
   display: block;
   margin-top: 4px;

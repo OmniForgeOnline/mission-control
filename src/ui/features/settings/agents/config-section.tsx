@@ -7,6 +7,7 @@ import { confirm } from "@ui/overlays/confirm.js";
 import { agentVisual } from "@ui/features/tasks/detail/workflow/panel/step-setting-visual.js";
 import { AgentLogo, isKnownAgentLogo } from "@ui/features/tasks/detail/workflow/panel/agent-logo.js";
 import type { AgentConfigBundle, AgentToolConfig, ModelPoolConfig } from "../../../../core/agents/config/types.ts";
+import type { ToolExtension } from "../../../../core/agents/extensions/types.ts";
 import type { UsageSnapshot, UsageSnapshots } from "../../../../core/agents/config/usage.ts";
 
 function refresh(): void {
@@ -60,16 +61,127 @@ function poolsForTool(config: AgentConfigBundle, toolId: string): ModelPoolConfi
   return config.pools.filter((pool) => pool.toolId === toolId);
 }
 
+function extensionsForTool(extensions: ToolExtension[] | undefined, toolId: string): ToolExtension[] {
+  return (extensions ?? []).filter((entry) => entry.toolId === toolId);
+}
+
+function InstallMarketplaceForm({ toolId, adapter }: { toolId: string; adapter: string }) {
+  const [source, setSource] = useState("");
+  const [marketplaceSource, setMarketplaceSource] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  if (adapter !== "claude" && adapter !== "codex") return null;
+
+  async function install(): Promise<void> {
+    const trimmed = source.trim();
+    if (!trimmed) {
+      toast("Enter plugin@marketplace to install.", { tone: "error" });
+      return;
+    }
+    const ok = await confirm({
+      title: "Install marketplace plugin?",
+      message: `Install "${trimmed}" into your global ${toolId} user config? Mission Control still scopes enablement per launch/workflow step.`,
+      confirmLabel: "Install",
+      tone: "danger"
+    });
+    if (!ok) return;
+
+    setBusy(true);
+    try {
+      await api("/api/agent-config/extensions/install", {
+        method: "POST",
+        body: JSON.stringify({
+          toolId,
+          source: trimmed,
+          ...(marketplaceSource.trim() ? { marketplaceSource: marketplaceSource.trim() } : {}),
+          confirmed: true
+        })
+      });
+      toast("Plugin installed and registry updated.", { tone: "success" });
+      setSource("");
+      setMarketplaceSource("");
+      refresh();
+    } catch (err) {
+      toast(err instanceof Error ? err.message : "Install failed.", { tone: "error" });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div class="extension-install-form">
+      <div class="extension-install-label">Install from marketplace</div>
+      <div class="extension-install-row">
+        <input
+          class="input"
+          type="text"
+          placeholder="plugin@marketplace"
+          value={source}
+          disabled={busy}
+          onInput={(e) => setSource((e.currentTarget as HTMLInputElement).value)}
+        />
+        <button class="btn btn-sm" type="button" disabled={busy} onClick={() => void install()}>
+          {busy ? "Installing…" : "Install"}
+        </button>
+      </div>
+      <input
+        class="input extension-install-marketplace"
+        type="text"
+        placeholder="Optional marketplace source (owner/repo) if not registered yet"
+        value={marketplaceSource}
+        disabled={busy}
+        onInput={(e) => setMarketplaceSource((e.currentTarget as HTMLInputElement).value)}
+      />
+    </div>
+  );
+}
+
+function ExtensionRow({ extension }: { extension: ToolExtension }) {
+  const [busy, setBusy] = useState(false);
+
+  async function toggle(): Promise<void> {
+    setBusy(true);
+    try {
+      await api("/api/agent-config/extensions", {
+        method: "PUT",
+        body: JSON.stringify({ ...extension, defaultEnabled: !extension.defaultEnabled })
+      });
+      refresh();
+    } catch (err) {
+      toast(err instanceof Error ? err.message : "Failed to update extension.", { tone: "error" });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <li class="extension-row">
+      <span class={`extension-kind is-${extension.kind}`}>{extension.kind}</span>
+      <span class="extension-name">{extension.displayName}</span>
+      <code class="extension-source">{extension.source}</code>
+      <label class="settings-switch" title={extension.defaultEnabled ? "Enabled by default" : "Opt-in per step"}>
+        <input type="checkbox" checked={extension.defaultEnabled} disabled={busy} onChange={() => void toggle()} />
+        <span class="settings-switch-track" />
+      </label>
+    </li>
+  );
+}
+
 function ToolRow({
   tool,
   config,
-  snapshots
+  snapshots,
+  extensions
 }: {
   tool: AgentToolConfig;
   config: AgentConfigBundle;
   snapshots: Map<string, UsageSnapshot>;
+  extensions: ToolExtension[];
 }) {
   const [busy, setBusy] = useState(false);
+  const [extensionsOpen, setExtensionsOpen] = useState(false);
+  const toolExtensions = extensionsForTool(extensions, tool.id);
+  const supportsExtensions = tool.adapter === "claude" || tool.adapter === "codex" || tool.id === "kiro" || tool.id === "cursor";
 
   async function toggle(): Promise<void> {
     setBusy(true);
@@ -158,6 +270,31 @@ function ToolRow({
         })}
         {pools.length === 0 ? <li class="pool-empty muted">No model pools.</li> : null}
       </ul>
+      {supportsExtensions ? (
+        <div class="tool-extensions">
+          <button
+            class="btn btn-sm btn-ghost extension-toggle"
+            type="button"
+            onClick={() => setExtensionsOpen((open) => !open)}
+          >
+            Extensions ({toolExtensions.length}) {extensionsOpen ? "▾" : "▸"}
+          </button>
+          {extensionsOpen ? (
+            <>
+              <InstallMarketplaceForm toolId={tool.id} adapter={tool.adapter} />
+              {toolExtensions.length ? (
+                <ul class="extension-list">
+                  {toolExtensions.map((extension) => (
+                    <ExtensionRow key={extension.id} extension={extension} />
+                  ))}
+                </ul>
+              ) : (
+                <p class="extension-empty muted">No extensions discovered yet — install above or refresh extensions below.</p>
+              )}
+            </>
+          ) : null}
+        </div>
+      ) : null}
     </article>
   );
 }
@@ -165,7 +302,9 @@ function ToolRow({
 export function AgentConfigSection() {
   const config = ui.data?.agentConfig;
   const usage = ui.data?.agentUsageSnapshots as UsageSnapshots | undefined;
+  const registry = ui.data?.agentExtensions;
   const [refreshing, setRefreshing] = useState(false);
+  const [discovering, setDiscovering] = useState(false);
 
   if (!config) return null;
 
@@ -182,10 +321,26 @@ export function AgentConfigSection() {
     }
   }
 
+  async function discoverExtensions(): Promise<void> {
+    setDiscovering(true);
+    try {
+      await api("/api/agent-config/extensions/discover", { method: "POST" });
+      toast("Extensions refreshed from tool configs on disk.", { tone: "success" });
+      refresh();
+    } catch (err) {
+      toast(err instanceof Error ? err.message : "Failed to discover extensions.", { tone: "error" });
+    } finally {
+      setDiscovering(false);
+    }
+  }
+
   const snapshots = indexSnapshots(usage);
   const usageMeta = usage?.snapshots.length
     ? `Usage updated ${relativeTime(usage.refreshedAt)}`
     : "No usage recorded yet";
+  const extensionMeta = registry?.lastDiscoveredAt
+    ? `Extensions discovered ${relativeTime(registry.lastDiscoveredAt)}`
+    : "Extensions not discovered yet";
 
   return (
     <section class="settings-section" data-settings-panel="agent-config">
@@ -201,13 +356,26 @@ export function AgentConfigSection() {
 
       <div class="agent-policy-grid">
         {config.tools.map((tool) => (
-          <ToolRow key={tool.id} tool={tool} config={config} snapshots={snapshots} />
+          <ToolRow
+            key={tool.id}
+            tool={tool}
+            config={config}
+            snapshots={snapshots}
+            extensions={registry?.extensions ?? []}
+          />
         ))}
+      </div>
+
+      <div class="agent-config-extensions-foot">
+        <span class="settings-usage-meta">{extensionMeta}</span>
+        <button class="btn btn-sm" type="button" disabled={discovering} onClick={() => void discoverExtensions()}>
+          {discovering ? "Discovering…" : "Refresh extensions"}
+        </button>
       </div>
 
       <p class="agent-config-foot muted">
         Configured in <code>data/state/agent-config.json</code> — add new CLIs with the{" "}
-        <strong>add-agent-cli</strong> skill.
+        <strong>add-agent-cli</strong> skill. Extension defaults apply per MC-managed launch (worktree-scoped).
       </p>
     </section>
   );

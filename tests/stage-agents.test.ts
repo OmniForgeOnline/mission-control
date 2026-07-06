@@ -6,8 +6,12 @@ import {
   clearStageAgentOverride,
   loadStageAgentOverrides,
   resolveAgentForStep,
+  resolveStepRouting,
   setStageAgentOverride
 } from "../src/core/agents/stage-agents.ts";
+import { ensureHarnessRepository } from "../src/core/bootstrap/repository.ts";
+import { upsertExtension } from "../src/core/agents/extensions/store.ts";
+import { resolveStepExtensions } from "../src/core/agents/extensions/launch.ts";
 import {
   BUNDLED_WORKFLOW_IDS,
   isWorkflowAgentTool,
@@ -22,6 +26,7 @@ describe("stage agents", () => {
 
   beforeEach(async () => {
     root = await mkdtemp(path.join(tmpdir(), "harness-stage-agents-"));
+    await ensureHarnessRepository(root);
     resetWorkflowCache();
   });
 
@@ -120,5 +125,38 @@ describe("stage agents", () => {
     const config = await loadStageAgentOverrides(root);
     expect(config.overrides['fix']).toBe("grok");
     expect(await resolveAgentForStep(root, "bugfix", "fix")).toBe("grok");
+  });
+
+  it("resolveStepExtensions honors workflow step extension facet", async () => {
+    await upsertExtension(root, {
+      id: "claude:plugin:seo@market",
+      toolId: "claude",
+      kind: "plugin",
+      displayName: "SEO",
+      source: "seo@market",
+      detectedFrom: "manual",
+      defaultEnabled: false
+    });
+
+    const resolved = await resolveStepExtensions({
+      root,
+      toolId: "claude",
+      step: {
+        id: "implement",
+        kind: "agent_turn",
+        agent: "author",
+        approval: "none",
+        next: "review",
+        extensions: ["claude:plugin:seo@market"]
+      }
+    });
+    expect(resolved.enabledIds).toEqual(["claude:plugin:seo@market"]);
+  });
+
+  it("resolveStepRouting returns extension arrays on routing decisions", async () => {
+    const routing = await resolveStepRouting(root, "code-feature", "implement");
+    expect(routing).not.toBeNull();
+    expect(Array.isArray(routing?.extensions)).toBe(true);
+    expect(Array.isArray(routing?.extensionEntries)).toBe(true);
   });
 });

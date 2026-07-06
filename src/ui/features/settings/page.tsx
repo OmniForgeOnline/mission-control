@@ -165,6 +165,29 @@ function ProjectsSection(): VNode {
     }
   }
 
+  async function handleRepointPath(project: ProjectSummary): Promise<void> {
+    let pick: { path?: string; canceled?: boolean } | null;
+    try {
+      pick = await api<{ path?: string; canceled?: boolean }>("/api/projects/pick-folder", {
+        method: "POST"
+      });
+    } catch (err) {
+      toast(err instanceof Error ? err.message : "Could not open the folder picker.", { tone: "error" });
+      return;
+    }
+    if (!pick || pick.canceled || !pick.path || pick.path === project.repoPath) return;
+    try {
+      await api(`/api/projects/${project.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ repoPath: pick.path })
+      });
+      toast(`Project "${project.name}" repointed to ${pick.path}.`, { tone: "success" });
+      document.dispatchEvent(new CustomEvent("harness:refresh"));
+    } catch (err) {
+      toast(err instanceof Error ? err.message : "Failed to repoint project.", { tone: "error" });
+    }
+  }
+
   if (!projects.length) {
     return (
       <div class="catalog-panel">
@@ -198,6 +221,14 @@ function ProjectsSection(): VNode {
             <td>{relativeTime(project.lastSeenAt || project.updatedAt)}</td>
             <td>
               <div class="project-actions">
+                <button
+                  class="btn btn-sm btn-ghost"
+                  type="button"
+                  onClick={() => void handleRepointPath(project)}
+                  title="Repoint to a new folder"
+                >
+                  Repoint
+                </button>
                 <button
                   class="btn btn-sm btn-ghost"
                   type="button"

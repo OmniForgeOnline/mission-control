@@ -18,6 +18,7 @@ import {
   updateTaskActivity
 } from "../core/tasks/tasks.ts";
 import { deriveExecution } from "../core/tasks/status.ts";
+import { resolveStepExtensions } from "../core/agents/extensions/launch.ts";
 import {
   formatStepNoRouteMessage,
   resolveAgentForStep,
@@ -138,6 +139,18 @@ export async function executeAgentTurn(root: string, internal: RunTurnInternal):
   await writeFile(path.join(runDir, "prompt.md"), prompt, "utf8");
   await writeFile(logPath, "", "utf8");
 
+  const extensionLaunch = await resolveStepExtensions({
+    root,
+    toolId: internal.agent,
+    step: internal.step,
+    cwd: workspace.cwd
+  });
+  const launchInternal: RunTurnInternal = {
+    ...internal,
+    enabledExtensionIds: extensionLaunch.enabledIds,
+    extensionEntries: extensionLaunch.entries
+  };
+
   const hookBlockStart = await runHooks(workspace.cwd, "on_turn_start", {
     task: { id: task.id, title: task.title, description: task.description, agent: internal.agent },
     runId: run.id,
@@ -184,7 +197,7 @@ export async function executeAgentTurn(root: string, internal: RunTurnInternal):
 
   const completion = completeAgentTurn({
     root,
-    internal,
+    internal: launchInternal,
     workflow,
     run,
     runDir,

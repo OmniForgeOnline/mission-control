@@ -25,6 +25,8 @@ export interface WorkflowStep {
   kind: WorkflowStepKind;
   agent: WorkflowStepAgent;
   skill?: string;
+  /** Extension ids to enable for agent turns on this step. */
+  extensions?: string[];
   approval: WorkflowStepApproval;
   /** When true, the harness prepares an isolated git worktree (and branch) for this step. */
   modifiesRepo?: boolean;
@@ -63,6 +65,7 @@ export interface WorkflowSummary {
       agent: string;
       approval: string;
       skill?: string;
+      extensions?: string[];
       effort?: string;
       next?: string;
       parallel?: string[];

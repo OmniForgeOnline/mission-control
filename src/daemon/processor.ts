@@ -249,7 +249,9 @@ export async function runTaskTurn(
       turnNumber: refreshed.turnCount ?? 0,
       isFirstTurn: false,
       step,
-      reviewer: { round: (refreshed.reviewRounds ?? 0) + 1 }
+      reviewer: { round: (refreshed.reviewRounds ?? 0) + 1 },
+      enabledExtensionIds: reviewerRouting.extensions,
+      extensionEntries: reviewerRouting.extensionEntries
     });
   } else if (step.kind === "create_merge_request") {
     const mrSummary = await executeCreateMergeRequestStep(root, refreshed, workspace, step, options);
@@ -321,7 +323,9 @@ export async function runTaskTurn(
     turnNumber,
     isFirstTurn,
     step,
-    ...(conversation ? { conversation } : {})
+    ...(conversation ? { conversation } : {}),
+    enabledExtensionIds: routing!.extensions,
+    extensionEntries: routing!.extensionEntries
   });
 }
 

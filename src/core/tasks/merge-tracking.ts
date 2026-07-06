@@ -1,7 +1,9 @@
 import type { ConnectorVault } from "../../connectors/vault/types.ts";
 import {
+  describeMergeFailure,
   getMergeRequestState,
-  type MergeRequestState
+  type MergeRequestState,
+  type MergeStateFailureReason
 } from "../merge-request/status.ts";
 import type { HarnessTask, Resolution } from "../types.ts";
 import { isMergePending } from "./status.ts";
@@ -18,6 +20,8 @@ export type MergeRefreshOutcome = "merged" | "open" | "closed" | "unknown" | "sk
 export interface MergeRefreshResult {
   taskId: string;
   outcome: MergeRefreshOutcome;
+  reason?: MergeStateFailureReason;
+  detail?: string;
 }
 
 export interface MergeRefreshOptions {
@@ -100,32 +104,41 @@ export async function refreshTaskMergeState(
     return { taskId: task.id, outcome: "skipped" };
   }
 
-  let state: MergeRequestState | null;
-  try {
-    state = await getMergeRequestState({
-      root,
-      repoPath: task.repoPath,
-      provider: task.mergeRequest.provider,
-      number: task.mergeRequest.number,
-      ...(options?.fetchImpl !== undefined ? { fetchImpl: options.fetchImpl } : {}),
-      ...(options?.vault !== undefined ? { vault: options.vault } : {})
+  const { provider, url, number } = task.mergeRequest;
+
+  const result = await getMergeRequestState({
+    root,
+    repoPath: task.repoPath,
+    ...(url !== undefined ? { url } : {}),
+    provider,
+    number,
+    ...(options?.fetchImpl !== undefined ? { fetchImpl: options.fetchImpl } : {}),
+    ...(options?.vault !== undefined ? { vault: options.vault } : {})
+  });
+
+  const checkedAt = now();
+
+  if (result.state === null) {
+    // No positive evidence either way: record the check time, preserve the last
+    // known state and any existing resolution, and surface why we could not tell.
+    await updateTask(root, task.id, (current) => {
+      const base = current.mergeRequest ?? { provider, url, number };
+      return { ...current, mergeRequest: { ...base, checkedAt }, updatedAt: checkedAt };
     });
-  } catch {
-    return { taskId: task.id, outcome: "unknown" };
+    return {
+      taskId: task.id,
+      outcome: "unknown",
+      reason: result.reason,
+      ...(result.detail !== undefined ? { detail: result.detail } : {})
+    };
   }
 
+  const state: MergeRequestState = result.state;
   const outcome = outcomeFor(state);
-  const checkedAt = now();
-  const { provider, url, number } = task.mergeRequest;
 
   await updateTask(root, task.id, (current) => {
     const base = current.mergeRequest ?? { provider, url, number };
-    const recordedState = state ?? base.state;
-    const mergeRequest = {
-      ...base,
-      ...(recordedState !== undefined ? { state: recordedState } : {}),
-      checkedAt
-    };
+    const mergeRequest = { ...base, state, checkedAt };
     if (outcome === "merged") {
       return {
         ...withCompletion(current, checkedAt),
@@ -155,6 +168,7 @@ export interface MergeRefreshSummary {
   open: number;
   closed: number;
   unknown: number;
+  unknownReasons: string[];
 }
 
 /**
@@ -168,7 +182,7 @@ export async function refreshMergeStates(
   options?: MergeRefreshOptions
 ): Promise<MergeRefreshSummary> {
   const list = tasks ?? (await listTasks(root));
-  const summary: MergeRefreshSummary = { scanned: 0, merged: 0, open: 0, closed: 0, unknown: 0 };
+  const summary: MergeRefreshSummary = { scanned: 0, merged: 0, open: 0, closed: 0, unknown: 0, unknownReasons: [] };
 
   for (const task of list) {
     if (!mergeStateNeedsAttention(task) || !task.repoPath) continue;
@@ -177,7 +191,12 @@ export async function refreshMergeStates(
     if (result.outcome === "merged") summary.merged += 1;
     else if (result.outcome === "open") summary.open += 1;
     else if (result.outcome === "closed") summary.closed += 1;
-    else summary.unknown += 1;
+    else {
+      summary.unknown += 1;
+      if (result.reason) {
+        summary.unknownReasons.push(describeMergeFailure(result.reason, result.detail));
+      }
+    }
   }
 
   return summary;

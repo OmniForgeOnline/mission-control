@@ -66,6 +66,9 @@
 .wf-field-wide {
   grid-column: span 2;
 }
+.wf-field-full {
+  grid-column: 1 / -1;
+}
 .wf-field-tight {
   min-width: 200px;
 }

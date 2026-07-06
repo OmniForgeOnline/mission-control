@@ -1,7 +1,7 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import path from "node:path";
 import { extractSessionIdFromStreamEvent, parseAgentOutput } from "../core/agents/output.ts";
-import { writeMcpConfig } from "../mcp/launcher.ts";
+import { writeLaunchExtensions } from "../mcp/launcher.ts";
 import type { ToolId, EffortLevel } from "../core/types.ts";
 import type { AgentToolConfig, ModelPoolConfig } from "../core/agents/config/types.ts";
 import { buildLaunchArgs } from "./adapter.ts";
@@ -117,11 +117,14 @@ export class HeadlessAgentRunner implements AgentRunner {
     const needsMcp = Boolean(request.harnessRoot && request.runId && request.runDir);
     if (needsMcp) {
       const projectId = request.task.projectId;
-      const mcp = await writeMcpConfig({
+      const mcp = await writeLaunchExtensions({
         tool: this.tool,
         harnessRoot: request.harnessRoot!,
         runId: request.runId!,
         runDir: request.runDir!,
+        cwd: request.cwd,
+        extensions: request.extensionEntries ?? [],
+        enabledExtensionIds: request.enabledExtensionIds ?? [],
         ...(projectId ? { projectId } : {})
       });
       extraEnv = mcp.env;
