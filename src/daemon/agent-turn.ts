@@ -227,6 +227,9 @@ export async function executeAgentTurn(root: string, internal: RunTurnInternal):
     await markTaskBlocked(root, task.id, reason, {
       completedAt: now(),
       runId: run.id
+    }).catch((updateErr) => {
+      if (updateErr instanceof Error && updateErr.message === `Task not found: ${task.id}`) return;
+      throw updateErr;
     });
   });
   return { runId: run.id, execution: "running" };
