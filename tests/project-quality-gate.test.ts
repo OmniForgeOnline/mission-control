@@ -5,24 +5,62 @@ import { execSync } from "node:child_process";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 
 import { onboardProject, type ProjectRecord } from "../src/core/projects/registry.ts";
-import { gatherProjectIntel, type ProjectIntel } from "../src/core/projects/intel.ts";
 import {
   isMutatingCommand,
   isVerificationCategory,
   parseAndValidateQualityGate,
   readProjectQualityGate,
-  synthesizeGateFromIntel,
+  validateGateChecks,
   writeQualityGate
 } from "../src/core/projects/quality-gate.ts";
-import { generateProjectQualityGate } from "../src/core/projects/quality-gate-generation.ts";
+import {
+  generateProjectQualityGate,
+  summarizeAgentFailure
+} from "../src/core/projects/quality-gate-generation.ts";
 import { collectDocCommands } from "../src/core/projects/intel-docs-ci.ts";
 import { planProjectChecks } from "../src/core/projects/project-checks.ts";
 import { DeterministicAgentRunner } from "./helpers/deterministic-runner.ts";
+import type { AgentRunner, AgentTurnRequest, AgentTurnResult } from "../src/runners/types.ts";
 
 function repliesRunner(reply: string): DeterministicAgentRunner {
   const runner = new DeterministicAgentRunner("claude");
   runner.setReplies([reply]);
   return runner;
+}
+
+/** A claude stream-json line emitted when the model API rejects with a retryable error. */
+function apiRetryLine(attempt: number, status: number, error: string): string {
+  return JSON.stringify({
+    type: "system",
+    subtype: "api_retry",
+    attempt,
+    max_retries: 10,
+    retry_delay_ms: 500 * attempt,
+    error_status: status,
+    error,
+    session_id: "test-session"
+  });
+}
+
+/**
+ * A runner that emits the given stream lines then hangs until aborted, mirroring a
+ * claude turn stuck retrying an overloaded API. Used with a tiny timeoutMs to drive
+ * the generation timeout path without waiting real seconds.
+ */
+class HangingRetryRunner implements AgentRunner {
+  readonly agent = "claude";
+  private release: (() => void) | undefined;
+  constructor(private readonly lines: string[]) {}
+  async runTurn(request: AgentTurnRequest): Promise<AgentTurnResult> {
+    for (const line of this.lines) request.onOutput?.(`${line}\n`);
+    await new Promise<void>((resolve) => {
+      this.release = resolve;
+    });
+    return { reply: "", exitCode: 0, command: "hanging", rawLog: "" };
+  }
+  abort(): void {
+    this.release?.();
+  }
 }
 
 const READY_RUFF = JSON.stringify({
@@ -37,43 +75,6 @@ const READY_RUFF = JSON.stringify({
     }
   ],
   rationale: "Ruff is declared in pyproject.toml."
-});
-
-describe("synthesizeGateFromIntel", () => {
-  it("builds a ready config from evidence-backed commands, carrying the source as evidence", async () => {
-    const tmp = await mkdtemp(path.join(os.tmpdir(), "harness-qg-synth-"));
-    try {
-      await writeFile(
-        path.join(tmp, "pyproject.toml"),
-        "[tool.pytest.ini_options]\n[tool.ruff]\n",
-        "utf8"
-      );
-      const intel = await gatherProjectIntel(tmp);
-      const file = synthesizeGateFromIntel(intel);
-
-      expect(file.status).toBe("ready");
-      expect(file.checks.length).toBe(2);
-      const ruff = file.checks.find((c) => c.command === "ruff check .");
-      expect(ruff?.category).toBe("lint");
-      expect(ruff?.evidence).toContain("pyproject.toml [tool.ruff]");
-      expect(file.intel).toBe(intel);
-    } finally {
-      await rm(tmp, { recursive: true, force: true }).catch(() => {});
-    }
-  });
-
-  it("returns incomplete (never a generic gate) when no evidence was found", async () => {
-    const tmp = await mkdtemp(path.join(os.tmpdir(), "harness-qg-empty-"));
-    try {
-      const intel = await gatherProjectIntel(tmp);
-      const file = synthesizeGateFromIntel(intel);
-      expect(file.status).toBe("incomplete");
-      expect(file.checks).toEqual([]);
-      expect(file.needsResolution?.length).toBeGreaterThan(0);
-    } finally {
-      await rm(tmp, { recursive: true, force: true }).catch(() => {});
-    }
-  });
 });
 
 describe("collectDocCommands harvest", () => {
@@ -96,230 +97,6 @@ describe("collectDocCommands harvest", () => {
     } finally {
       await rm(tmp, { recursive: true, force: true }).catch(() => {});
     }
-  });
-});
-
-describe("synthesizeGateFromIntel docs/CI evidence", () => {
-  // A minimal intel with no evidence in any bucket, reused as the base for the
-  // docs/CI-only scenarios below.
-  const emptyIntel: ProjectIntel = {
-    repoPath: "/repo",
-    markers: [],
-    commands: [],
-    docs: [],
-    ci: [],
-    summary: []
-  };
-
-  it("builds a ready config from CI run steps when no manifest commands exist", () => {
-    const intel: ProjectIntel = {
-      ...emptyIntel,
-      ci: [
-        { command: "npm test", category: "test", source: "CI ci.yml run step" },
-        { command: "npm run build", category: "build", source: "CI ci.yml run step" }
-      ]
-    };
-    const file = synthesizeGateFromIntel(intel);
-    expect(file.status).toBe("ready");
-    const cmds = file.checks.map((c) => c.command);
-    expect(cmds).toContain("npm test");
-    expect(cmds).toContain("npm run build");
-    // The CI provenance is carried as evidence so the source is transparent.
-    expect(file.checks.find((c) => c.command === "npm test")?.evidence).toContain(
-      "CI ci.yml run step"
-    );
-    // CI provenance is lower-confidence than a declared manifest command, so in the
-    // fallback synthesis (no agent to verify it) a CI command is advisory: recorded
-    // for transparency but never blocking.
-    expect(file.checks.every((c) => c.required === false)).toBe(true);
-  });
-
-  it("builds a ready config from doc excerpts (README-only repo)", () => {
-    const intel: ProjectIntel = {
-      ...emptyIntel,
-      docs: [{ path: "README.md", commands: ["npm test", "npm run build"] }]
-    };
-    const file = synthesizeGateFromIntel(intel);
-    expect(file.status).toBe("ready");
-    const cmds = file.checks.map((c) => c.command);
-    expect(cmds).toContain("npm test");
-    expect(cmds).toContain("npm run build");
-    expect(file.checks.find((c) => c.command === "npm run build")?.evidence).toContain(
-      "docs README.md"
-    );
-    // Doc provenance is the lowest-confidence source and there is no agent to verify
-    // it in the fallback path, so doc commands are advisory, never blocking.
-    expect(file.checks.every((c) => c.required === false)).toBe(true);
-  });
-
-  it("keeps manifest/Makefile commands blockable while docs and CI are advisory", () => {
-    // Blocking status is reserved for the highest-confidence source (declared
-    // manifests / Makefile targets). Doc and CI commands are still recorded (so the
-    // operator/agent can promote them) but never block, since the fallback synthesis
-    // cannot verify they actually verify behaviour.
-    const intel: ProjectIntel = {
-      ...emptyIntel,
-      commands: [
-        { command: "npm run -s test", category: "test", source: "package.json script `test`" }
-      ],
-      docs: [{ path: "README.md", commands: ["npm run build"] }],
-      ci: [{ command: "ruff check .", category: "lint", source: "CI ci.yml run step" }]
-    };
-    const file = synthesizeGateFromIntel(intel);
-    expect(file.checks.find((c) => c.command === "npm run -s test")?.required).toBe(true);
-    expect(file.checks.find((c) => c.command === "npm run build")?.required).toBe(false);
-    expect(file.checks.find((c) => c.command === "ruff check .")?.required).toBe(false);
-  });
-
-  it("drops keyword-bearing non-command doc lines instead of persisting them as checks", () => {
-    // A fenced prose line ("Run the build like this:") or a stray comment carries a
-    // build/test keyword but is not an executable command. Without a command-verb
-    // guard it would infer a verification category and persist as a required check
-    // whose program is an English word (ENOENT every turn). Its first token is not a
-    // recognized command verb, so it is dropped rather than emitted.
-    const intel: ProjectIntel = {
-      ...emptyIntel,
-      docs: [{ path: "README.md", commands: ["Run the build like this:", "See tests below"] }]
-    };
-    const file = synthesizeGateFromIntel(intel);
-    const cmds = file.checks.map((c) => c.command);
-    expect(cmds).not.toContain("Run the build like this:");
-    expect(cmds).not.toContain("See tests below");
-  });
-
-  it("drops a leading-# comment and reports the gap when it is the only evidence", () => {
-    // Defence in depth: even if a `#` comment reached synthesis un-stripped, its
-    // first token (`#`) is not a command verb, so it is dropped; with no other
-    // evidence the gate stays incomplete rather than fabricating a check.
-    const intel: ProjectIntel = {
-      ...emptyIntel,
-      docs: [{ path: "README.md", commands: ["# Build the project"] }]
-    };
-    const file = synthesizeGateFromIntel(intel);
-    expect(file.checks.map((c) => c.command)).not.toContain("# Build the project");
-    expect(file.status).toBe("incomplete");
-  });
-
-  it("drops shell-chain docs/CI commands (same direct-invocation vetting as agent output)", () => {
-    // A README whose only test line is a chain cannot run as a single direct spawn
-    // (the executor would silently run only the first stage), so it must not be
-    // emitted. With no other evidence, the gate stays incomplete rather than
-    // persisting a command that would mis-run.
-    const intel: ProjectIntel = {
-      ...emptyIntel,
-      docs: [{ path: "README.md", commands: ["npm run lint && npm run test"] }]
-    };
-    const file = synthesizeGateFromIntel(intel);
-    expect(file.status).toBe("incomplete");
-    expect(file.checks).toEqual([]);
-  });
-
-  it("drops dependency-setup CI commands instead of persisting them as required checks", () => {
-    // `npm ci` infers to category "other" (no tool token matches), so without this
-    // guard it would resolve required=true and become a network-dependent check
-    // that runs every turn and fails spuriously on registry issues. Setup commands
-    // verify nothing, so only the real test step survives.
-    const intel: ProjectIntel = {
-      ...emptyIntel,
-      ci: [
-        { command: "npm ci", category: "other", source: "CI ci.yml run step" },
-        { command: "npm test", category: "test", source: "CI ci.yml run step" }
-      ]
-    };
-    const file = synthesizeGateFromIntel(intel);
-    expect(file.status).toBe("ready");
-    const cmds = file.checks.map((c) => c.command);
-    expect(cmds).not.toContain("npm ci");
-    expect(cmds).toContain("npm test");
-  });
-
-  it("stays incomplete when the only CI evidence is a dependency-setup command", () => {
-    // With only an install step and nothing to verify, the gate must not fabricate
-    // a required check; it reports the gap instead (verify, don't mutate).
-    const intel: ProjectIntel = {
-      ...emptyIntel,
-      ci: [{ command: "npm ci", category: "other", source: "CI ci.yml run step" }]
-    };
-    const file = synthesizeGateFromIntel(intel);
-    expect(file.status).toBe("incomplete");
-    expect(file.checks).toEqual([]);
-  });
-
-  it("drops release/deploy commands instead of persisting them as checks", () => {
-    // publish/deploy/serve/release mutate published state or hit the network, so by
-    // the verify-don't-mutate invariant they must never become a persisted check
-    // (advisory or required). They infer to category "other" (no tool token matches),
-    // so without this guard each would otherwise survive. Only the real test step
-    // persists.
-    const intel: ProjectIntel = {
-      ...emptyIntel,
-      ci: [
-        { command: "npm publish", category: "other", source: "CI ci.yml run step" },
-        { command: "make deploy", category: "other", source: "CI ci.yml run step" },
-        { command: "make release", category: "other", source: "CI ci.yml run step" },
-        { command: "npm test", category: "test", source: "CI ci.yml run step" }
-      ]
-    };
-    const file = synthesizeGateFromIntel(intel);
-    expect(file.status).toBe("ready");
-    const cmds = file.checks.map((c) => c.command);
-    expect(cmds).not.toContain("npm publish");
-    expect(cmds).not.toContain("make deploy");
-    expect(cmds).not.toContain("make release");
-    expect(cmds).toContain("npm test");
-  });
-
-  it("drops watch-mode scripts instead of persisting them as required checks", () => {
-    // A `test:watch` script resolves category "test" via the prefix rule, so without
-    // the watch guard it would persist required:true and the no-timeout executor
-    // would hang the gate on `jest --watch` every turn. Watch mode runs indefinitely
-    // instead of verifying behaviour (same class as `serve`), so it is dropped;
-    // only the real test step survives.
-    const intel: ProjectIntel = {
-      ...emptyIntel,
-      commands: [
-        { command: "npm run -s test:watch", category: "test", source: "package.json script `test:watch`" },
-        { command: "npm run -s test", category: "test", source: "package.json script `test`" }
-      ]
-    };
-    const file = synthesizeGateFromIntel(intel);
-    expect(file.status).toBe("ready");
-    const cmds = file.checks.map((c) => c.command);
-    expect(cmds).not.toContain("npm run -s test:watch");
-    expect(cmds).toContain("npm run -s test");
-  });
-
-  it("emits non-verification ('other') commands as advisory, never blocking", () => {
-    // An unrecognized command is not a known verification step, so the gate must not
-    // block on it (we cannot tell what it does). It is still recorded as advisory so
-    // the agent/operator can promote it to a real category; only lint/test/typecheck/
-    // build/security may be required.
-    const intel: ProjectIntel = {
-      ...emptyIntel,
-      docs: [{ path: "README.md", commands: ["./scripts/smoke.sh"] }]
-    };
-    const file = synthesizeGateFromIntel(intel);
-    expect(file.status).toBe("ready");
-    const other = file.checks.find((c) => c.command === "./scripts/smoke.sh");
-    expect(other?.category).toBe("other");
-    expect(other?.required).toBe(false);
-  });
-
-  it("dedupes a command shared by manifests and CI, keeping the higher-confidence source", () => {
-    // Manifests/Makefile are higher confidence than CI; both are processed, so the
-    // first occurrence (manifest) wins and the CI duplicate is dropped.
-    const intel: ProjectIntel = {
-      ...emptyIntel,
-      commands: [
-        { command: "npm run -s test", category: "test", source: "package.json script `test`" }
-      ],
-      ci: [{ command: "npm run -s test", category: "test", source: "CI ci.yml run step" }]
-    };
-    const file = synthesizeGateFromIntel(intel);
-    expect(file.status).toBe("ready");
-    const matches = file.checks.filter((c) => c.command === "npm run -s test");
-    expect(matches.length).toBe(1);
-    expect(matches[0]?.evidence).toContain("package.json script `test`");
   });
 });
 
@@ -686,6 +463,57 @@ describe("parseAndValidateQualityGate verify-don't-mutate", () => {
   });
 });
 
+describe("summarizeAgentFailure", () => {
+  it("returns null when the stream shows no API retries", () => {
+    expect(summarizeAgentFailure('{"type":"system","subtype":"init"}\n')).toBeNull();
+    expect(summarizeAgentFailure("")).toBeNull();
+  });
+
+  it("summarizes API retries with the last error status and reason", () => {
+    const log = [apiRetryLine(1, 529, "overloaded"), apiRetryLine(2, 529, "overloaded")]
+      .map((l) => `${l}\n`)
+      .join("");
+    const summary = summarizeAgentFailure(log);
+    expect(summary).toContain("overloaded");
+    expect(summary).toContain("529");
+    expect(summary).toContain("2 retries");
+  });
+});
+
+describe("validateGateChecks (operator edits)", () => {
+  it("accepts valid verification checks", () => {
+    const result = validateGateChecks([
+      { name: "lint", category: "lint", command: "ruff check .", required: true }
+    ]);
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.checks[0]?.command).toBe("ruff check .");
+  });
+
+  it("rejects a mutating command", () => {
+    const result = validateGateChecks([
+      { name: "install", category: "build", command: "npm install", required: true }
+    ]);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.errors.join(" ")).toContain("mutating");
+  });
+
+  it("rejects a shell chain the no-shell executor cannot run", () => {
+    const result = validateGateChecks([
+      { name: "chain", category: "test", command: "npm run lint && npm run test", required: true }
+    ]);
+    expect(result.ok).toBe(false);
+  });
+
+  it("rejects duplicate names", () => {
+    const result = validateGateChecks([
+      { name: "lint", category: "lint", command: "ruff check .", required: true },
+      { name: "lint", category: "lint", command: "eslint .", required: true }
+    ]);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.errors.join(" ")).toContain("duplicate");
+  });
+});
+
 describe("generateProjectQualityGate lifecycle", () => {
   let root: string;
   let repo: string;
@@ -723,33 +551,53 @@ describe("generateProjectQualityGate lifecycle", () => {
     expect(stored.intel).toBeTruthy();
   });
 
-  it("falls back to deterministic synthesis from intel when the agent output is invalid", async () => {
+  it("fails loud with a reason when the agent output is invalid", async () => {
     await writeFile(path.join(repo, "pyproject.toml"), "[tool.ruff]\n[tool.pytest.ini_options]\n", "utf8");
     const runner = repliesRunner("nope, can't help");
     const file = await generateProjectQualityGate(root, project, { runner });
 
-    // Evidence exists in the repo -> a correct per-project gate is synthesized,
-    // never a generic one, even though the agent failed.
-    expect(file.status).toBe("ready");
-    const cmds = file.checks.map((c) => c.command);
-    expect(cmds).toContain("ruff check .");
-    expect(cmds).toContain("pytest");
-    expect(file.rationale).toContain("deterministic");
+    // No fallback synthesis: a failed gate the operator can re-trigger is honest,
+    // even though the repo has evidence the gate could have used.
+    expect(file.status).toBe("failed");
+    expect(file.checks).toEqual([]);
+    expect(file.error ?? "").toContain("did not return valid output");
   });
 
-  it("stores incomplete (not a generic gate) when neither agent nor intel find evidence", async () => {
-    const runner = repliesRunner("garbage");
+  it("surfaces the API-overload reason in the failed gate when the turn times out", async () => {
+    await writeFile(path.join(repo, "pyproject.toml"), "[tool.ruff]\n", "utf8");
+    // The runner emits 529-overloaded retries then hangs. With a 50ms budget the
+    // generation times out and records a `failed` gate whose error names the real
+    // cause (overloaded API) rather than an opaque "timed out".
+    const runner = new HangingRetryRunner([
+      apiRetryLine(1, 529, "overloaded"),
+      apiRetryLine(2, 529, "overloaded")
+    ]);
+    const file = await generateProjectQualityGate(root, project, { runner, timeoutMs: 50 });
+
+    expect(file.status).toBe("failed");
+    expect(file.checks).toEqual([]);
+    expect(file.error ?? "").toContain("overloaded");
+  });
+
+  it("stores incomplete when the agent reports insufficient evidence", async () => {
+    const runner = repliesRunner(
+      JSON.stringify({
+        status: "incomplete",
+        checks: [],
+        needsResolution: ["No lint/test/build commands documented."],
+        rationale: "insufficient evidence"
+      })
+    );
     const file = await generateProjectQualityGate(root, project, { runner });
     expect(file.status).toBe("incomplete");
     expect(file.checks).toEqual([]);
     expect(file.needsResolution?.length).toBeGreaterThan(0);
   });
 
-  it("synthesizes a ready gate from README docs when the agent fails (README-only repo)", async () => {
+  it("fails loud on a docs-only repo when the agent fails (docs no longer rescue it)", async () => {
     // No manifest/Makefile/CI: the only evidence is fenced commands in the README.
-    // The agent fails, so deterministic synthesis must fold the docs evidence into a
-    // ready gate rather than marking the repo incomplete with no checks (the prior
-    // fallback only inspected manifest commands and so missed docs-only repos).
+    // With no deterministic fallback, an agent failure is a failure — the docs are
+    // not silently folded into a gate. The operator regenerates.
     await writeFile(
       path.join(repo, "README.md"),
       "# Project\n\n## Usage\n\n```sh\nnpm test\nnpm run build\n```\n",
@@ -758,10 +606,8 @@ describe("generateProjectQualityGate lifecycle", () => {
     const runner = repliesRunner("nope, can't help");
     const file = await generateProjectQualityGate(root, project, { runner });
 
-    expect(file.status).toBe("ready");
-    const cmds = file.checks.map((c) => c.command);
-    expect(cmds).toContain("npm test");
-    expect(cmds).toContain("npm run build");
+    expect(file.status).toBe("failed");
+    expect(file.checks).toEqual([]);
   });
 
   it("returns the same stamped config it persists on success (matches a later GET)", async () => {
@@ -780,17 +626,17 @@ describe("generateProjectQualityGate lifecycle", () => {
     expect(file.intel).toBeTruthy();
   });
 
-  it("returns the same stamped config it persists on fallback (carries the amended rationale)", async () => {
-    // The fallback path amends the rationale and stamps the file before writing.
-    // The return value must reflect those same amendments, not the pre-amendment
-    // synthesis object the caller would otherwise receive.
+  it("returns the same stamped config it persists on failure (carries the error)", async () => {
+    // The failure path stamps the file before writing. The return value must reflect
+    // that same stamped failed gate, not an in-memory-only object.
     await writeFile(path.join(repo, "pyproject.toml"), "[tool.ruff]\n[tool.pytest.ini_options]\n", "utf8");
     const runner = repliesRunner("nope, can't help");
     const file = await generateProjectQualityGate(root, project, { runner });
 
     const stored = await readProjectQualityGate(root, project.id);
     expect(file).toEqual(stored);
-    expect(file.rationale).toContain("deterministic");
+    expect(file.status).toBe("failed");
+    expect(file.error).toBeTruthy();
     expect(file.intel).toBeTruthy();
     expect(file.generatedAt).toBeTruthy();
   });

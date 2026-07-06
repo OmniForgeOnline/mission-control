@@ -146,3 +146,38 @@ export async function runProjectChecks(
 ): Promise<CheckSummary> {
   return runCheckPlan(await planProjectChecks(root, projectId, workspacePath), workspacePath, onChunk);
 }
+
+/**
+ * Run a project's quality-gate checks against its repo on demand (the "Run" button).
+ * When `checkName` is given, run only that check; otherwise run all of them. Unlike
+ * `runProjectChecks` (which runs only the blocking subset each task turn), this runs
+ * every check in the gate config — advisory ones too — because the operator asked.
+ *
+ * Safety: a hand-edited config can't escalate into running publish/deploy/install
+ * here. The same guards the planner applies become explicit skips with a reason:
+ * shell syntax the direct-spawn executor cannot honour, and mutating/network commands
+ * (the gate verifies; it does not mutate).
+ */
+export async function runProjectGateChecks(
+  root: string,
+  projectId: string,
+  repoPath: string,
+  checkName?: string,
+  onChunk?: (chunk: string) => void
+): Promise<CheckSummary> {
+  const gate = await readProjectQualityGate(root, projectId);
+  const selectable = checkName ? gate.checks.filter((check) => check.name === checkName) : gate.checks;
+  const plan: CheckPlan = {
+    checks: selectable.map((check) => {
+      const planned = gateCheckToPlanned(check);
+      if (isMutatingCommand(check.command)) {
+        planned.available = false;
+        planned.skipReason = "mutating/network command; the gate verifies, it does not mutate";
+      }
+      return planned;
+    }),
+    maxRounds: DEFAULT_CHECK_REMEDIATION_ROUNDS,
+    source: "quality-gate"
+  };
+  return runCheckPlan(plan, repoPath, onChunk);
+}

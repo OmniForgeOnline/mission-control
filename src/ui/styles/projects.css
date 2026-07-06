@@ -80,6 +80,7 @@
   align-items: baseline;
   justify-content: space-between;
   gap: var(--s-3);
+  flex-wrap: wrap;
 }
 
 .project-section-head h2 {
@@ -324,4 +325,129 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* ---------- quality gate panel ---------- */
+
+.quality-gate-status {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+}
+
+.quality-gate-error {
+  margin: 0;
+  color: var(--status-blocked);
+  font-size: var(--t-sm);
+}
+
+.quality-gate-gaps ul {
+  margin: var(--s-1) 0 0;
+  padding-left: var(--s-4);
+  color: var(--ink-muted);
+  font-size: var(--t-sm);
+}
+
+.gate-check {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1);
+  min-width: 0;
+}
+
+/* Card meta rows (category / working dir / evidence paths) wrap instead of
+   overflowing, and long path chips truncate rather than clipping off the card
+   edge. min-width:0 lets the card shrink inside its auto-fill grid track so a
+   wide path can't blow the whole cell out. */
+.gate-check .meta-line {
+  min-width: 0;
+}
+
+.gate-check .meta-line {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-1);
+}
+
+.gate-check .meta-line .chip {
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: top;
+}
+
+.gate-check-command {
+  font-family: var(--font-mono);
+  font-size: var(--t-sm);
+  background: color-mix(in srgb, var(--ink-faint) 12%, transparent);
+  padding: var(--s-1) var(--s-2);
+  border-radius: var(--radius-sm);
+  word-break: break-word;
+  white-space: pre-wrap;
+}
+
+.quality-gate-rationale {
+  font-size: var(--t-xs);
+}
+
+.quality-gate-actions {
+  display: flex;
+  gap: var(--s-2);
+  flex-wrap: wrap;
+}
+
+.gate-check-toolbar {
+  display: flex;
+  gap: var(--s-1);
+  flex-wrap: wrap;
+}
+
+.gate-check-editing {
+  border: 1px solid color-mix(in srgb, var(--ink-faint) 30%, transparent);
+}
+
+.gate-check-input,
+.gate-check-select {
+  width: 100%;
+  padding: var(--s-1) var(--s-2);
+  font-size: var(--t-sm);
+  background: var(--surface, transparent);
+  border: 1px solid color-mix(in srgb, var(--ink-faint) 30%, transparent);
+  border-radius: var(--radius-sm);
+}
+
+.gate-check-input {
+  margin-bottom: var(--s-1);
+}
+
+.gate-check-required {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-1);
+  cursor: pointer;
+}
+
+.gate-check-output {
+  margin-top: var(--s-1);
+}
+
+.gate-check-output summary {
+  cursor: pointer;
+  font-size: var(--t-xs);
+  color: var(--ink-muted);
+}
+
+.gate-check-output pre {
+  margin: var(--s-1) 0 0;
+  padding: var(--s-2);
+  max-height: 240px;
+  overflow: auto;
+  font-family: var(--font-mono);
+  font-size: var(--t-xs);
+  background: color-mix(in srgb, var(--ink-faint) 12%, transparent);
+  border-radius: var(--radius-sm);
+  white-space: pre-wrap;
+  word-break: break-word;
 }

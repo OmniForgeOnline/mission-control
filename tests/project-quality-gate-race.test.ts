@@ -76,7 +76,7 @@ describe("quality-gate generation race (onboarding fire-and-forget)", () => {
 
     // Release the stalled gather so generation runs to completion and leaves no
     // dangling in-flight promise behind for the test runner.
-    resolveGather({ repoPath: repo, markers: [], commands: [], docs: [], ci: [], summary: [] });
+    resolveGather({ repoPath: repo, markers: [], commands: [], docs: [], ci: [], buildConfigs: [], summary: [] });
     await settleFirstWrite();
   });
 });

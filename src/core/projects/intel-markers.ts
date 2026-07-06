@@ -1,4 +1,6 @@
 import path from "node:path";
+import { readdir } from "node:fs/promises";
+import type { Dirent } from "node:fs";
 
 import { pathExists, readTextFile } from "../infra/fs.ts";
 import type { DetectedCommand, GateCategory, ProjectMarker, ProjectStack } from "./intel.ts";
@@ -246,4 +248,50 @@ export async function detectManifestCommands(
   const make = await detectMakefileCommands(repoPath);
   if (make) commands.push(...make);
   return commands;
+}
+
+/**
+ * Build-system config filenames looked for at the repo root. Intentionally a flat,
+ * generic list — existence only, never parsed. The agent interprets whichever are
+ * present; this layer does not encode per-tool logic (no maven/gradle/nx parsers).
+ */
+const BUILD_CONFIG_FILES = [
+  "package.json", "Makefile", "makefile", "GNUmakefile",
+  "pom.xml", "build.gradle", "build.gradle.kts", "settings.gradle",
+  "Cargo.toml", "pyproject.toml", "setup.py", "go.mod",
+  "nx.json", "turbo.json", "composer.json", "Gemfile",
+  "CMakeLists.txt", "mix.exs", "Package.swift"
+] as const;
+
+/** Workspace subdirectories that may hold per-project config (nx/turbo/lerna). */
+const WORKSPACE_DIRS = ["apps", "libs", "packages"] as const;
+
+/**
+ * List the build-config files present in this repo (root files + per-project
+ * `project.json` under workspace dirs). A generic roadmap for the agent so it
+ * knows which build system(s) to interpret without reading source. No parsing,
+ * no per-tool logic — just file existence. Capped to avoid noise on huge monorepos.
+ */
+export async function detectBuildConfigs(repoPath: string): Promise<string[]> {
+  const present: string[] = [];
+  for (const file of BUILD_CONFIG_FILES) {
+    if (await pathExists(path.join(repoPath, file))) present.push(file);
+  }
+  for (const dir of WORKSPACE_DIRS) {
+    let entries: Dirent[];
+    try {
+      entries = await readdir(path.join(repoPath, dir), { withFileTypes: true });
+    } catch {
+      continue;
+    }
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue;
+      const rel = path.join(dir, entry.name, "project.json");
+      if (await pathExists(path.join(repoPath, rel))) {
+        present.push(rel);
+        if (present.length >= 24) return [...new Set(present)];
+      }
+    }
+  }
+  return [...new Set(present)];
 }

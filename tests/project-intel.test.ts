@@ -288,4 +288,19 @@ describe("gatherProjectIntel", () => {
     expect(intel.ci).toEqual([]);
     expect(intel.summary).toEqual([]);
   });
+
+  it("surfaces detected build-config files generically (nx workspace + maven)", async () => {
+    // nx workspace: nx.json + per-project project.json, plus a maven pom alongside.
+    await writeFile(path.join(root, "package.json"), "{}");
+    await writeFile(path.join(root, "nx.json"), "{}");
+    await mkdir(path.join(root, "apps", "reactapp"), { recursive: true });
+    await writeFile(path.join(root, "apps", "reactapp", "project.json"), "{}");
+    await writeFile(path.join(root, "pom.xml"), "<project/>");
+
+    const intel = await gatherProjectIntel(root);
+    expect(intel.buildConfigs).toContain("nx.json");
+    expect(intel.buildConfigs).toContain("package.json");
+    expect(intel.buildConfigs).toContain("apps/reactapp/project.json");
+    expect(intel.buildConfigs).toContain("pom.xml");
+  });
 });

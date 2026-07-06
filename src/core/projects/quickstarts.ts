@@ -268,6 +268,7 @@ export async function generateProjectQuickstarts(
           prompt,
           cwd: project.repoPath,
           turnNumber: attempt,
+          label: "quickstarts",
           ...(sessionId !== undefined ? { sessionId } : {})
         },
         options?.timeoutMs ?? DEFAULT_QUICKSTARTS_TIMEOUT_MS

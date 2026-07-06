@@ -24,6 +24,12 @@ export interface AgentTurnRequest {
   sessionId?: string;
   /** Cumulative turn number, 1-based. */
   turnNumber: number;
+  /**
+   * Short purpose tag for diagnostics (e.g. "quality-gate", "quickstarts").
+   * Shown in the spawn log to disambiguate concurrent turns whose command lines
+   * are otherwise identical (the prompt is piped over stdin, not argv).
+   */
+  label?: string;
   /** Stream raw output bytes for live tailing / artifact append. */
   onOutput?: (chunk: string) => void;
   /**

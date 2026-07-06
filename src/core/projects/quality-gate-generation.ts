@@ -10,13 +10,16 @@ import {
   parseAndValidateQualityGate,
   pendingQualityGate,
   readProjectQualityGate,
-  synthesizeGateFromIntel,
   writeQualityGate,
   type QualityGateFile
 } from "./quality-gate.ts";
 
 const MAX_GENERATION_ATTEMPTS = 3;
-const DEFAULT_QUALITY_GATE_TIMEOUT_MS = 3 * 60 * 1000;
+// 5 min: claude retries a transiently-overloaded model API (HTTP 529) up to 10× with
+// exponential backoff — ~3 min of waits alone. A budget under that aborts the turn
+// mid-retry on every overload spike, so the gate never gets a curated config and
+// always falls back. 5 min lets the retries ride out a spike with headroom to spare.
+const DEFAULT_QUALITY_GATE_TIMEOUT_MS = 5 * 60 * 1000;
 
 /** In-flight generation guard, keyed `${root}:${projectId}` (mirrors quickstarts). */
 const activeGenerations = new Set<string>();
@@ -63,47 +66,51 @@ function intelPromptSection(intel: ProjectIntel): string {
 }
 
 export function buildQualityGatePrompt(project: ProjectRecord, intel: ProjectIntel): string {
-  const hasEvidence = intel.commands.length > 0 || intel.docs.length > 0 || intel.ci.length > 0;
-  return `You are generating a project-specific quality-gate config for a software project so the harness runs the correct build/test/lint commands for THIS repo, not a generic gate.
+  return `You are generating a project-specific quality-gate config. The gate runs the repo's verification commands (lint, test, typecheck, build) on every task turn — it must verify, never mutate.
 
 ## Project
 
 - name: ${project.name}
 - repoPath: ${project.repoPath}
 
-## Your task
+## Build system — this repo may use any tool
 
-Inspect the repository read-only to confirm and curate the gathered intel into a quality-gate config. You may open README/docs, manifests, the Makefile, and CI workflows to verify commands. Do not edit files or run state-changing commands.
+The gathered intel below is a starting point, but it only captures top-level \`package.json\` scripts, declared Python tools, Makefile targets, CI, and docs. Many repos — workspaces (nx, turbo), JVM (maven, gradle), rust, go — define their real verification commands in build-tool **config files**, not \`package.json\` scripts. Find them there.
+
+You MAY read the repo's BUILD/CONFIG files to discover verification commands:
+
+- Node/workspaces: \`package.json\`, \`nx.json\`, \`turbo.json\`, \`**/project.json\`
+- JVM: \`pom.xml\`, \`build.gradle\`, \`build.gradle.kts\`, \`settings.gradle\`
+- Rust: \`Cargo.toml\` · Go: \`go.mod\` · Ruby: \`Gemfile\` · PHP: \`composer.json\`
+- Python: \`pyproject.toml\`, \`setup.py\` · Generic: \`Makefile\`, \`CMakeLists.txt\` · CI: \`.github/workflows/*\`
+
+Read **only** these config/build files. Do NOT read source files (\`*.ts\`, \`*.tsx\`, \`*.js\`, \`*.py\`, \`*.java\`, \`*.rs\`, \`*.go\`, …). Source reading is what blows the time budget; config files are few and small. Be decisive.
+
+## Gathered intel (starting point)
 
 ${intelPromptSection(intel)}
 
-## Rules (strict)
+## Rules
 
-- The config schema is language/tool-agnostic. Emit categories from: lint, test, typecheck, build, format, security, other. Never hard-code a single toolchain.
-- The gate verifies, it does not mutate. Emit ONLY commands that check the repo (lint, test, typecheck, build, security, format). NEVER emit install/fetch, publish, deploy, serve, release, or ship commands; they mutate state or hit the network and have no place as a check. Categorize honestly: a command that does not verify belongs in no category, not smuggled under "build" or "test".
-- Prefer EXPLICIT repo-provided commands (docs, Makefile targets, package scripts, CI steps) over inferred invocations.
-- Every check MUST cite concrete evidence (the file/section/target it came from). A command with no repo evidence is a guess — do not emit it.
-- Each check command MUST be a single direct invocation: one program and its arguments, nothing more. The gate runs commands without a shell, so do NOT chain with && or ||, pipe, redirect, background with &, use command substitution ($(...) or backticks), prefix a leading NAME=value assignment, or prefix with cd. A chain like \`npm run lint && npm run test\` would silently run only the first stage; emit two separate checks instead, and set "workingDirectory" to run a command from a subdirectory.
-- Do NOT invent a generic gate. If you cannot find evidence for a needed category, set "status": "incomplete" and list the gaps in "needsResolution".
-- ${
-    hasEvidence
-      ? "Evidence was found: return status \"ready\" with the curated checks, or \"incomplete\" only if the evidence is genuinely insufficient."
-      : "No deterministic evidence was found: read the repo yourself. If you still find none, return status \"incomplete\" with needsResolution."
-  }
+- Emit ONE check per distinct verification command the repo actually provides, in the build system's own idioms — e.g. maven \`mvn -q verify\`; gradle \`./gradlew test build\`; cargo \`cargo test\`; go \`go test ./...\`; nx \`npx nx run-many -t lint test build\` (only targets that exist); npm \`npm test\` / \`npm run build\`. These illustrate, they are not a closed list — handle whichever tool this repo uses.
+- The gate verifies, it does not mutate. NEVER emit install/fetch, publish/deploy/serve/release, run/dev, help, or watch commands. A command that does not verify the repo does not belong in the gate — drop it rather than relabel it.
+- Each check command MUST be a single direct invocation (one program + its arguments). The gate runs commands without a shell: no \`&&\`/\`||\`, pipes, redirects, \`&\`, \`$(...)\`/backticks, leading \`NAME=value\`, or leading \`cd\`. A chain would silently mis-run; emit separate checks and use "workingDirectory" to run from a subdirectory.
+- Every check MUST cite its evidence (the config file/target/script it came from). No evidence → do not emit.
+- If the repo has no verification commands, return status "incomplete" with the gaps in "needsResolution". Do not invent a generic gate.
 
-## Response format (strict)
+## Response (strict)
 
 Return ONE JSON object and nothing else — no prose, no markdown fences:
 
 {
   "status": "ready",
   "checks": [
-    { "name": "lint", "category": "lint", "command": "<exact command>", "required": true, "evidence": ["<source>"], "workingDirectory": "<optional>" }
+    { "name": "test", "category": "test", "command": "make test", "required": true, "evidence": ["Makefile target \`test\`"] }
   ],
-  "rationale": "<one or two sentences>"
+  "rationale": "one short sentence"
 }
 
-For an insufficient repo, return instead:
+For insufficient evidence, return instead:
 
 { "status": "incomplete", "checks": [], "needsResolution": ["<gap>"], "rationale": "<...>" }`;
 }
@@ -113,6 +120,33 @@ function buildCorrectionPrompt(errors: string[]): string {
 ${errors.map((error) => `- ${error}`).join("\n")}
 
 Respond again with ONE JSON object. For a ready config, include at least one check with a non-empty command AND at least one evidence string. For an incomplete config, include at least one needsResolution entry. No markdown fences, no text outside the JSON.`;
+}
+
+/**
+ * Inspect a captured agent stream log for the dominant reason a turn failed, so the
+ * fallback rationale can name the cause (e.g. an overloaded model API) instead of an
+ * opaque "timed out". Returns null when no recognized failure signal is present.
+ *
+ * Reads claude's newline-delimited stream-json `system.api_retry` events, which carry
+ * the HTTP status and error the API returned while the harness clock ticked down.
+ */
+export function summarizeAgentFailure(turnLog: string): string | null {
+  const retryLines = turnLog.split("\n").filter((line) => line.includes('"subtype":"api_retry"'));
+  if (retryLines.length === 0) return null;
+  let status: string | undefined;
+  let error: string | undefined;
+  for (const line of retryLines) {
+    try {
+      const event = JSON.parse(line) as { error_status?: number; error?: string };
+      if (event.error_status !== undefined) status = String(event.error_status);
+      if (typeof event.error === "string") error = event.error;
+    } catch {
+      /* not a JSON line; ignore */
+    }
+  }
+  const detail =
+    error && status ? `${error} (HTTP ${status})` : error ?? (status ? `HTTP ${status}` : "retrying");
+  return `model API ${detail} on ${retryLines.length} retr${retryLines.length === 1 ? "y" : "ies"}`;
 }
 
 export interface GenerateQualityGateOptions {
@@ -198,6 +232,8 @@ export async function generateProjectQualityGate(
   await writeQualityGate(root, project.id, { ...pendingQualityGate(), status: "generating", intel });
 
   let agentError: string | null = null;
+  let lastErrors: string[] = ["No response."];
+  let lastTurnLog = "";
   try {
     const agent = options?.agent ?? (await loadHarnessSettings(root)).defaultAgent;
     const runner = options?.runner ?? (await createRunnerForTool(root, agent, "author"));
@@ -216,10 +252,14 @@ export async function generateProjectQualityGate(
       updatedAt: timestamp
     };
 
-    let lastErrors: string[] = ["No response."];
     let sessionId: string | undefined;
     for (let attempt = 1; attempt <= MAX_GENERATION_ATTEMPTS; attempt++) {
       const prompt = attempt === 1 ? buildQualityGatePrompt(project, intel) : buildCorrectionPrompt(lastErrors);
+      // Capture the agent's stream so a timeout (e.g. the model API stuck retrying
+      // an overloaded response) can be diagnosed from the failed-gate error instead
+      // of presenting as an opaque "timed out". Accumulated via the callback because
+      // the await throws on timeout, so a post-await assignment would be skipped.
+      lastTurnLog = "";
       const result = await runTurnWithTimeout(
         runner,
         {
@@ -228,6 +268,10 @@ export async function generateProjectQualityGate(
           prompt,
           cwd: project.repoPath,
           turnNumber: attempt,
+          label: "quality-gate",
+          onOutput: (chunk) => {
+            lastTurnLog += chunk;
+          },
           ...(sessionId !== undefined ? { sessionId } : {})
         },
         options?.timeoutMs ?? DEFAULT_QUALITY_GATE_TIMEOUT_MS
@@ -241,17 +285,27 @@ export async function generateProjectQualityGate(
       lastErrors = validation.errors;
     }
   } catch (err) {
-    // Agent/runner failure: fall through to deterministic synthesis below, but
-    // record the cause so the operator can see why the agent path was skipped.
+    // Agent/runner failure (e.g. a timeout): record the cause so the failed gate
+    // the operator sees names the real reason.
     agentError = (err as Error).message;
   }
 
-  const fallback = synthesizeGateFromIntel(intel);
-  const note =
-    agentError !== null
-      ? `${fallback.rationale ?? ""} Agent generation failed (${agentError}); fell back to deterministic synthesis.`
-      : `${fallback.rationale ?? ""} Agent did not return valid output; fell back to deterministic synthesis.`;
-  return stampAndStore(root, project.id, { ...fallback, rationale: note.trim(), intel }, project.repoPath);
+  // No deterministic fallback: a gate fabricated from raw intel has no judgment and
+  // ships noise (file paths, `make dev`, publish targets, every build variant). An
+  // honest `failed` state the operator can re-trigger is better. Surface the reason
+  // — enriched with whatever the stream revealed (e.g. an overloaded model API) —
+  // and keep the gathered intel for transparency.
+  if (agentError === null) {
+    agentError = `Agent did not return valid output after ${MAX_GENERATION_ATTEMPTS} attempts: ${lastErrors.join("; ")}`;
+  }
+  const failureSummary = summarizeAgentFailure(lastTurnLog);
+  if (failureSummary !== null) agentError = `${agentError} — ${failureSummary}`;
+  return stampAndStore(
+    root,
+    project.id,
+    { status: "failed", checks: [], error: agentError, intel },
+    project.repoPath
+  );
 }
 
 /**

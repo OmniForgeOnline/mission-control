@@ -164,19 +164,6 @@ export interface MemoryPage {
   updatedAt?: string;
 }
 
-export interface QualityFile {
-  updatedAt?: string;
-  domains?: Record<
-    string,
-    {
-      grade: "A" | "B" | "C" | "D" | "F";
-      rationale?: string;
-      evidence?: string[];
-      lastComputedAt?: string;
-    }
-  >;
-}
-
 export interface IntakeTicketDraft {
   ready: boolean;
   title: string;
@@ -239,6 +226,53 @@ export interface QuickstartsFile {
   error?: string;
 }
 
+export type QualityGateStatus = "pending" | "generating" | "ready" | "incomplete" | "failed";
+
+/** A single evidence-backed check in a generated quality-gate config. */
+export interface QualityGateCheck {
+  name: string;
+  category: string;
+  command: string;
+  required: boolean;
+  workingDirectory?: string;
+  evidence?: string[];
+}
+
+/**
+ * A project's generated quality-gate config. Mirrors the backend QualityGateFile
+ * minus the heavy intel snapshot (not rendered). `status` drives the panel state
+ * and the regenerate polling loop.
+ */
+export interface QualityGateFile {
+  status: QualityGateStatus;
+  checks: QualityGateCheck[];
+  needsResolution?: string[];
+  rationale?: string;
+  generatedAt?: string;
+  repoPath?: string;
+  error?: string;
+}
+
+/** Outcome of a single quality-gate check run on demand (POST /quality-gate/run). */
+export type CheckResultStatus = "passed" | "failed" | "skipped";
+
+export interface CheckResult {
+  name: string;
+  command: string;
+  status: CheckResultStatus;
+  exitCode: number;
+  output?: string;
+  skipReason?: string;
+}
+
+/** Summary returned by running one or all gate checks. */
+export interface CheckRunSummary {
+  outcome: string;
+  pass: boolean;
+  skipped: boolean;
+  results: CheckResult[];
+}
+
 export interface AgentSummary {
   id: string;
   displayName: string;
@@ -261,7 +295,6 @@ export interface AppState {
   memoryPages: MemoryPage[];
   autonomyJobs: AutonomyJob[];
   projects?: ProjectSummary[];
-  quality?: QualityFile;
   workflows?: WorkflowSummary[];
   workflow?: WorkflowMetadata;
   stageAgentOverrides?: Record<string, string>;

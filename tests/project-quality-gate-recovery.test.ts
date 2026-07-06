@@ -140,7 +140,7 @@ describe("quality-gate generation recovery", () => {
     expect((await readProjectQualityGate(root, project.id)).status).toBe("generating");
 
     // Release the stalled gather so generation completes and frees the in-flight guard.
-    resolveGather({ repoPath: repo, markers: [], commands: [], docs: [], ci: [], summary: [] });
+    resolveGather({ repoPath: repo, markers: [], commands: [], docs: [], ci: [], buildConfigs: [], summary: [] });
     await settle();
   });
 });

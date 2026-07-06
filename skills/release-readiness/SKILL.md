@@ -32,5 +32,4 @@ Deliver a short readiness report:
 
 ## Programmatic surface
 
-- `quality_grades(domain?)` — domains touched by the release.
 - `gbrain_search("release process")` — team-specific deploy conventions.

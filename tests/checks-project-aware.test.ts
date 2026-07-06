@@ -6,8 +6,8 @@ import { execSync } from "node:child_process";
 
 import { onboardProject } from "../src/core/projects/registry.ts";
 import { generateProjectQualityGate } from "../src/core/projects/quality-gate-generation.ts";
-import { writeQualityGate } from "../src/core/projects/quality-gate.ts";
-import { planProjectChecks } from "../src/core/projects/project-checks.ts";
+import { writeQualityGate, type QualityGateCheck } from "../src/core/projects/quality-gate.ts";
+import { planProjectChecks, runProjectGateChecks } from "../src/core/projects/project-checks.ts";
 import { DeterministicAgentRunner } from "./helpers/deterministic-runner.ts";
 
 function repliesRunner(reply: string): DeterministicAgentRunner {
@@ -113,8 +113,13 @@ describe("planProjectChecks (project-aware planner)", () => {
     execSync("git config user.email t@t.com", { cwd: repo });
     execSync("git config user.name t", { cwd: repo });
     const project = await onboardProject(root, { repoPath: repo, name: "Empty" });
-    // No repo evidence + invalid agent -> incomplete gate (no generic fallback).
-    await generateProjectQualityGate(root, project, { runner: repliesRunner("nope") });
+    // An incomplete gate (agent reported insufficient evidence). Written directly:
+    // how the gate reached this state is orthogonal to planProjectChecks surfacing it.
+    await writeQualityGate(root, project.id, {
+      status: "incomplete",
+      checks: [],
+      needsResolution: ["No build/test/lint commands are discoverable from project markers, Makefile, docs, or CI."]
+    });
 
     // A package.json is present, but the contract forbids substituting it for an
     // incomplete gate: the project must surface its needs-resolution state.
@@ -232,5 +237,77 @@ describe("planProjectChecks (project-aware planner)", () => {
     const cmds = plan.checks.map((c) => c.command);
     expect(cmds).toContain("ruff check .");
     expect(cmds).not.toContain("black ."); // advisory, not blocking
+  });
+});
+
+describe("runProjectGateChecks (on-demand gate run)", () => {
+  let root: string;
+  let repo: string;
+  let project: { id: string };
+
+  beforeEach(async () => {
+    root = await mkdtemp(path.join(tmpdir(), "harness-run-root-"));
+    repo = path.join(root, "repo");
+    execSync(`git init -q ${repo}`);
+    execSync("git config user.email t@t.com", { cwd: repo });
+    execSync("git config user.name t", { cwd: repo });
+    project = await onboardProject(root, { repoPath: repo, name: "Run" });
+  });
+
+  afterEach(async () => {
+    await rm(root, { recursive: true, force: true }).catch(() => {});
+  });
+
+  async function setGate(checks: QualityGateCheck[]): Promise<void> {
+    await writeQualityGate(root, project.id, { status: "ready", checks });
+  }
+
+  it("runs all checks and reports pass/fail per check", async () => {
+    await setGate([
+      { name: "ok", category: "test", command: "true", required: true, evidence: ["t"] },
+      { name: "boom", category: "test", command: "false", required: true, evidence: ["t"] }
+    ]);
+    const summary = await runProjectGateChecks(root, project.id, repo);
+
+    expect(summary.outcome).toBe("failed");
+    expect(summary.pass).toBe(false);
+    const byName = new Map(summary.results.map((r) => [r.name, r]));
+    expect(byName.get("ok")?.status).toBe("passed");
+    expect(byName.get("boom")?.status).toBe("failed");
+    expect(byName.get("boom")?.exitCode).not.toBe(0);
+  });
+
+  it("runs a single check when checkName is given", async () => {
+    await setGate([
+      { name: "ok", category: "test", command: "true", required: true, evidence: ["t"] },
+      { name: "boom", category: "test", command: "false", required: true, evidence: ["t"] }
+    ]);
+    const summary = await runProjectGateChecks(root, project.id, repo, "ok");
+
+    expect(summary.results).toHaveLength(1);
+    expect(summary.results[0]!.name).toBe("ok");
+    expect(summary.results[0]!.status).toBe("passed");
+  });
+
+  it("skips mutating/network commands instead of executing them", async () => {
+    await setGate([
+      { name: "install", category: "build", command: "npm install", required: true, evidence: ["t"] }
+    ]);
+    const summary = await runProjectGateChecks(root, project.id, repo);
+
+    expect(summary.results[0]!.status).toBe("skipped");
+    expect(summary.results[0]!.skipReason).toBeTruthy();
+  });
+
+  it("returns a noChecks outcome when the gate has no runnable checks", async () => {
+    await writeQualityGate(root, project.id, {
+      status: "incomplete",
+      checks: [],
+      needsResolution: ["no lint command documented"]
+    });
+    const summary = await runProjectGateChecks(root, project.id, repo);
+
+    expect(summary.outcome).toBe("noChecks");
+    expect(summary.skipped).toBe(true);
   });
 });

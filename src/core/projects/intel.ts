@@ -1,4 +1,4 @@
-import { detectManifestCommands, detectMarkers } from "./intel-markers.ts";
+import { detectBuildConfigs, detectManifestCommands, detectMarkers } from "./intel-markers.ts";
 import { collectCiCommands, collectDocCommands } from "./intel-docs-ci.ts";
 
 /**
@@ -60,6 +60,8 @@ export interface ProjectIntel {
   docs: DocExcerpt[];
   /** Commands run by CI workflows. */
   ci: DetectedCommand[];
+  /** Build-config files present (generic existence check; the agent interprets). */
+  buildConfigs: string[];
   /** Human-readable bullets summarizing the intel for the agent prompt. */
   summary: string[];
 }
@@ -79,6 +81,9 @@ function dedupeCommands(commands: DetectedCommand[]): DetectedCommand[] {
 
 function buildSummary(intel: Omit<ProjectIntel, "summary">): string[] {
   const lines: string[] = [];
+  if (intel.buildConfigs.length) {
+    lines.push(`Build config files detected: ${intel.buildConfigs.join(", ")}.`);
+  }
   const byStack = new Map<ProjectStack, string[]>();
   for (const marker of intel.markers) {
     if (!marker.stack) continue;
@@ -118,13 +123,15 @@ export async function gatherProjectIntel(repoPath: string): Promise<ProjectIntel
   const commands = await detectManifestCommands(repoPath, lockfiles);
   const docs = await collectDocCommands(repoPath);
   const ci = await collectCiCommands(repoPath);
+  const buildConfigs = await detectBuildConfigs(repoPath);
 
   const base: Omit<ProjectIntel, "summary"> = {
     repoPath,
     markers,
     commands: dedupeCommands(commands),
     docs,
-    ci
+    ci,
+    buildConfigs
   };
   return { ...base, summary: buildSummary(base) };
 }

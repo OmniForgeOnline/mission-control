@@ -1,14 +1,11 @@
 import { Router } from "express";
 
-import path from "node:path";
-
 import {
   getProject,
   listProjects,
   onboardProject,
   updateProject,
-  removeProject,
-  projectDir
+  removeProject
 } from "../../core/projects/registry.ts";
 import {
   setProjectJobRunMode,
@@ -19,17 +16,20 @@ import {
   readProjectQuickstarts,
   startProjectQuickstarts
 } from "../../core/projects/quickstarts.ts";
-import { readProjectQualityGate } from "../../core/projects/quality-gate.ts";
+import {
+  readProjectQualityGate,
+  validateGateChecks,
+  writeProjectQualityGateRun,
+  writeQualityGate,
+  type QualityGateCheck,
+  type QualityGateFile
+} from "../../core/projects/quality-gate.ts";
 import {
   generateProjectQualityGate,
   startProjectQualityGate
 } from "../../core/projects/quality-gate-generation.ts";
-import {
-  computeProjectQualityGrades,
-  type QualityFile
-} from "../../core/quality/quality.ts";
-import { readJsonFile, writeJsonFile } from "../../core/infra/fs.ts";
 import { pickFolder } from "../../core/projects/folder-picker.ts";
+import { runProjectGateChecks } from "../../core/projects/project-checks.ts";
 import { repointProjectTasks } from "../../core/tasks/tasks.ts";
 import {
   addIntakeMessage,
@@ -288,27 +288,60 @@ export function createProjectsRouter(options: ServerOptions): Router {
     })
   );
 
-  router.get(
-    "/projects/:id/quality",
+  router.post(
+    "/projects/:id/quality-gate/run",
     asyncRoute(async (req, res) => {
       const projectId = param(req.params["id"], "id");
       const project = await getProject(options.root, projectId);
       if (!project) throw new Error(`Project not found: ${projectId}`);
-      const filePath = path.join(projectDir(options.root, projectId), "quality.json");
-      res.json(await readJsonFile<QualityFile>(filePath, { updatedAt: "", domains: {} }));
+      const body = req.body as { check?: unknown } | undefined;
+      const checkName = typeof body?.check === "string" && body.check.trim() ? body.check.trim() : undefined;
+      // Synchronous: each check has its own timeout, so a hung check can't block
+      // forever. Run-all is bounded by N x per-check timeout; long suites simply
+      // keep the request open until they finish.
+      const summary = await runProjectGateChecks(options.root, projectId, project.repoPath, checkName);
+      // Persist the last FULL run so the project self-improvement agent sees actual
+      // pass/fail. Single-check spot checks are transient and don't overwrite it.
+      if (!checkName) {
+        await writeProjectQualityGateRun(options.root, projectId, {
+          runAt: new Date().toISOString(),
+          outcome: summary.outcome,
+          pass: summary.pass,
+          results: summary.results,
+          repoPath: project.repoPath
+        });
+      }
+      res.json(summary);
     })
   );
 
-  router.post(
-    "/projects/:id/quality/recompute",
+  router.put(
+    "/projects/:id/quality-gate/checks",
     asyncRoute(async (req, res) => {
       const projectId = param(req.params["id"], "id");
       const project = await getProject(options.root, projectId);
       if (!project) throw new Error(`Project not found: ${projectId}`);
-      const result = await computeProjectQualityGrades(options.root, project.repoPath);
-      const filePath = path.join(projectDir(options.root, projectId), "quality.json");
-      await writeJsonFile(filePath, result);
-      res.json(result);
+      const validation = validateGateChecks((req.body as { checks?: unknown } | undefined)?.checks);
+      if (!validation.ok) {
+        res.status(400).json({ error: "Invalid quality-gate checks.", details: validation.errors });
+        return;
+      }
+      // Operator-curated checks override whatever the agent produced. The gate becomes
+      // ready (or incomplete if all checks were removed); a later Regenerate overwrites
+      // these edits with fresh agent output, which is the intended escape hatch.
+      const current = await readProjectQualityGate(options.root, projectId);
+      const checks = validation.checks as QualityGateCheck[];
+      const updated: QualityGateFile = {
+        status: checks.length > 0 ? "ready" : "incomplete",
+        checks,
+        rationale: checks.length > 0 ? "Operator-curated quality-gate checks." : "All checks removed.",
+        repoPath: project.repoPath,
+        generatedAt: new Date().toISOString(),
+        ...(current.intel ? { intel: current.intel } : {}),
+        ...(checks.length === 0 ? { needsResolution: ["All checks were removed. Add checks or Regenerate."] } : {})
+      };
+      await writeQualityGate(options.root, projectId, updated);
+      res.json(updated);
     })
   );
 

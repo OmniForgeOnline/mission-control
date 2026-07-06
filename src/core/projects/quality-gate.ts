@@ -4,8 +4,8 @@ import { asRecord } from "../infra/record.ts";
 import { ensureDir, readJsonFile, writeJsonFile } from "../infra/fs.ts";
 import { emitStateChange } from "../infra/state-bus.ts";
 import { type GateCategory, type ProjectIntel } from "./intel.ts";
-import { inferCategoryFromToken } from "./intel-docs-ci.ts";
 import { projectDir } from "./registry.ts";
+import type { CheckOutcome, CheckRunResult } from "../review/checks.ts";
 
 /**
  * Lifecycle of a generated quality-gate config.
@@ -81,6 +81,41 @@ export async function writeQualityGate(root: string, projectId: string, file: Qu
   await ensureDir(projectDir(root, projectId));
   await writeJsonFile(qualityGatePath(root, projectId), file);
   emitStateChange(["chrome"]);
+}
+
+/**
+ * Snapshot of the most recent full on-demand gate run, persisted so the project
+ * self-improvement agent can see actual pass/fail (not just the config). Only
+ * run-all writes this; single-check spot checks are transient and do not overwrite
+ * a full run's picture.
+ */
+export interface QualityGateRunFile {
+  runAt: string;
+  outcome: CheckOutcome;
+  pass: boolean;
+  results: CheckRunResult[];
+  repoPath?: string;
+}
+
+function qualityGateRunPath(root: string, projectId: string): string {
+  return path.join(projectDir(root, projectId), "quality-gate-run.json");
+}
+
+/** Read the last full gate run, or null if the gate has never been run on demand. */
+export async function readProjectQualityGateRun(
+  root: string,
+  projectId: string
+): Promise<QualityGateRunFile | null> {
+  return readJsonFile<QualityGateRunFile | null>(qualityGateRunPath(root, projectId), null);
+}
+
+export async function writeProjectQualityGateRun(
+  root: string,
+  projectId: string,
+  run: QualityGateRunFile
+): Promise<void> {
+  await ensureDir(projectDir(root, projectId));
+  await writeJsonFile(qualityGateRunPath(root, projectId), run);
 }
 
 const VALID_AGENT_STATUSES = new Set<QualityGateStatus>(["ready", "incomplete"]);
@@ -382,155 +417,54 @@ export function parseAndValidateQualityGate(raw: string): QualityGateValidation 
   return { ok: true, file };
 }
 
-const CATEGORY_LABELS: Record<GateCategory, string> = {
-  lint: "lint",
-  test: "test",
-  typecheck: "typecheck",
-  build: "build",
-  format: "format",
-  security: "security",
-  other: "check"
-};
-
 /**
- * Recognized command verbs: the toolchain entry points and common programs a
- * harvested docs/CI line may legitimately start with. Bare category words
- * (`build`, `test`, `lint`, ...) are deliberately excluded: nothing invokes a
- * program literally named `build`, so a harvested line starting with such a word is
- * prose, not a command.
+ * Validate an operator-authored set of checks (from the edit/remove UI), re-applying
+ * the same contract the agent output is held to: each command must be a single direct
+ * invocation the no-shell executor can run, must verify (not mutate), and must sit in
+ * a known category. Evidence is optional here (the operator need not cite any).
+ * Returns the normalized checks on success, or the list of problems on failure.
  */
-const KNOWN_COMMAND_VERBS = new Set<string>([
-  // Node
-  "npm", "yarn", "pnpm", "bun", "npx",
-  // Python
-  "python", "python3", "pip", "pip3", "poetry", "uv", "hatch",
-  "pytest", "ruff", "mypy", "black", "isort", "pylint", "flake8", "bandit", "safety",
-  // Node tooling
-  "eslint", "biome", "prettier", "tsc", "tsx", "jest", "vitest", "mocha", "playwright",
-  // Rust
-  "cargo", "rustc",
-  // Go
-  "go",
-  // Ruby
-  "bundle", "gem", "rake", "ruby",
-  // PHP
-  "composer", "php",
-  // JVM
-  "mvn", "mvnw", "gradle", "gradlew", "java", "javac",
-  // .NET
-  "dotnet",
-  // Mobile
-  "flutter", "dart",
-  // Build automation
-  "make", "cmake", "ninja", "just",
-  // Containers / shells
-  "docker", "podman", "act", "sh", "bash", "zsh", "deno", "node"
-]);
-
-/**
- * True when a harvested line plausibly starts with an executable command: its first
- * token is a recognized command verb, or a path-like executable (`./x`, `scripts/x`,
- * `/x`). Applied only to lower-confidence docs/CI sources, so a comment or prose line
- * that merely contains a build/test keyword can never be emitted as a check.
- */
-function looksLikeCommand(command: string): boolean {
-  const token = command.trim().split(/\s+/)[0] ?? "";
-  if (token.length === 0) return false;
-  if (token.includes("/")) return true;
-  return KNOWN_COMMAND_VERBS.has(token);
-}
-
-/**
- * Deterministically derive a quality-gate config from gathered intel. Used as the
- * safe fallback when the agent does not return valid output: it never fabricates a
- * gate. It folds every evidence source the intel layer gathered (manifest/Makefile
- * commands, CI run steps, and commands excerpted from docs) into `ready` checks,
- * vetting each for a single direct invocation (the executor spawns with no shell,
- * mirroring {@link parseAndValidateQualityGate}) and attaching its provenance as
- * evidence. When no source yields a runnable command it returns `incomplete` with
- * explicit gaps, never a generic gate.
- */
-export function synthesizeGateFromIntel(intel: ProjectIntel): QualityGateFile {
-  const checks: QualityGateCheck[] = [];
-  const usedNames = new Map<string, number>();
+export function validateGateChecks(input: unknown): { ok: true; checks: QualityGateCheck[] } | { ok: false; errors: string[] } {
+  if (!Array.isArray(input)) return { ok: false, errors: ["Checks must be an array."] };
+  const errors: string[] = [];
   const seen = new Set<string>();
+  const checks: QualityGateCheck[] = [];
 
-  /**
-   * Add a vetted command as a check. A command is dropped (not emitted) when it is
-   * a duplicate of one already added, when it relies on shell syntax the direct
-   * executor cannot run, or when it is a mutating/network command (install, publish,
-   * deploy, serve, release) that would mutate state instead of verifying it. The
-   * shell-syntax vetting mirrors what is enforced on agent output, so a CI/docs
-   * chain like `a && b` is rejected here rather than persisted to mis-run; the
-   * mutating vetting keeps a CI step like `npm ci` or `npm publish` from becoming a
-   * blocking, network-dependent check.
-   *
-   * Provenance selects blocking vs advisory. `advisory` is set for the
-   * lower-confidence harvested sources (CI, docs): their commands are recorded for
-   * transparency but never block, because the fallback synthesis has no agent to
-   * verify they actually check the repo. Only declared manifests/Makefile evidence
-   * (`advisory === false`) may block, and only in a known verification category. An
-   * advisory line must additionally look like a command (a recognized verb or a
-   * path-like executable) before it is emitted, so a comment or prose line that
-   * merely contains a build/test keyword can never become a check the executor would
-   * spawn to a non-existent program. Sources are walked highest confidence first:
-   * manifests/Makefile, then CI, then docs.
-   */
-  const addCheck = (
-    command: string,
-    category: GateCategory,
-    source: string,
-    advisory: boolean
-  ): void => {
-    if (seen.has(command)) return;
-    if (findUnsupportedShellSyntax(command) !== null) return;
-    if (isMutatingCommand(command)) return;
-    if (advisory && !looksLikeCommand(command)) return;
-    seen.add(command);
-    const base = CATEGORY_LABELS[category] ?? "check";
-    const count = usedNames.get(base) ?? 0;
-    usedNames.set(base, count + 1);
-    const name = count === 0 ? base : `${base}-${count + 1}`;
+  (input as unknown[]).forEach((raw, i) => {
+    const c = raw as Record<string, unknown>;
+    const name = typeof c?.["name"] === "string" ? c["name"].trim() : "";
+    const command = typeof c?.["command"] === "string" ? c["command"].trim() : "";
+    const category = typeof c?.["category"] === "string" ? (c["category"] as GateCategory) : "other";
+    const required = c?.["required"] !== false;
+    const workingDirectory = typeof c?.["workingDirectory"] === "string" ? c["workingDirectory"] : undefined;
+    const label = name || `check ${i + 1}`;
+
+    if (!name) errors.push(`Check ${i + 1}: name is required.`);
+    else if (seen.has(name)) errors.push(`Check "${label}": duplicate name.`);
+    else seen.add(name);
+
+    if (!command) errors.push(`Check "${label}": command is required.`);
+    else {
+      const shell = findUnsupportedShellSyntax(command);
+      if (shell) errors.push(`Check "${label}": ${shell}.`);
+      if (isMutatingCommand(command)) {
+        errors.push(`Check "${label}": mutating/network command — the gate verifies, it does not mutate.`);
+      }
+    }
+    if (!VALID_CATEGORIES.has(category)) errors.push(`Check "${label}": unknown category "${String(category)}".`);
+    if (workingDirectory && !isRepoRelativePath(workingDirectory)) {
+      errors.push(`Check "${label}": workingDirectory must be relative to the repo root.`);
+    }
+
     checks.push({
       name,
-      category,
       command,
-      required: !advisory && isVerificationCategory(category),
-      evidence: [source]
+      category,
+      required,
+      ...(workingDirectory && isRepoRelativePath(workingDirectory) ? { workingDirectory } : {}),
+      ...(Array.isArray(c?.["evidence"]) ? { evidence: c["evidence"] as string[] } : { evidence: [] })
     });
-  };
+  });
 
-  for (const detected of intel.commands) {
-    addCheck(detected.command, detected.category, detected.source, false);
-  }
-  for (const detected of intel.ci) {
-    addCheck(detected.command, detected.category, detected.source, true);
-  }
-  for (const doc of intel.docs) {
-    for (const command of doc.commands) {
-      addCheck(command, inferCategoryFromToken(command), `docs ${doc.path}`, true);
-    }
-  }
-
-  if (checks.length > 0) {
-    return {
-      status: "ready",
-      checks,
-      rationale:
-        "Derived deterministically from repo evidence (manifests, Makefile, CI, docs). " +
-        "No generic gate was assumed.",
-      intel
-    };
-  }
-
-  return {
-    status: "incomplete",
-    checks: [],
-    needsResolution: [
-      "No build/test/lint commands were discoverable from project markers, Makefile, docs, or CI.",
-      "Declare how to lint, test, and build this repo (e.g. add scripts, a Makefile, or document commands)."
-    ],
-    rationale: "Insufficient evidence to generate a project-specific gate; no generic fallback applied.",
-    intel
-  };
+  return errors.length ? { ok: false, errors } : { ok: true, checks };
 }
