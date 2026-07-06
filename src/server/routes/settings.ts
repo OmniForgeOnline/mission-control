@@ -7,6 +7,7 @@ import { listProjects } from "../../core/projects/registry.ts";
 import { listProjectJobs } from "../../core/projects/scoped-autonomy.ts";
 import { loadStageAgentOverrides, setStageAgentOverride } from "../../core/agents/stage-agents.ts";
 import { loadAgentConfig } from "../../core/agents/config/store.ts";
+import { loadAllMergedExtensions } from "../../core/agents/extensions/launch.ts";
 import { loadUsageSnapshots } from "../../core/agents/config/usage-store.ts";
 import { getIntakeSession } from "../../core/intake/intake.ts";
 import { readQualityFile, computeQualityGrades } from "../../core/quality/quality.ts";
@@ -29,7 +30,7 @@ export function createSettingsRouter(options: ServerOptions): Router {
     "/state",
     asyncRoute(async (_req, res) => {
       await ensureHarnessRepository(options.root);
-      const [tasks, runs, memoryPages, autonomyJobList, quality, workflows, intakeSession, settings, agentConfig, agentUsageSnapshots] =
+      const [tasks, runs, memoryPages, autonomyJobList, quality, workflows, intakeSession, settings, agentConfig, agentUsageSnapshots, agentExtensions] =
         await Promise.all([
           listTasks(options.root),
           listAllRuns(options.root),
@@ -40,7 +41,8 @@ export function createSettingsRouter(options: ServerOptions): Router {
           getIntakeSession(options.root),
           loadHarnessSettings(options.root),
           loadAgentConfig(options.root),
-          loadUsageSnapshots(options.root)
+          loadUsageSnapshots(options.root),
+          loadAllMergedExtensions(options.root, { testMode: options.testMode === true })
         ]);
       const agents = agentConfig.tools.map((tool) => ({
         id: tool.id,
@@ -96,7 +98,8 @@ export function createSettingsRouter(options: ServerOptions): Router {
         settings,
         agents,
         agentConfig,
-        agentUsageSnapshots
+        agentUsageSnapshots,
+        agentExtensions
       });
     })
   );

@@ -7,6 +7,7 @@ import type {
   TaskStatus
 } from "../../core/types.ts";
 import type { AgentConfigBundle } from "../../core/agents/config/types.ts";
+import type { ExtensionRegistry } from "../../core/agents/extensions/types.ts";
 import type { UsageSnapshots } from "../../core/agents/config/usage.ts";
 import type { WorkflowMetadata } from "../../core/workflows/types.ts";
 
@@ -252,6 +253,7 @@ export interface AppState {
   settings?: HarnessSettings;
   agents?: AgentSummary[];
   agentConfig?: AgentConfigBundle;
+  agentExtensions?: ExtensionRegistry;
   agentUsageSnapshots?: UsageSnapshots;
   connectors: ConnectorsState;
   tasks: HarnessTask[];

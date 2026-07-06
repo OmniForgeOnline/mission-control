@@ -1,5 +1,6 @@
 import type { ToolId, HarnessTask } from "../core/types.ts";
 import type { RunEventInput } from "../core/runs/events.ts";
+import type { ToolExtension } from "../core/agents/extensions/types.ts";
 
 /** A single observed agent action during a turn, used for liveness + UI. */
 export interface AgentActivity {
@@ -37,6 +38,10 @@ export interface AgentTurnRequest {
   runId?: string;
   /** Run directory for storing MCP config files. */
   runDir?: string;
+  /** Optional extension ids to enable for this launch (from routing). */
+  enabledExtensionIds?: string[];
+  /** Extension registry entries for launch injection. */
+  extensionEntries?: ToolExtension[];
   /** Fires once when the session id is known mid-turn (for incremental persistence). */
   onSessionId?: (sessionId: string) => void;
   /** Stream canonical run events (text/thinking/tool/session) for live transcript + SSE. */

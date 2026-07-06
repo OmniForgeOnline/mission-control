@@ -842,6 +842,72 @@ export async function deleteTasks(root: string, taskIds: string[]): Promise<{ de
   return { deleted: tasks.length - remaining.length };
 }
 
+/**
+ * Rewrite a path that is exactly the old project root, or nested beneath it, to
+ * the new root. Returns the original value when it is unrelated, so unrelated
+ * targets and other projects' paths are left untouched.
+ */
+function repointPath(value: string | undefined, oldPath: string, newPath: string): string | undefined {
+  if (!value) return value;
+  if (value === oldPath) return newPath;
+  if (value.startsWith(oldPath + path.sep)) return newPath + value.slice(oldPath.length);
+  return value;
+}
+
+/**
+ * Cascade a project repoint onto its tasks: rewrite each task's `repoPath` and
+ * any `targets[].path` that sits at or under the old root to the new root.
+ * Keyed by `projectId` (every task carries one), so it never touches another
+ * project's tasks. Idempotent: a second run with the same arguments writes nothing.
+ */
+export async function repointProjectTasks(
+  root: string,
+  projectId: string,
+  oldPath: string,
+  newPath: string
+): Promise<void> {
+  const tasks = await listTasks(root);
+  const changedScopes: StateScope[] = [];
+  let changed = false;
+
+  const next = tasks.map((task) => {
+    if (task.projectId !== projectId) return task;
+
+    const repoPath = repointPath(task.repoPath, oldPath, newPath);
+    const repoChanged = repoPath !== task.repoPath;
+
+    let targets = task.targets;
+    let targetsChanged = false;
+    for (let i = 0; i < task.targets.length; i += 1) {
+      const current = task.targets[i]!;
+      const rewritten = repointPath(current.path, oldPath, newPath);
+      if (rewritten !== current.path) {
+        if (!targetsChanged) {
+          targets = task.targets.slice();
+          targetsChanged = true;
+        }
+        targets[i] = { ...current, path: rewritten! };
+      }
+    }
+
+    if (!repoChanged && !targetsChanged) return task;
+
+    changed = true;
+    changedScopes.push(...taskScopes(task.id));
+    return {
+      ...task,
+      targets,
+      ...(repoChanged ? { repoPath: repoPath! } : {}),
+      updatedAt: now()
+    };
+  });
+
+  if (changed) {
+    await writeJsonFile(tasksPath(root), next);
+    emitStateChange(changedScopes);
+  }
+}
+
 export async function updateTask(
   root: string,
   taskId: string,

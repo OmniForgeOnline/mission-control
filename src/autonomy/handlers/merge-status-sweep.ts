@@ -22,7 +22,10 @@ export async function runMergeStatusSweep(root: string): Promise<AutonomyRunResu
   if (result.merged) parts.push(`${result.merged} merged`);
   if (result.open) parts.push(`${result.open} still open`);
   if (result.closed) parts.push(`${result.closed} closed unmerged`);
-  if (result.unknown) parts.push(`${result.unknown} unknown`);
+  if (result.unknown) {
+    const distinct = [...new Set(result.unknownReasons)];
+    parts.push(`${result.unknown} unknown${distinct.length ? ` (${distinct.join("; ")})` : ""}`);
+  }
 
   return {
     jobId: "merge-status-sweep",

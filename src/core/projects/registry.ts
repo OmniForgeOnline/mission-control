@@ -24,6 +24,7 @@ export interface OnboardProjectInput {
 export interface UpdateProjectInput {
   name?: string;
   status?: "active" | "paused";
+  repoPath?: string;
 }
 
 function projectsPath(root: string): string {
@@ -121,10 +122,36 @@ export async function updateProject(root: string, projectId: string, input: Upda
     throw new Error(`Project not found: ${projectId}`);
   }
   const current = projects[index]!;
+
+  // A repoint resolves the new path to its git top-level (same normalization as
+  // onboarding) and validates it against the other projects. Empty/whitespace
+  // is treated as "not provided" so callers can patch name/status alone.
+  const requestedRepoPath = input.repoPath?.trim() || undefined;
+  let normalizedRepoPath: string | undefined;
+  if (requestedRepoPath) {
+    const resolved = resolveGitTopLevel(requestedRepoPath);
+    if (resolved === null) {
+      throw new Error(`Path does not resolve to a git worktree: ${input.repoPath}`);
+    }
+    normalizedRepoPath = resolved;
+  }
+  if (normalizedRepoPath !== undefined && normalizedRepoPath !== current.repoPath) {
+    for (const p of projects) {
+      if (p.id === projectId) continue;
+      if (p.repoPath === normalizedRepoPath) {
+        throw new Error(`Repo already registered as project "${p.name}" (${p.id}).`);
+      }
+      if (isNestedPath(p.repoPath, normalizedRepoPath) || isNestedPath(normalizedRepoPath, p.repoPath)) {
+        throw new Error(`Path is nested with existing project "${p.name}" (${p.repoPath}).`);
+      }
+    }
+  }
+
   projects[index] = {
     ...current,
     ...(input.name !== undefined ? { name: input.name.trim() || current.name } : {}),
     ...(input.status !== undefined ? { status: input.status } : {}),
+    ...(normalizedRepoPath !== undefined ? { repoPath: normalizedRepoPath } : {}),
     updatedAt: now()
   };
   await writeJsonFile(projectsPath(root), projects);

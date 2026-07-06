@@ -208,6 +208,8 @@ export async function runAutonomyAgentTurn(
       harnessRoot: root,
       runId: run.id,
       runDir,
+      enabledExtensionIds: routing.extensions,
+      extensionEntries: routing.extensionEntries,
       onOutput: (chunk) => {
         void appendFile(logPath, chunk).catch(() => {});
       }

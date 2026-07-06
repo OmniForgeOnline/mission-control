@@ -16,6 +16,7 @@ const demoWorkflow: WorkflowDefinition = {
       agent: "author",
       effort: "high",
       skill: "demo-skill",
+      extensions: ["claude:plugin:demo@market"],
       approval: "required",
       next: "fan_out"
     },

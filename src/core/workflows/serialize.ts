@@ -9,6 +9,7 @@ const STEP_FIELDS: ReadonlyArray<readonly [yamlKey: string, field: keyof Workflo
   ["agent", "agent"],
   ["effort", "effort"],
   ["skill", "skill"],
+  ["extensions", "extensions"],
   ["modifies_repo", "modifiesRepo"],
   ["approval", "approval"],
   ["next", "next"],

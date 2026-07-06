@@ -16,6 +16,21 @@ import {
 } from "../../core/agents/config/normalize.ts";
 import { loadUsageSnapshots } from "../../core/agents/config/usage-store.ts";
 import { refreshUsageSnapshots } from "../../core/agents/config/usage-refresh.ts";
+import { discoverAllExtensions, discoverExtensionsForTool } from "../../core/agents/extensions/discover.ts";
+import {
+  extensionIdForInstalledPlugin,
+  installMarketplacePlugin,
+  parsePluginSource
+} from "../../core/agents/extensions/install.ts";
+import { loadMergedExtensions } from "../../core/agents/extensions/launch.ts";
+import {
+  loadExtensionRegistry,
+  removeExtension,
+  replaceDiscoveredExtensions,
+  upsertExtension
+} from "../../core/agents/extensions/store.ts";
+import { mergeRegistryWithDiscovery } from "../../core/agents/extensions/resolve.ts";
+import { normalizeExtension } from "../../core/agents/extensions/normalize.ts";
 import { probeAgentRuntime } from "../../core/agents/runtime/probe.ts";
 import {
   defaultUsageProviderDeps,
@@ -107,6 +122,138 @@ export function createAgentConfigRouter(options: ServerOptions): Router {
     asyncRoute(async (_req, res) => {
       const usage = await refreshUsageSnapshots(options.root, usageDeps);
       res.json({ usage });
+    })
+  );
+
+  router.get(
+    "/agent-config/extensions",
+    asyncRoute(async (_req, res) => {
+      const [registry, config] = await Promise.all([
+        loadExtensionRegistry(options.root),
+        loadAgentConfig(options.root)
+      ]);
+      const merged = await Promise.all(
+        config.tools
+          .filter((tool) => tool.enabled)
+          .map(async (tool) => ({
+            toolId: tool.id,
+            extensions: await loadMergedExtensions(options.root, tool.id)
+          }))
+      );
+      res.json({ registry, tools: merged });
+    })
+  );
+
+  router.post(
+    "/agent-config/extensions/discover",
+    asyncRoute(async (_req, res) => {
+      const config = await loadAgentConfig(options.root);
+      const results = options.testMode
+        ? []
+        : await discoverAllExtensions(config.tools);
+      const discovered = results.flatMap((result) =>
+        mergeRegistryWithDiscovery([], result.discovered).map((entry) => ({
+          ...entry,
+          toolId: result.toolId
+        }))
+      );
+      const registry = await replaceDiscoveredExtensions(
+        options.root,
+        discovered,
+        new Date().toISOString()
+      );
+      res.json({ registry, results });
+    })
+  );
+
+  router.put(
+    "/agent-config/extensions",
+    asyncRoute(async (req, res) => {
+      const registry = await upsertExtension(options.root, normalizeExtension(req.body));
+      res.json({ registry });
+    })
+  );
+
+  router.post(
+    "/agent-config/extensions/install",
+    asyncRoute(async (req, res) => {
+      const body = req.body as {
+        toolId?: string;
+        source?: string;
+        marketplace?: string;
+        marketplaceSource?: string;
+        confirmed?: boolean;
+      };
+      if (!body.confirmed) {
+        res.status(400).json({ error: "Operator confirmation is required to install plugins." });
+        return;
+      }
+      if (!body.toolId || !body.source?.trim()) {
+        res.status(400).json({ error: "toolId and source are required." });
+        return;
+      }
+
+      let installResult;
+      if (options.testMode) {
+        const parsed = parsePluginSource(body.source, body.marketplace);
+        installResult = {
+          command: "test-mode",
+          stdout: "",
+          plugin: parsed.plugin,
+          marketplace: parsed.marketplace,
+          selector: parsed.selector
+        };
+      } else {
+        installResult = await installMarketplacePlugin(options.root, {
+          toolId: body.toolId,
+          source: body.source,
+          ...(body.marketplace ? { marketplace: body.marketplace } : {}),
+          ...(body.marketplaceSource ? { marketplaceSource: body.marketplaceSource } : {})
+        });
+      }
+
+      const config = await loadAgentConfig(options.root);
+      const tool = config.tools.find((entry) => entry.id === body.toolId);
+      if (!tool) {
+        res.status(400).json({ error: `Unknown tool "${body.toolId}".` });
+        return;
+      }
+
+      const discovery = options.testMode
+        ? { discovered: [], errors: [] as string[] }
+        : await discoverExtensionsForTool(tool);
+      const installedId = extensionIdForInstalledPlugin(body.toolId, installResult.selector);
+      const discovered = mergeRegistryWithDiscovery([], discovery.discovered);
+      if (!discovered.some((entry) => entry.id === installedId)) {
+        discovered.push({
+          id: installedId,
+          toolId: body.toolId,
+          kind: "plugin",
+          displayName: installResult.plugin,
+          source: installResult.selector,
+          detectedFrom: "manual",
+          defaultEnabled: false
+        });
+      }
+
+      const registry = await replaceDiscoveredExtensions(
+        options.root,
+        discovered.map((entry) => ({
+          ...entry,
+          toolId: body.toolId as typeof entry.toolId
+        })),
+        new Date().toISOString()
+      );
+
+      res.json({ install: installResult, registry, discovery });
+    })
+  );
+
+  router.delete(
+    "/agent-config/extensions/:id",
+    asyncRoute(async (req, res) => {
+      const registry = await removeExtension(options.root, param(req.params["id"], "id"));
+      res.json({ registry });
     })
   );
 

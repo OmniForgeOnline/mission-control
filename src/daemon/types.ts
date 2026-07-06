@@ -5,6 +5,7 @@ import type { PreparedWorkspace } from "../core/worktrees/worktrees.ts";
 import type { WorkflowStep } from "../core/workflows/index.ts";
 import type { createRun } from "../core/tasks/runs.ts";
 import type { WorkflowDefinition } from "../core/workflows/index.ts";
+import type { ToolExtension } from "../core/agents/extensions/types.ts";
 
 export interface ProcessOptions {
   runner?: AgentRunner;
@@ -29,6 +30,8 @@ export interface RunTurnInternal {
   turnNumber: number;
   isFirstTurn: boolean;
   step: WorkflowStep;
+  enabledExtensionIds?: string[];
+  extensionEntries?: ToolExtension[];
   reviewer?: { round: number };
   checksRemediation?: { round: number };
   conversation?: boolean;
