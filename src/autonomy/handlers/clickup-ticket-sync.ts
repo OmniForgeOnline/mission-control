@@ -369,6 +369,22 @@ async function importNewTriggeredComments(
   return imported;
 }
 
+/**
+ * A transient transport failure on a non-idempotent outbound comment POST must
+ * not abort the whole sync. The POST is deliberately single-attempt (no retry,
+ * so a read-timeout after ClickUp accepted it cannot duplicate the comment), so
+ * defer it: leave the posted flag false and let the next polling interval retry.
+ * Durable failures (auth, malformed request) are not transient and still throw.
+ */
+function deferTransientCommentPost(error: unknown, clickUpTaskId: string, kind: "pickup" | "completion"): void {
+  if (!isTransientNetworkError(error)) throw error;
+  console.warn(
+    `harness:clickup-sync task ${clickUpTaskId} ${kind} comment post failed transiently ` +
+      `(${describeNetworkError(error)}); deferring to next interval.`,
+    error
+  );
+}
+
 async function pushOutbound(
   root: string,
   token: string,
@@ -409,27 +425,35 @@ async function pushOutbound(
   }
 
   if (!current.pickedUpCommentPosted && task.startedAt) {
-    await createClickUpComment({
-      token,
-      taskId: clickUpTaskId,
-      text: "Mission Control picked up this ticket.",
-      ...(fetchImpl ? { fetchImpl } : {})
-    });
-    patch.pickedUpCommentPosted = true;
-    wrote = true;
-    stateChanged = true;
+    try {
+      await createClickUpComment({
+        token,
+        taskId: clickUpTaskId,
+        text: "Mission Control picked up this ticket.",
+        ...(fetchImpl ? { fetchImpl } : {})
+      });
+      patch.pickedUpCommentPosted = true;
+      wrote = true;
+      stateChanged = true;
+    } catch (error) {
+      deferTransientCommentPost(error, clickUpTaskId, "pickup");
+    }
   }
 
   if (!current.completedCommentPosted && task.resolution === "completed") {
-    await createClickUpComment({
-      token,
-      taskId: clickUpTaskId,
-      text: completionComment(task),
-      ...(fetchImpl ? { fetchImpl } : {})
-    });
-    patch.completedCommentPosted = true;
-    wrote = true;
-    stateChanged = true;
+    try {
+      await createClickUpComment({
+        token,
+        taskId: clickUpTaskId,
+        text: completionComment(task),
+        ...(fetchImpl ? { fetchImpl } : {})
+      });
+      patch.completedCommentPosted = true;
+      wrote = true;
+      stateChanged = true;
+    } catch (error) {
+      deferTransientCommentPost(error, clickUpTaskId, "completion");
+    }
   }
 
   if (stateChanged || synced.lastOutboundFingerprint) {

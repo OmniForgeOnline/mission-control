@@ -122,9 +122,19 @@ export async function runAutonomyJob(root: string, jobId: string): Promise<Auton
   emitStateChange(["autonomy"]);
   try {
     const handler = AUTONOMY_JOB_HANDLERS[jobId];
-    const result = handler
-      ? await handler(root)
-      : { jobId, status: "blocked" as const, summary: "Unknown autonomy job", proposalsCreated: 0 };
+    let result: AutonomyRunResult;
+    try {
+      result = handler
+        ? await handler(root)
+        : { jobId, status: "blocked" as const, summary: "Unknown autonomy job", proposalsCreated: 0 };
+    } catch (error) {
+      // A handler throw (e.g. a transient `fetch failed` / ETIMEDOUT from a
+      // connector) must not abort the daemon tick or skip run recording.
+      // Convert it to a blocked run so the rest of the tick continues and the
+      // failure stays visible in run history rather than escaping to onError.
+      const message = error instanceof Error ? error.message : String(error);
+      result = { jobId, status: "blocked", summary: `Autonomy job ${jobId} failed: ${message}`, proposalsCreated: 0 };
+    }
     await updateJobRun(root, jobId, result);
     return result;
   } finally {

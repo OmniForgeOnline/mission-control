@@ -911,6 +911,46 @@ describe("ClickUp polling sync", () => {
     expect(warnSpy).toHaveBeenCalledWith(expect.any(String), expect.any(Error));
   });
 
+  it("defers a transient pickup-comment POST and retries it on the next tick", async () => {
+    const task = await createTask(root, {
+      title: "Pickup flaky",
+      description: "Triggered ticket",
+      source: "clickup",
+      links: []
+    });
+    await persistTask(root, task, { startedAt: "2026-06-19T09:00:00.000Z" });
+    // Status already mirrored upstream, so the only outbound op this tick is the
+    // pickup comment POST: isolate the transient defer to that one call.
+    await linkClickUpTask(root, "cu-pickup-flaky", task.id, { lastPostedStatus: "in progress" });
+    const capture = captureClickUpCalls("cu-pickup-flaky", "Pickup flaky");
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    let postAttempts = 0;
+    const flaky = async (input: string | URL | Request, init?: RequestInit) => {
+      if (String(input).includes("/task/cu-pickup-flaky/comment") && init?.method === "POST") {
+        postAttempts += 1;
+        throw transientFetchError();
+      }
+      return capture.fetchImpl(input, init);
+    };
+
+    // First tick: the pickup POST fails transiently. The sync must complete (not
+    // abort), stay single-attempt, and post nothing so the next tick retries.
+    const first = await runClickUpTicketSync(root, { token: "token", fetchImpl: flaky });
+
+    expect(first.status).toBe("completed");
+    expect(postAttempts).toBe(1);
+    expect(capture.commentBodies).toHaveLength(0);
+    expect(warnSpy).toHaveBeenCalledWith(expect.any(String), expect.any(Error));
+
+    // Second tick: the transport recovers and the deferred pickup comment posts.
+    await runClickUpTicketSync(root, { token: "token", fetchImpl: capture.fetchImpl });
+    expect(capture.commentBodies).toHaveLength(1);
+    expect(capture.commentBodies[0]).toContain("Mission Control picked up this ticket");
+
+    warnSpy.mockRestore();
+  });
+
   it("still fails the sync when a comment fetch returns a durable ClickUp API error", async () => {
     await saveConnection(root, {
       id: "conn-clickup",
