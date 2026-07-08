@@ -14,6 +14,7 @@ import {
   clearAutonomyJobRunning,
   markAutonomyJobRunning
 } from "../src/autonomy/runtime.ts";
+import { AUTONOMY_JOB_HANDLERS } from "../src/autonomy/registry.ts";
 import { runOperationalErrorTriage } from "../src/autonomy/error-triage.ts";
 import { buildGuidanceSweepPrompt, runHarnessGuidanceSweep } from "../src/autonomy/guidance-sweep.ts";
 import { captureOperationalError, listOperationalErrors } from "../src/core/operations/error-ledger.ts";
@@ -132,6 +133,28 @@ describe("autonomy jobs", () => {
       summary: "Guidance sweep skipped: already running.",
       proposalsCreated: 0
     });
+  });
+
+  it("records a throwing handler as a blocked run instead of aborting the tick", async () => {
+    // A transient handler failure (e.g. ClickUp `fetch failed` / ETIMEDOUT) used
+    // to escape runAutonomyJob, skip run recording, and surface as a daemon
+    // onError. It must now resolve as a blocked run so the tick continues.
+    const jobId = "worktree-cleanup-sweep";
+    const original = AUTONOMY_JOB_HANDLERS[jobId]!;
+    AUTONOMY_JOB_HANDLERS[jobId] = async () => {
+      throw new Error("fetch failed: ETIMEDOUT");
+    };
+    try {
+      const result = await runAutonomyJob(root, jobId);
+
+      expect(result).toMatchObject({ jobId, status: "blocked" });
+      expect(result.summary).toContain("ETIMEDOUT");
+      // The run was recorded as blocked, not dropped on the floor.
+      const runs = JSON.parse(await readFile(path.join(root, "data", "state", "autonomy-runs.json"), "utf8"));
+      expect(runs[0]).toMatchObject({ jobId, status: "blocked" });
+    } finally {
+      AUTONOMY_JOB_HANDLERS[jobId] = original;
+    }
   });
 
   it("triages captured operational errors and marks them reviewed", async () => {
