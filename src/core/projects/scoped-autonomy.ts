@@ -1,11 +1,14 @@
 import path from "node:path";
 
-import { readJsonFile, writeJsonFile, ensureDir } from "../infra/fs.ts";
+import { readJsonFile, writeJsonFile, readTextFile } from "../infra/fs.ts";
 import { getProject, projectDir, listProjects as listAllProjects } from "./registry.ts";
+import type { ProjectRecord } from "./registry.ts";
 import { nextRunFor, withDefaults, parseSchedule } from "../../autonomy/job-schedule.ts";
-import type { AutonomyJob, AutonomyRunMode } from "../../autonomy/job-types.ts";
+import type { AutonomyJob, AutonomyJobStatus, AutonomyRunMode } from "../../autonomy/job-types.ts";
 import type { AutonomyJobContext, AutonomyJobHandler } from "../../autonomy/registry.ts";
 import { markAutonomyJobRunning, clearAutonomyJobRunning } from "../../autonomy/runtime.ts";
+import { runAutonomyAgentTurn } from "../../autonomy/agent-run.ts";
+import { listTasks } from "../tasks/tasks.ts";
 import { emitStateChange } from "../../core/infra/state-bus.ts";
 import { runProjectQualityGateSweep } from "../../autonomy/handlers/project-quality.ts";
 import { runProjectTechDebtSweep } from "../../autonomy/handlers/project-tech-debt-sweep.ts";
@@ -14,6 +17,8 @@ import { runProjectSelfImprovement } from "../../autonomy/handlers/project-self-
 import { runProjectErrorTriage } from "../../autonomy/handlers/project-error-triage.ts";
 import { runProjectMemoryIndexRefresh } from "../../autonomy/handlers/project-memory-index-refresh.ts";
 import { runProjectDocGardening } from "../../autonomy/handlers/project-doc-gardening.ts";
+import { runGuidanceSweep } from "../../autonomy/handlers/guidance-sweep.ts";
+import { validateProjectJobDefinition, type ProjectJobDefinition } from "./job-schema.ts";
 import { autonomyRunsPath } from "../../autonomy/job-types.ts";
 import type { AutonomyRunResult } from "../../autonomy/job-types.ts";
 
@@ -83,6 +88,49 @@ export const PROJECT_JOB_DEFAULTS: AutonomyJob[] = [
   }
 ];
 
+/**
+ * The harness guidance sweep, expressed as a schema-valid project job
+ * definition. This is the reference instance custom jobs are derived from and
+ * validated against. It seeds only for the harness project (below), so a public
+ * install no longer spends every user's tokens improving one repo.
+ */
+export const HARNESS_GUIDANCE_SWEEP_DEFINITION: ProjectJobDefinition = {
+  id: "guidance-sweep",
+  title: "Harness guidance sweep",
+  description: "Compare this repo's kernel guidance against daemon behavior and draft proposals.",
+  schedule: "every-1d",
+  runMode: "manual",
+  approvalPolicy: "proposal-only"
+};
+
+const HARNESS_GUIDANCE_SWEEP_DEFAULT_STATUS: AutonomyJobStatus = "paused";
+
+/**
+ * A project is "the harness project" when its repo *is* the mission-control
+ * source (package name match). Only then does it own the guidance sweep.
+ */
+export async function isHarnessProject(project: ProjectRecord): Promise<boolean> {
+  const raw = await readTextFile(path.join(project.repoPath, "package.json"));
+  if (!raw) return false;
+  try {
+    const pkg = JSON.parse(raw) as { name?: unknown };
+    return pkg.name === "@omniforge/mission-control";
+  } catch {
+    return false;
+  }
+}
+
+/** Built-in defaults for a project: the generic set, plus harness-only jobs. */
+async function applicableProjectJobDefaults(project: ProjectRecord): Promise<AutonomyJob[]> {
+  if (await isHarnessProject(project)) {
+    return [
+      ...PROJECT_JOB_DEFAULTS,
+      withDefaults({ ...HARNESS_GUIDANCE_SWEEP_DEFINITION, status: HARNESS_GUIDANCE_SWEEP_DEFAULT_STATUS })
+    ];
+  }
+  return PROJECT_JOB_DEFAULTS;
+}
+
 function projectJobsPath(root: string, projectId: string): string {
   return path.join(projectDir(root, projectId), "autonomy-jobs.json");
 }
@@ -98,16 +146,14 @@ export async function listProjectJobs(root: string, projectId: string): Promise<
   }
   const filePath = projectJobsPath(root, projectId);
   const stored = await readJsonFile<AutonomyJob[]>(filePath, []);
-  if (!stored.length) {
-    const seeded = PROJECT_JOB_DEFAULTS.map(withDefaults);
-    await ensureDir(path.dirname(filePath));
-    await writeJsonFile(filePath, seeded);
-    return seeded;
-  }
-  // Merge with defaults (same pattern as harness jobs)
-  const byId = new Map(stored.map((job) => [job.id, withDefaults(job)] as const));
-  let changed = stored.length !== PROJECT_JOB_DEFAULTS.length;
-  for (const def of PROJECT_JOB_DEFAULTS) {
+  const defaults = await applicableProjectJobDefaults(project);
+
+  // Stored jobs (defaults previously seeded + any custom jobs an operator/agent
+  // defined) are preserved verbatim; only missing defaults are added.
+  const byId = new Map<string, AutonomyJob>();
+  for (const job of stored) byId.set(job.id, withDefaults(job));
+  let changed = false;
+  for (const def of defaults) {
     if (!byId.has(def.id)) {
       byId.set(def.id, withDefaults(def));
       changed = true;
@@ -146,7 +192,8 @@ const PROJECT_JOB_HANDLERS: Record<string, AutonomyJobHandler> = {
   "project-self-improvement": runProjectSelfImprovement,
   "project-operational-triage": runProjectErrorTriage,
   "memory-index-refresh": runProjectMemoryIndexRefresh,
-  "doc-gardening": runProjectDocGardening
+  "doc-gardening": runProjectDocGardening,
+  "guidance-sweep": runGuidanceSweep
 };
 
 export async function runProjectJob(
@@ -171,7 +218,14 @@ export async function runProjectJob(
     const context: AutonomyJobContext = { project };
     const result = handler
       ? await handler(root, context)
-      : { jobId: jobName, status: "blocked" as const, summary: "Unknown project job", proposalsCreated: 0 };
+      : job.instructions
+        ? await runCustomProjectJob(root, project, job)
+        : {
+            jobId: jobName,
+            status: "blocked" as const,
+            summary: "Unknown project job: no handler or instructions",
+            proposalsCreated: 0
+          };
 
     // Update job run metadata
     const updatedJobs = await listProjectJobs(root, projectId);
@@ -198,6 +252,100 @@ export async function runProjectJob(
     clearAutonomyJobRunning(compositeId);
     emitStateChange(["autonomy"]);
   }
+}
+
+export type DefineProjectJobResult = { ok: true; job: AutonomyJob } | { ok: false; errors: string[] };
+
+/**
+ * Validate an agent/operator-authored job definition against the schema and, if
+ * valid, register it for the project (offered in its job list). Custom jobs
+ * (no built-in handler) must carry `instructions`. An existing job id is
+ * updated in place; operator-set status and run history are preserved.
+ */
+export async function defineProjectJob(
+  root: string,
+  projectId: string,
+  input: unknown
+): Promise<DefineProjectJobResult> {
+  const project = await getProject(root, projectId);
+  if (!project) throw new Error(`Project not found: ${projectId}`);
+
+  const validation = validateProjectJobDefinition(input);
+  if (!validation.ok) return { ok: false, errors: validation.errors };
+  const definition = validation.job;
+
+  const hasHandler = Object.prototype.hasOwnProperty.call(PROJECT_JOB_HANDLERS, definition.id);
+  if (!hasHandler && !definition.instructions) {
+    return { ok: false, errors: ["instructions is required for jobs without a built-in handler."] };
+  }
+
+  const filePath = projectJobsPath(root, projectId);
+  const stored = await readJsonFile<AutonomyJob[]>(filePath, []);
+  const existing = stored.find((j) => j.id === definition.id);
+  const materialized: AutonomyJob = withDefaults({
+    id: definition.id,
+    title: definition.title,
+    description: definition.description,
+    schedule: definition.schedule,
+    runMode: definition.runMode,
+    approvalPolicy: definition.approvalPolicy,
+    status: existing?.status ?? "active",
+    ...(definition.instructions ? { instructions: definition.instructions } : {}),
+    ...(existing?.lastRunAt ? { lastRunAt: existing.lastRunAt } : {}),
+    ...(existing?.lastSummary ? { lastSummary: existing.lastSummary } : {})
+  });
+
+  const index = stored.findIndex((j) => j.id === definition.id);
+  if (index >= 0) stored[index] = materialized;
+  else stored.push(materialized);
+  await writeJsonFile(filePath, stored);
+  return { ok: true, job: materialized };
+}
+
+async function buildCustomProjectJobContext(root: string, project: ProjectRecord): Promise<string> {
+  const tasks = (await listTasks(root)).filter(
+    (t) => t.repoPath === project.repoPath || t.targets.some((tgt) => tgt.path.startsWith(project.repoPath))
+  );
+  const lines = tasks
+    .slice(0, 8)
+    .map((t) => `- ${t.id.slice(0, 8)} · ${t.resolution ?? (t.blockedReason ? "blocked" : "active")} · "${t.title}"`);
+  return [
+    `Project: ${project.name} (${project.repoPath})`,
+    "",
+    "Recent project tasks:",
+    lines.length ? lines.join("\n") : "- none",
+    "",
+    "Investigate with list_tasks, read_task, list_runs, read_run, gbrain_search. File fixes via tech_debt_capture(projectId) or normal tasks. Do not edit project files directly."
+  ].join("\n");
+}
+
+/** Run an agent-authored job (no built-in handler) as an agent turn. */
+async function runCustomProjectJob(
+  root: string,
+  project: ProjectRecord,
+  job: AutonomyJob
+): Promise<AutonomyRunResult> {
+  const context = await buildCustomProjectJobContext(root, project);
+  const prompt = `${job.instructions}\n\n## Project context\n\n${context}`;
+  const result = await runAutonomyAgentTurn(root, {
+    taskId: `autonomy:project:${project.id}:${job.id}`,
+    taskTitle: `${job.title}: ${project.name}`,
+    projectId: project.id,
+    repoPath: project.repoPath,
+    stateFileName: `${project.id}/${job.id}.json`,
+    skipSummary: `${job.title} skipped for ${project.name}: already running.`,
+    completedSummary: (turnNumber, proposalsCreated) =>
+      `${job.title} turn ${turnNumber} for ${project.name}; ${proposalsCreated} item(s).`,
+    blockedSummary: (reason) => `${job.title} blocked for ${project.name}: ${reason}.`,
+    buildContext: async () => prompt,
+    buildPrompt: () => prompt
+  });
+  return {
+    jobId: job.id,
+    status: result.status,
+    summary: result.summary,
+    proposalsCreated: result.proposalsCreated
+  };
 }
 
 export async function pickDueProjectJob(

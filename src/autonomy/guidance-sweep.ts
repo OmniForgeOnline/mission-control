@@ -1,17 +1,26 @@
-import { runAutonomyAgentTurn, type RunAutonomyAgentOptions } from "./agent-run.ts";
+import path from "node:path";
+
+import { readOptionalFile } from "./handlers/shared.ts";
 import { STALE_GUIDANCE } from "./job-types.ts";
 
-export const GUIDANCE_SWEEP_TASK_ID = "autonomy:harness-guidance-sweep";
+const GUIDANCE_FILES = [
+  "kernel/memory-policy.md",
+  "kernel/operating-principles.md",
+  "kernel/workflow-policy.md",
+  "README.md"
+];
 
-export async function buildGuidanceSweepContext(root: string): Promise<string> {
-  const { readOptionalFile } = await import("./handlers/shared.ts");
-  const path = await import("node:path");
-
-  const relativeFiles = ["kernel/memory-policy.md", "kernel/operating-principles.md", "kernel/workflow-policy.md", "README.md"];
+/**
+ * Build the guidance-sweep context from a repo's own kernel + README. The sweep
+ * is a project-scoped job owned by the harness project, so it reads the
+ * mission-control *source* checkout (the project repo) rather than the
+ * installed runtime state copy, so it improves the actual repo under review.
+ */
+export async function buildGuidanceSweepContext(repoPath: string): Promise<string> {
   const sections: string[] = [];
 
-  for (const relativeFile of relativeFiles) {
-    const content = await readOptionalFile(path.join(root, relativeFile));
+  for (const relativeFile of GUIDANCE_FILES) {
+    const content = await readOptionalFile(path.join(repoPath, relativeFile));
     if (!content) {
       sections.push(`## ${relativeFile}\n\n(missing)`);
       continue;
@@ -41,7 +50,7 @@ Compare harness kernel docs and README against how the daemon, MCP tools, and UI
 2. Inspect relevant \`src/\` code when guidance claims specific daemon or workflow behavior.
 3. File harness fixes via \`propose_rule\`, \`propose_skill\`, or \`propose_hook\`. Do NOT edit \`kernel/\`, \`skills/\`, or \`hooks/\` directly.
 4. Do NOT file duplicate \`propose_*\` tickets for a target that already has an active proposal ticket.
-5. If guidance is current, say so — do not invent churn.
+5. If guidance is current, say so; do not invent churn.
 
 ## Focus
 
@@ -57,30 +66,4 @@ ${context}
 ## Output
 
 End with a short operator handoff listing what you checked and which \`propose_*\` tickets you filed (titles only). If nothing needs changing, say so explicitly.`;
-}
-
-const guidanceSweepSpec = {
-  taskId: GUIDANCE_SWEEP_TASK_ID,
-  taskTitle: "Harness guidance sweep",
-  stateFileName: "guidance-sweep.json",
-  skipSummary: "Guidance sweep skipped: already running.",
-  completedSummary: (turnNumber: number, proposalsCreated: number) =>
-    `Guidance sweep turn ${turnNumber} completed; filed ${proposalsCreated} proposal(s).`,
-  blockedSummary: (reason: string) => `Guidance sweep blocked: ${reason}`,
-  buildContext: buildGuidanceSweepContext,
-  buildPrompt: buildGuidanceSweepPrompt
-};
-
-export interface GuidanceSweepResult {
-  runId: string;
-  status: "completed" | "blocked";
-  summary: string;
-  proposalsCreated: number;
-}
-
-export async function runHarnessGuidanceSweep(
-  root: string,
-  options?: RunAutonomyAgentOptions
-): Promise<GuidanceSweepResult> {
-  return runAutonomyAgentTurn(root, guidanceSweepSpec, options);
 }

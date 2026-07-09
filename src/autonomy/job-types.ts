@@ -13,6 +13,8 @@ export interface AutonomyJob {
   status: AutonomyJobStatus;
   runMode: AutonomyRunMode;
   approvalPolicy: AutonomyApprovalPolicy;
+  /** Agent-turn prompt for custom jobs with no built-in handler. */
+  instructions?: string;
   lastRunAt?: string;
   nextRunAt?: string;
   lastSummary?: string;
@@ -27,15 +29,6 @@ export interface AutonomyRunResult {
 }
 
 export const DEFAULT_JOBS: AutonomyJob[] = [
-  {
-    id: "harness-guidance-sweep",
-    title: "Harness guidance sweep",
-    description: "Run an agent turn to compare kernel guidance against current daemon behavior and draft proposals.",
-    schedule: "every-1d",
-    status: "paused",
-    runMode: "manual",
-    approvalPolicy: "proposal-only"
-  },
   {
     id: "worktree-cleanup-sweep",
     title: "Worktree cleanup sweep",

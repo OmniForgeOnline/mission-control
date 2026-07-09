@@ -4,9 +4,10 @@ import { memoryTools } from "./tools/memory.ts";
 import { proposalTools } from "./tools/proposals.ts";
 import { skillTools } from "./tools/skills.ts";
 import { taskTools } from "./tools/tasks.ts";
+import { projectJobTools } from "./tools/project-jobs.ts";
 import type { McpToolContext, McpToolDefinition, McpToolHandler } from "./types.ts";
 
-const MODULES = [memoryTools, proposalTools, taskTools, kernelTools, skillTools, hookTools];
+const MODULES = [memoryTools, proposalTools, taskTools, kernelTools, skillTools, hookTools, projectJobTools];
 
 export const TOOL_DEFS: McpToolDefinition[] = MODULES.flatMap((module) => module.definitions);
 

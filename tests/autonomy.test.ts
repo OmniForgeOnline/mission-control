@@ -16,12 +16,12 @@ import {
 } from "../src/autonomy/runtime.ts";
 import { AUTONOMY_JOB_HANDLERS } from "../src/autonomy/registry.ts";
 import { runOperationalErrorTriage } from "../src/autonomy/error-triage.ts";
-import { buildGuidanceSweepPrompt, runHarnessGuidanceSweep } from "../src/autonomy/guidance-sweep.ts";
+import { buildGuidanceSweepContext, buildGuidanceSweepPrompt } from "../src/autonomy/guidance-sweep.ts";
+import { runAutonomyAgentTurn } from "../src/autonomy/agent-run.ts";
 import { captureOperationalError, listOperationalErrors } from "../src/core/operations/error-ledger.ts";
 import { DeterministicAgentRunner } from "./helpers/deterministic-runner.ts";
 import { writeJsonFile } from "../src/core/infra/fs.ts";
 import { createRun } from "../src/core/tasks/runs.ts";
-import { listProposals } from "../src/core/proposals/proposals.ts";
 import { ensureHarnessRepository } from "../src/core/bootstrap/repository.ts";
 import { createServer } from "../src/server/app.ts";
 
@@ -43,16 +43,10 @@ describe("autonomy jobs", () => {
     const ids = jobs.map((job) => job.id).sort();
     expect(ids).toEqual([
       "clickup-ticket-sync",
-      "harness-guidance-sweep",
       "merge-status-sweep",
       "workflow-reconcile-sweep",
       "worktree-cleanup-sweep"
     ]);
-    expect(jobs.find((j) => j.id === "harness-guidance-sweep")).toMatchObject({
-      approvalPolicy: "proposal-only",
-      runMode: "manual",
-      status: "paused"
-    });
     expect(jobs.find((j) => j.id === "worktree-cleanup-sweep")).toMatchObject({
       approvalPolicy: "read-only",
       runMode: "automatic",
@@ -77,11 +71,11 @@ describe("autonomy jobs", () => {
       status: "paused"
     });
     await expect(readFile(path.join(root, "data", "state", "autonomy-jobs.json"), "utf8")).resolves.toContain(
-      "harness-guidance-sweep"
+      "merge-status-sweep"
     );
   });
 
-  it("runs the guidance sweep as an agent turn without mutating kernel files directly", async () => {
+  it("builds the guidance sweep context from the repo's kernel and README", async () => {
     const memoryPolicyPath = path.join(root, "kernel", "memory-policy.md");
     await writeFile(
       memoryPolicyPath,
@@ -89,48 +83,46 @@ describe("autonomy jobs", () => {
       "utf8"
     );
 
-    const runner = new DeterministicAgentRunner("grok");
-    runner.setReplies([
-      "Checked kernel/memory-policy.md against daemon behavior. Filed one propose_rule for stale gbrain CLI wording."
-    ]);
-    const result = await runHarnessGuidanceSweep(root, { runner });
+    const context = await buildGuidanceSweepContext(root);
 
-    expect(result.status).toBe("completed");
-    expect(result.summary).toContain("Guidance sweep turn 1 completed");
-    await expect(readFile(memoryPolicyPath, "utf8")).resolves.toContain("Do not rely on a standalone gbrain CLI");
+    expect(context).toContain("kernel/memory-policy.md");
+    expect(context).toContain("Do not rely on a standalone gbrain CLI");
+    expect(context).toContain("Known stale phrases to watch for");
     expect(buildGuidanceSweepPrompt("sample")).toContain("guidance-sweep agent");
-    expect(await listProposals(root)).toHaveLength(0);
   });
 
-  it("skips guidance sweep when the mutex guard is active", async () => {
-    // Guidance sweep ships paused by default; activate it so runAutonomyJob
-    // reaches the in-flight lock check rather than the not-active guard.
-    await writeJsonFile(path.join(root, "data", "state", "autonomy-jobs.json"), [
-      {
-        id: "harness-guidance-sweep",
-        title: "Harness guidance sweep",
-        description: "Run an agent turn to compare kernel guidance against current daemon behavior and draft proposals.",
-        schedule: "every-1d",
-        status: "active",
-        runMode: "manual",
-        approvalPolicy: "proposal-only"
-      }
-    ]);
+  it("skips an agent-turn autonomy job that is already running", async () => {
+    const taskId = "autonomy:test-agent-turn";
     await createRun(root, {
-      taskId: "autonomy:harness-guidance-sweep",
-      taskTitle: "Harness guidance sweep",
+      taskId,
+      taskTitle: "Test agent turn",
       agent: "grok",
       status: "running",
       startedAt: new Date().toISOString(),
       artifacts: []
     });
 
-    const result = await runAutonomyJob(root, "harness-guidance-sweep");
+    const runner = new DeterministicAgentRunner("grok");
+    runner.setReplies(["should not run"]);
+
+    const result = await runAutonomyAgentTurn(
+      root,
+      {
+        taskId,
+        taskTitle: "Test agent turn",
+        stateFileName: "test-agent-turn.json",
+        skipSummary: "Test agent turn skipped: already running.",
+        completedSummary: () => "completed",
+        blockedSummary: (reason) => `blocked: ${reason}`,
+        buildContext: async () => "ctx",
+        buildPrompt: () => "prompt"
+      },
+      { runner }
+    );
 
     expect(result).toMatchObject({
-      jobId: "harness-guidance-sweep",
       status: "completed",
-      summary: "Guidance sweep skipped: already running.",
+      summary: "Test agent turn skipped: already running.",
       proposalsCreated: 0
     });
   });
@@ -242,15 +234,15 @@ describe("autonomy jobs", () => {
     clearAutonomyJobRunning("worktree-cleanup-sweep");
 
     const run = await createRun(root, {
-      taskId: "autonomy:harness-guidance-sweep",
-      taskTitle: "Harness guidance sweep",
+      taskId: "autonomy:merge-status-sweep",
+      taskTitle: "Merge status sweep",
       agent: "grok",
       status: "running",
       startedAt: new Date().toISOString(),
       artifacts: []
     });
     const withRun = await attachAutonomyJobRuntime(root, jobs);
-    expect(withRun.find((job) => job.id === "harness-guidance-sweep")).toMatchObject({
+    expect(withRun.find((job) => job.id === "merge-status-sweep")).toMatchObject({
       isRunning: true,
       activeRunId: run.id
     });
@@ -273,7 +265,7 @@ describe("autonomy jobs", () => {
     const app = createServer({ root });
 
     const state = await request(app).get("/api/state").expect(200);
-    expect(state.body.autonomyJobs.map((job: { id: string }) => job.id)).toContain("harness-guidance-sweep");
+    expect(state.body.autonomyJobs.map((job: { id: string }) => job.id)).toContain("worktree-cleanup-sweep");
 
     const run = await request(app).post("/api/autonomy/jobs/worktree-cleanup-sweep/run").expect(200);
     expect(run.body.status).toBe("completed");

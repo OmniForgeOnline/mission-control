@@ -18,8 +18,8 @@ export function projectDocGardeningTaskId(projectId: string): string {
 /**
  * Build doc-gardening context from a project's *own* documentation — markdown
  * under its repo (README, docs/, AGENTS.md, …) — plus its per-project memory
- * pages. No kernel scanning: that is harness-specific and handled by the global
- * guidance sweep.
+ * pages. No kernel scanning: that is harness-specific and handled by the
+ * harness project's guidance-sweep job (project-scoped).
  */
 export async function buildProjectDocGardeningContext(
   root: string,
