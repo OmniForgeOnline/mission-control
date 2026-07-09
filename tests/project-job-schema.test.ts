@@ -53,6 +53,30 @@ describe("project job-definition schema", () => {
       if (!result.ok) expect(result.errors.join("\n")).toMatch(/schedule/);
     });
 
+    it("schedule: the JSON-schema pattern and runtime validator agree on zero and garbage", () => {
+      // The machine-readable schema pattern and parseSchedule must not disagree.
+      // An agent reading the schema must not be able to submit an interval the
+      // runtime validator rejects (e.g. every-0m). Both accept the valid set and
+      // both reject the zero/garbage set.
+      const schemaPattern = new RegExp(PROJECT_JOB_JSON_SCHEMA.properties.schedule.pattern);
+      const accepted = ["every-1m", "every-30m", "every-1h", "every-1d"];
+      const rejected = ["every-0m", "every-00d", "every-0h", "daily", "every-"];
+      for (const schedule of accepted) {
+        expect(schemaPattern.test(schedule)).toBe(true);
+        expect(validateProjectJobDefinition({ ...VALID_JOB, schedule }).ok).toBe(true);
+      }
+      for (const schedule of rejected) {
+        expect(schemaPattern.test(schedule)).toBe(false);
+        expect(validateProjectJobDefinition({ ...VALID_JOB, schedule }).ok).toBe(false);
+      }
+    });
+
+    it("rejects unknown properties to honor additionalProperties:false", () => {
+      const result = validateProjectJobDefinition({ ...VALID_JOB, bogus: true });
+      expect(result.ok).toBe(false);
+      if (!result.ok) expect(result.errors.join("\n")).toMatch(/bogus/);
+    });
+
     it("rejects an unknown approval policy", () => {
       const result = validateProjectJobDefinition({ ...VALID_JOB, approvalPolicy: "delete-everything" });
       expect(result.ok).toBe(false);

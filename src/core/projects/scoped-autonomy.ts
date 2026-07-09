@@ -21,6 +21,7 @@ import { runGuidanceSweep } from "../../autonomy/handlers/guidance-sweep.ts";
 import { validateProjectJobDefinition, type ProjectJobDefinition } from "./job-schema.ts";
 import { autonomyRunsPath } from "../../autonomy/job-types.ts";
 import type { AutonomyRunResult } from "../../autonomy/job-types.ts";
+import type { AgentRunner } from "../../runners/types.ts";
 
 export const PROJECT_JOB_DEFAULTS: AutonomyJob[] = [
   {
@@ -199,7 +200,8 @@ const PROJECT_JOB_HANDLERS: Record<string, AutonomyJobHandler> = {
 export async function runProjectJob(
   root: string,
   projectId: string,
-  jobName: string
+  jobName: string,
+  options?: { runner?: AgentRunner }
 ): Promise<AutonomyRunResult> {
   const project = await getProject(root, projectId);
   if (!project) throw new Error(`Project not found: ${projectId}`);
@@ -216,16 +218,31 @@ export async function runProjectJob(
   try {
     const handler = PROJECT_JOB_HANDLERS[jobName];
     const context: AutonomyJobContext = { project };
-    const result = handler
-      ? await handler(root, context)
-      : job.instructions
-        ? await runCustomProjectJob(root, project, job)
-        : {
-            jobId: jobName,
-            status: "blocked" as const,
-            summary: "Unknown project job: no handler or instructions",
-            proposalsCreated: 0
-          };
+    let result: AutonomyRunResult;
+    try {
+      result = handler
+        ? await handler(root, context)
+        : job.instructions
+          ? await runCustomProjectJob(root, project, job, options?.runner)
+          : {
+              jobId: jobName,
+              status: "blocked" as const,
+              summary: "Unknown project job: no handler or instructions",
+              proposalsCreated: 0
+            };
+    } catch (error) {
+      // A handler/agent throw (e.g. a transient connector failure) must not skip
+      // run recording or escape to the daemon tick's onError. Convert it to a
+      // blocked run so the failure stays visible in run history. Mirrors
+      // runAutonomyJob (autonomy/jobs.ts).
+      const message = error instanceof Error ? error.message : String(error);
+      result = {
+        jobId: jobName,
+        status: "blocked",
+        summary: `Project job ${jobName} failed: ${message}`,
+        proposalsCreated: 0
+      };
+    }
 
     // Update job run metadata
     const updatedJobs = await listProjectJobs(root, projectId);
@@ -323,7 +340,8 @@ async function buildCustomProjectJobContext(root: string, project: ProjectRecord
 async function runCustomProjectJob(
   root: string,
   project: ProjectRecord,
-  job: AutonomyJob
+  job: AutonomyJob,
+  runner?: AgentRunner
 ): Promise<AutonomyRunResult> {
   const context = await buildCustomProjectJobContext(root, project);
   const prompt = `${job.instructions}\n\n## Project context\n\n${context}`;
@@ -339,7 +357,7 @@ async function runCustomProjectJob(
     blockedSummary: (reason) => `${job.title} blocked for ${project.name}: ${reason}.`,
     buildContext: async () => prompt,
     buildPrompt: () => prompt
-  });
+  }, runner ? { runner } : undefined);
   return {
     jobId: job.id,
     status: result.status,

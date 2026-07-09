@@ -50,7 +50,7 @@ export const PROJECT_JOB_JSON_SCHEMA = {
     description: { type: "string", minLength: 1, description: "One-line summary of what the job does." },
     schedule: {
       type: "string",
-      pattern: "^every-(\\d+)([mhd])$",
+      pattern: "^every-([1-9][0-9]*[mhd])$",
       description: "Interval: every-30m, every-1h, every-1d."
     },
     runMode: { type: "string", enum: ["manual", "automatic"] },
@@ -64,6 +64,7 @@ export const PROJECT_JOB_JSON_SCHEMA = {
 
 export const PROJECT_JOB_REQUIRED: readonly string[] = PROJECT_JOB_JSON_SCHEMA.required;
 export const PROJECT_JOB_PROPERTIES: Readonly<Record<string, unknown>> = PROJECT_JOB_JSON_SCHEMA.properties;
+const ALLOWED_JOB_KEYS: readonly string[] = Object.keys(PROJECT_JOB_JSON_SCHEMA.properties);
 
 function isString(value: unknown): value is string {
   return typeof value === "string";
@@ -79,6 +80,12 @@ export function validateProjectJobDefinition(input: unknown): ProjectJobValidati
   }
   const raw = input as Record<string, unknown>;
   const errors: string[] = [];
+
+  for (const key of Object.keys(raw)) {
+    if (!ALLOWED_JOB_KEYS.includes(key)) {
+      errors.push(`Unknown property '${key}'. Allowed: ${ALLOWED_JOB_KEYS.join(", ")}.`);
+    }
+  }
 
   if (!isString(raw["id"]) || !ID_PATTERN.test(raw["id"])) {
     errors.push("id must be a lowercase-dash identifier (e.g. 'tech-debt-sweep').");
