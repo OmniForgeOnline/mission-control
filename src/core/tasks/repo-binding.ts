@@ -10,6 +10,7 @@ import {
   type WorkflowDefinition
 } from "../workflows/index.ts";
 import { addTaskMessage, getTask, updateTask } from "./tasks.ts";
+import { EntityNotFoundError } from "./errors.ts";
 
 export const REPO_BINDING_BLOCKED_REASON =
   "Repository binding required: add a git repository target before opening a merge request.";
@@ -59,7 +60,7 @@ export async function bindTaskRepoTarget(
   rawPath: string
 ): Promise<HarnessTask> {
   const task = await getTask(root, taskId);
-  if (!task) throw new Error(`Task not found: ${taskId}`);
+  if (!task) throw new EntityNotFoundError("task", taskId);
 
   const trimmed = rawPath.trim();
   if (!trimmed) {

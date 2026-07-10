@@ -4,6 +4,7 @@ import path from "node:path";
 import { deriveLegacyStatus } from "../../core/tasks/status.ts";
 import { listAllRuns } from "../../core/tasks/runs.ts";
 import { getTask, listTasks } from "../../core/tasks/tasks.ts";
+import { EntityNotFoundError } from "../../core/tasks/errors.ts";
 import { DEFAULT_WORKFLOW_ID, loadWorkflow } from "../../core/workflows/index.ts";
 import type { McpToolModule } from "../types.ts";
 import { asText } from "../types.ts";
@@ -95,7 +96,7 @@ export const taskTools: McpToolModule = {
     read_task: async (ctx, args) => {
       const id = String(args["id"]);
       const task = await getTask(ctx.root, id);
-      if (!task) throw new Error(`Task not found: ${id}`);
+      if (!task) throw new EntityNotFoundError("task", id);
       return asText(task);
     }
   }
