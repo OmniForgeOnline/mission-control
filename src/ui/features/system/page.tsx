@@ -12,11 +12,10 @@ function Icon({ name, size = 16 }: { name: string; size?: number }) {
 }
 
 /**
- * System → Maintenance. Surfaces the daemon-wide background jobs (doc
- * gardening, guidance sweep, worktree cleanup, workflow reconcile, ClickUp
- * sync, memory index refresh) and their run history. These are cross-cutting
- * infrastructure with no owning project, so they live here rather than in any
- * project's tabs.
+ * System → Maintenance. Surfaces the daemon-wide background jobs (worktree
+ * cleanup, workflow reconcile, merge status, ClickUp sync) and their run
+ * history. These are cross-cutting infrastructure with no owning project, so
+ * they live here rather than in any project's tabs.
  */
 export function MaintenanceView() {
   const runs = (ui.data?.runs ?? []).filter(isMaintenanceRun);

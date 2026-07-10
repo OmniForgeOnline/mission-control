@@ -13,7 +13,7 @@ const ROLL_UP_PRIORITY = ["running", "paused", "blocked"] as const;
 
 /**
  * Daemon-maintenance runs are produced by the cross-cutting autonomy jobs
- * (doc gardening, guidance sweep, worktree cleanup, …). They carry an
+ * (worktree cleanup, workflow reconcile, merge status, ClickUp sync, …). They carry an
  * `autonomy:<job>` task id and have no owning project, so they surface in the
  * System → Maintenance view rather than any project's Runs tab. Per-project
  * autonomy runs use an `autonomy:project:<id>:…` task id and are excluded.

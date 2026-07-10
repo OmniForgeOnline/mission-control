@@ -19,7 +19,6 @@ import type { ProjectRecord } from "../src/core/projects/registry.ts";
 
 const GLOBAL_MAINTENANCE_IDS = [
   "clickup-ticket-sync",
-  "harness-guidance-sweep",
   "merge-status-sweep",
   "workflow-reconcile-sweep",
   "worktree-cleanup-sweep"
@@ -49,10 +48,9 @@ describe("autonomy job reclassification", () => {
       expect(ids).not.toContain("doc-gardening");
     });
 
-    it("pauses clickup-ticket-sync and harness-guidance-sweep by default", async () => {
+    it("pauses clickup-ticket-sync by default", async () => {
       const jobs = await listAutonomyJobs(root);
       expect(jobs.find((j) => j.id === "clickup-ticket-sync")?.status).toBe("paused");
-      expect(jobs.find((j) => j.id === "harness-guidance-sweep")?.status).toBe("paused");
     });
 
     it("keeps worktree + workflow sweeps active", async () => {
@@ -134,6 +132,11 @@ describe("autonomy job reclassification", () => {
       expect(ids).toContain("doc-gardening");
     });
 
+    it("does not seed the harness guidance sweep for a non-harness project", async () => {
+      const ids = (await listProjectJobs(root, projectId)).map((j) => j.id);
+      expect(ids).not.toContain("guidance-sweep");
+    });
+
     it("rebuilds only that project's memory index on memory-index-refresh", async () => {
       await captureMemoryPage(root, projectId, {
         slug: "overview/api",
@@ -174,6 +177,50 @@ describe("autonomy job reclassification", () => {
       expect(prompt).toContain(`gbrain_propose(projectId: "${projectId}")`);
       // The kernel proposal tools must be explicitly forbidden, not invoked.
       expect(prompt).toContain("Do NOT use `propose_rule`");
+    });
+  });
+
+  describe("harness project guidance sweep", () => {
+    let harnessProjectId: string;
+
+    beforeEach(async () => {
+      const repo = path.join(root, "mission-control-src");
+      execSync("git init mission-control-src", { cwd: root });
+      execSync("git config user.email t@t.com", { cwd: repo });
+      execSync("git config user.name t", { cwd: repo });
+      await writeFile(
+        path.join(repo, "package.json"),
+        JSON.stringify({ name: "@omniforge/mission-control", version: "0.0.0" }),
+        "utf8"
+      );
+      const project = await onboardProject(root, { repoPath: repo, name: "mission-control" });
+      harnessProjectId = project.id;
+    });
+
+    it("seeds the guidance sweep only for the harness project", async () => {
+      const jobs = await listProjectJobs(root, harnessProjectId);
+      expect(jobs.map((j) => j.id)).toContain("guidance-sweep");
+      expect(jobs.find((j) => j.id === "guidance-sweep")).toMatchObject({
+        status: "paused",
+        runMode: "manual",
+        approvalPolicy: "proposal-only",
+        schedule: "every-1d"
+      });
+    });
+
+    it("runs the guidance sweep as a project-scoped handler with project context", async () => {
+      // The handler builds context from the project repo (kernel/README). Verified
+      // via the builder, since the handler spawns a real agent turn.
+      const project = await import("../src/core/projects/registry.ts").then((m) => m.getProject(root, harnessProjectId));
+      const { buildGuidanceSweepContext } = await import("../src/autonomy/guidance-sweep.ts");
+      await writeFile(
+        path.join(project!.repoPath, "README.md"),
+        "# Mission Control\n\nThe harness repository is the system of record.\n",
+        "utf8"
+      );
+      const context = await buildGuidanceSweepContext(project!.repoPath);
+      expect(context).toContain("README.md");
+      expect(context).toContain("system of record");
     });
   });
 });

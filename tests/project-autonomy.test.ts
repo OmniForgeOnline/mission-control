@@ -3,8 +3,9 @@ import path from "node:path";
 import os from "node:os";
 import { mkdtemp, rm } from "node:fs/promises";
 import { onboardProject, projectDir } from "../src/core/projects/registry.ts";
-import { listProjectJobs, runProjectJob, setProjectJobRunMode } from "../src/core/projects/scoped-autonomy.ts";
-import { writeJsonFile } from "../src/core/infra/fs.ts";
+import { defineProjectJob, listProjectJobs, runProjectJob, setProjectJobRunMode } from "../src/core/projects/scoped-autonomy.ts";
+import { readJsonFile, writeJsonFile } from "../src/core/infra/fs.ts";
+import { autonomyRunsPath, type AutonomyRunResult } from "../src/autonomy/job-types.ts";
 import { listTasks } from "../src/core/tasks/tasks.ts";
 import { runAutonomyAgentTurn } from "../src/autonomy/agent-run.ts";
 import {
@@ -177,5 +178,38 @@ describe("project autonomy", () => {
 
     expect(prompt).toContain("quality gate");
     expect(prompt).toContain("failing");
+  });
+
+  it("records a blocked run in history when a custom-job agent turn throws (mirrors runAutonomyJob)", async () => {
+    // Custom jobs route through runCustomProjectJob -> runAutonomyAgentTurn. A throw
+    // there must become a recorded blocked run rather than escape runProjectJob to
+    // the daemon tick's onError (the defect runAutonomyJob was hardened against).
+    const def = await defineProjectJob(tmp, projectId, {
+      id: "boom-job",
+      title: "Boom job",
+      description: "Agent turn always throws.",
+      schedule: "every-1d",
+      runMode: "manual",
+      approvalPolicy: "read-only",
+      instructions: "Investigate; the runner will throw."
+    });
+    expect(def.ok).toBe(true);
+
+    const throwingRunner: AgentRunner = {
+      agent: "claude",
+      abort: () => {},
+      runTurn: async () => {
+        throw new Error("agent exploded");
+      }
+    };
+
+    const result = await runProjectJob(tmp, projectId, "boom-job", { runner: throwingRunner });
+    expect(result.status).toBe("blocked");
+    expect(result.summary).toMatch(/agent exploded/);
+
+    // The run must still be recorded in the harness-wide history (previously skipped).
+    const history = await readJsonFile<AutonomyRunResult[]>(autonomyRunsPath(tmp), []);
+    expect(history[0]).toMatchObject({ status: "blocked" });
+    expect(history[0]?.summary).toMatch(/agent exploded/);
   });
 });

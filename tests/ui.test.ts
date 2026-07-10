@@ -1849,7 +1849,8 @@ describe("ui maintenance view", () => {
   it("identifies daemon-maintenance runs by their autonomy task id", async () => {
     const { isMaintenanceRun } = await import("../src/ui/features/runs/groups.ts");
     expect(isMaintenanceRun(maintenanceRun("autonomy:worktree-cleanup-sweep"))).toBe(true);
-    expect(isMaintenanceRun(maintenanceRun("autonomy:harness-guidance-sweep"))).toBe(true);
+    // The guidance sweep is now a project-scoped job, not daemon maintenance.
+    expect(isMaintenanceRun(maintenanceRun("autonomy:project:proj-abc:guidance-sweep"))).toBe(false);
     // Per-project autonomy runs are scoped to a project, not daemon maintenance.
     expect(isMaintenanceRun(maintenanceRun("autonomy:project:proj-abc:self-improvement"))).toBe(false);
     expect(isMaintenanceRun(maintenanceRun("autonomy:project:proj-abc:doc-gardening"))).toBe(false);
