@@ -236,4 +236,113 @@ describe("agent output normalization", () => {
     expect(cleaned).not.toContain('{"type":"thought"');
     expect(cleaned).not.toContain('{"type":"text"');
   });
+
+  it("extracts codex turn.failed error message as errorReason", () => {
+    const stdout = JSON.stringify({
+      type: "turn.failed",
+      error: { message: "You've hit your usage limit. Try again later." }
+    });
+    expect(parseAgentOutput(stdout, "codex").errorReason).toBe(
+      "You've hit your usage limit. Try again later."
+    );
+  });
+
+  it("falls back to a top-level codex type:error when no turn.failed is present", () => {
+    const stdout = JSON.stringify({ type: "error", message: "request rejected upstream" });
+    expect(parseAgentOutput(stdout, "codex").errorReason).toBe("request rejected upstream");
+  });
+
+  it("unwraps a double-encoded JSON error message to its inner message", () => {
+    const inner = JSON.stringify({
+      type: "error",
+      status: 400,
+      error: {
+        type: "invalid_request_error",
+        message: "The 'gpt-5.6-sol' model requires a newer version of Codex."
+      }
+    });
+    const stdout = JSON.stringify({ type: "turn.failed", error: { message: inner } });
+    expect(parseAgentOutput(stdout, "codex").errorReason).toBe(
+      "The 'gpt-5.6-sol' model requires a newer version of Codex."
+    );
+  });
+
+  it("does not treat benign codex item.completed warnings as the failure reason", () => {
+    const stdout = [
+      JSON.stringify({ type: "thread.started", thread_id: "thread-warn" }),
+      JSON.stringify({
+        type: "item.completed",
+        item: { id: "item_0", type: "error", message: "Under-development features enabled." }
+      }),
+      JSON.stringify({ type: "turn.started" })
+    ].join("\n");
+    expect(parseAgentOutput(stdout, "codex").errorReason).toBeUndefined();
+  });
+
+  it("surfaces the real reason from a captured codex usage-limit run", () => {
+    const stdout = [
+      JSON.stringify({ type: "thread.started", thread_id: "019f4c16-d1f6-7a41-a75c-4ed1cfcbcb03" }),
+      JSON.stringify({
+        type: "item.completed",
+        item: { id: "item_0", type: "error", message: "Under-development features enabled." }
+      }),
+      JSON.stringify({ type: "turn.started" }),
+      JSON.stringify({
+        type: "error",
+        message:
+          "You've hit your usage limit. Upgrade to Pro, visit settings/usage to purchase more credits or try again at 3:52 PM."
+      }),
+      JSON.stringify({
+        type: "turn.failed",
+        error: {
+          message:
+            "You've hit your usage limit. Upgrade to Pro, visit settings/usage to purchase more credits or try again at 3:52 PM."
+        }
+      })
+    ].join("\n");
+    expect(parseAgentOutput(stdout, "codex").errorReason).toContain("You've hit your usage limit");
+  });
+
+  it("surfaces the real reason from a captured codex unsupported-model run", () => {
+    const inner = JSON.stringify({
+      type: "error",
+      status: 400,
+      error: {
+        type: "invalid_request_error",
+        message:
+          "The 'gpt-5.6-sol' model requires a newer version of Codex. Please upgrade to the latest app or CLI and try again."
+      }
+    });
+    const stdout = [
+      JSON.stringify({ type: "thread.started", thread_id: "019f4b92-6edd-7870-8f97-a1262616ffed" }),
+      JSON.stringify({
+        type: "item.completed",
+        item: { id: "item_0", type: "error", message: "Under-development features enabled." }
+      }),
+      JSON.stringify({
+        type: "item.completed",
+        item: {
+          id: "item_1",
+          type: "error",
+          message: "Model metadata for `gpt-5.6-sol` not found. Defaulting to fallback metadata."
+        }
+      }),
+      JSON.stringify({ type: "turn.started" }),
+      JSON.stringify({ type: "error", message: inner }),
+      JSON.stringify({ type: "turn.failed", error: { message: inner } })
+    ].join("\n");
+    expect(parseAgentOutput(stdout, "codex").errorReason).toBe(
+      "The 'gpt-5.6-sol' model requires a newer version of Codex. Please upgrade to the latest app or CLI and try again."
+    );
+  });
+
+  it("extracts grok type:error as errorReason", () => {
+    const stdout = JSON.stringify({
+      type: "error",
+      message: "Model grok-composer-2.5-fast does not support parameter reasoningEffort."
+    });
+    expect(parseAgentOutput(stdout, "grok").errorReason).toBe(
+      "Model grok-composer-2.5-fast does not support parameter reasoningEffort."
+    );
+  });
 });

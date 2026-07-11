@@ -24,6 +24,28 @@ function firstString(obj: unknown, keys: string[]): string | undefined {
   return undefined;
 }
 
+/**
+ * Codex (and some upstream APIs) double-encode the failure as a JSON string
+ * inside the message field, e.g. {"message": "{\"error\":{\"message\":\"...\"}}"}.
+ * Unwrap one level so the blockedReason shows the human text, not raw JSON.
+ */
+function unwrapErrorMessage(raw: string): string {
+  const trimmed = raw.trim();
+  if (!trimmed.startsWith("{") && !trimmed.startsWith("[")) return trimmed;
+  const parsed = tryJson(trimmed);
+  if (!parsed || typeof parsed !== "object") return trimmed;
+  const record = parsed as Record<string, unknown>;
+  const direct = firstString(record, ["message"]);
+  if (direct) return direct;
+  const err = record["error"];
+  if (err && typeof err === "object") {
+    const inner = firstString(err as Record<string, unknown>, ["message"]);
+    if (inner) return inner;
+  }
+  if (typeof err === "string") return err;
+  return trimmed;
+}
+
 function textFromContent(content: unknown): string | undefined {
   if (Array.isArray(content)) {
     const text = content
@@ -290,7 +312,15 @@ export function parseGrokStreamingOutput(stdout: string): ParsedAgentOutput {
   const reply = healStreamedMarkdown(
     normalizeEscapedNewlines((textParts.join("") || errors.join("\n\n") || "").trim())
   );
-  return { reply, ...(sessionId !== undefined ? { sessionId } : {}) };
+  // Errors ride the same stream as text; surface them separately so a failed
+  // turn's blockedReason can carry the real reason instead of a generic exit.
+  const errorReason =
+    errors.length > 0 ? unwrapErrorMessage(errors.join("\n\n").trim()) : undefined;
+  return {
+    reply,
+    ...(sessionId !== undefined ? { sessionId } : {}),
+    ...(errorReason !== undefined ? { errorReason } : {})
+  };
 }
 
 /** Parse a newline-delimited agent JSON stream into human-readable assistant text. */
@@ -358,6 +388,8 @@ export function prepareDescriptionForMarkdown(description: string): string {
 export interface ParsedAgentOutput {
   reply: string;
   sessionId?: string;
+  /** Human-readable failure reason extracted from a structured error event. */
+  errorReason?: string;
 }
 
 /** Extract a resumable session id from a single streamed agent event. */
@@ -437,15 +469,38 @@ export function parseAgentOutput(stdout: string, agent: string): ParsedAgentOutp
   let sessionId: string | undefined;
   const codexTexts: string[] = [];
   let sawStructuredEvent = false;
+  // turn.failed is the terminal failure and always wins; the top-level
+  // type:error that precedes it is a fallback. item.completed/item.type=error
+  // entries (e.g. "Under-development features enabled") are non-fatal warnings
+  // and must not become the blockedReason.
+  let terminalError: string | undefined;
+  let topLevelError: string | undefined;
   for (const line of lines) {
     const event = tryJson(line);
     if (!event || typeof event !== "object") continue;
     sawStructuredEvent = true;
+    const record = event as Record<string, unknown>;
     const sid = extractSessionIdFromStreamEvent(event);
     if (sid) sessionId = sid;
+    if (record["type"] === "turn.failed") {
+      const err = record["error"];
+      const msg =
+        (err && typeof err === "object"
+          ? firstString(err as Record<string, unknown>, ["message"])
+          : undefined) ?? firstString(record, ["message"]);
+      if (msg) terminalError = msg;
+    } else if (record["type"] === "error") {
+      const msg = firstString(record, ["message"]);
+      if (msg) topLevelError = msg;
+    }
     const candidate = extractCodexAssistantMessage(event);
     if (candidate && codexTexts[codexTexts.length - 1] !== candidate) codexTexts.push(candidate);
   }
+  const errorReason = terminalError ?? topLevelError;
   const reply = codexTexts.join("\n\n") || (sawStructuredEvent ? "" : stdout.trim());
-  return { reply: normalizeEscapedNewlines(reply.trim()), ...(sessionId !== undefined ? { sessionId } : {}) };
+  return {
+    reply: normalizeEscapedNewlines(reply.trim()),
+    ...(sessionId !== undefined ? { sessionId } : {}),
+    ...(errorReason !== undefined ? { errorReason: unwrapErrorMessage(errorReason) } : {})
+  };
 }
