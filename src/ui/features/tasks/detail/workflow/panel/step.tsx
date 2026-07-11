@@ -116,6 +116,26 @@ async function setStepEffort(taskId: string, stepId: string, effort: string): Pr
   }
 }
 
+async function setStepModel(taskId: string, stepId: string, poolId: string): Promise<void> {
+  try {
+    if (poolId) {
+      await api(`/api/tasks/${taskId}/stage-model-pools/${encodeURIComponent(stepId)}`, {
+        method: "POST",
+        body: JSON.stringify({ poolId })
+      });
+      toast("Model pinned for this step", { tone: "success" });
+    } else {
+      await api(`/api/tasks/${taskId}/stage-model-pools/${encodeURIComponent(stepId)}`, {
+        method: "DELETE"
+      });
+      toast("Using default model for this step", { tone: "success" });
+    }
+    requestRefresh();
+  } catch (err) {
+    errorToast((err as Error).message);
+  }
+}
+
 function targetName(path: string): string {
   return path.split("/").filter(Boolean).at(-1) ?? path;
 }
@@ -242,6 +262,31 @@ export function WorkflowStepPanel({
   const canRevertStep = !isActive
     && step.kind !== "terminal"
     && Boolean(task.workflowRun?.completedSteps.includes(stepId));
+  // Specific models (those that pin a --model). The no-arg "default" pool is
+  // excluded — it is what "" (Default) resolves to, so listing it would duplicate.
+  const stepModelPools = (ui.data?.agentConfig?.pools ?? []).filter(
+    (p) => p.toolId === effectiveAgentId && p.enabled && p.modelArgs.length > 0
+  );
+  const selectedModelPool = task.stageModelPoolOverrides?.[stepId] ?? "";
+  const chosenPool = stepModelPools.find((p) => p.id === selectedModelPool);
+  const modelTriggerLabel = chosenPool?.displayName ?? stepModel ?? "default";
+  const modelOptions: StepSettingOption[] = [
+    {
+      value: "",
+      label: "Default",
+      leading: settingSwatch({ color: "var(--ink-faint)", initial: "·" }),
+      meta: stepModel ?? undefined
+    },
+    ...stepModelPools.map((p) => ({
+      value: p.id,
+      label: p.displayName,
+      leading: settingSwatch({
+        color: "var(--ink-faint)",
+        initial: (p.displayName[0] ?? "·").toUpperCase()
+      })
+    }))
+  ];
+  const showModelMenu = hasAgent && (stepModelPools.length > 0 || Boolean(selectedModelPool));
 
   return (
     <div class="wf-pane">
@@ -271,7 +316,22 @@ export function WorkflowStepPanel({
             {capacityNote ? <span class="muted wf-agent-capacity">{capacityNote}</span> : null}
           </span>
         </div>
-        {stepModel ? (
+        {showModelMenu ? (
+          <div class="wf-detail">
+            <span class="k">Model</span>
+            <span class="v">
+              <StepSettingMenu
+                label="Model for this step"
+                heading="Model for this step"
+                options={modelOptions}
+                selected={selectedModelPool}
+                triggerLeading={settingSwatch({ color: "var(--ink-faint)", initial: "·" })}
+                triggerLabel={modelTriggerLabel}
+                onSelect={(value) => void setStepModel(task.id, stepId, value)}
+              />
+            </span>
+          </div>
+        ) : stepModel ? (
           <div class="wf-detail">
             <span class="k">Model</span>
             <span class="v mono">{stepModel}</span>

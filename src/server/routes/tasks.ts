@@ -20,9 +20,11 @@ import {
   requeueTask,
   clearTaskStageAgentOverride,
   clearTaskStageEffortOverride,
+  clearTaskStageModelPoolOverride,
   setPmStatusOverride,
   setTaskStageAgentOverride,
   setTaskStageEffortOverride,
+  setTaskStageModelPoolOverride,
   updateTask,
   updateTaskFields
 } from "../../core/tasks/tasks.ts";
@@ -37,7 +39,7 @@ import {
 } from "../../core/workflows/node-actions.ts";
 import { isAwaitingOperator, isTaskRunning } from "../../core/tasks/status.ts";
 import { loadWorkflow } from "../../core/workflows/index.ts";
-import { isRegisteredAgent, unregisteredAgentMessage } from "../../core/agents/stage-agents.ts";
+import { isRegisteredAgent, isRegisteredModelPool, unregisteredAgentMessage, unregisteredModelPoolMessage } from "../../core/agents/stage-agents.ts";
 import { abortInflightTurn, deliverOperatorMessageToLiveTurn, listInflightTaskIds } from "../../runtime/sessions.ts";
 import type { ToolId, CreateTaskInput, HarnessTask, PmStatus } from "../../core/types.ts";
 import { isEffortLevel } from "../../core/types.ts";
@@ -310,6 +312,29 @@ export function createTasksRouter(options: ServerOptions): Router {
       const id = param(req.params["id"], "id");
       const stage = param(req.params["stage"], "stage");
       res.json(await clearTaskStageEffortOverride(options.root, id, stage));
+    })
+  );
+
+  router.post(
+    "/tasks/:id/stage-model-pools/:stage",
+    asyncRoute(async (req, res) => {
+      const id = param(req.params["id"], "id");
+      const stage = param(req.params["stage"], "stage");
+      const poolId = (req.body as { poolId?: string }).poolId;
+      if (!poolId || !(await isRegisteredModelPool(options.root, poolId))) {
+        res.status(400).json({ error: unregisteredModelPoolMessage(poolId ?? "") });
+        return;
+      }
+      res.json(await setTaskStageModelPoolOverride(options.root, id, stage, poolId));
+    })
+  );
+
+  router.delete(
+    "/tasks/:id/stage-model-pools/:stage",
+    asyncRoute(async (req, res) => {
+      const id = param(req.params["id"], "id");
+      const stage = param(req.params["stage"], "stage");
+      res.json(await clearTaskStageModelPoolOverride(options.root, id, stage));
     })
   );
 

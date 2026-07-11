@@ -105,7 +105,7 @@ describe("claude runner adapter", () => {
   function claudeSpec(mode: LaunchRequest["mode"]) {
     const bundle = builtinAgentConfigBundle();
     const tool = bundle.tools.find((t) => t.id === "claude")!;
-    const pool = bundle.pools.find((p) => p.id === "claude-default")!;
+    const pool = bundle.pools.find((p) => p.toolId === "claude")!;
     return buildLaunchArgs(tool, pool, { ...request, mode });
   }
 
