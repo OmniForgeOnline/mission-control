@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.6.0
+
+### Minor Changes
+
+- 7d622ab: Per-step model selection, configurable model lists, and clearer agent failure reporting.
+
+  - **Per-step model:** pin a specific model for any workflow step, or leave it on Default. Default now means "run the tool with whatever model it is currently configured against" — mission-control no longer forces a model by default, so tools pointed at a custom provider (e.g. claude on a z.ai-compatible endpoint) are not overridden with an invalid model.
+  - **Settings > Agents:** add and remove models per tool. Model ids are slugified into pool ids while the exact id is passed to `--model`, so ids like `glm-5.2[1m]` work.
+  - **codex discovery:** a "Discover models" action calls `codex app-server model/list` and seeds codex's real account models instead of hardcoding ids.
+  - **Default model lists** seeded per tool (Anthropic set for claude and kiro, grok coding set), each with a no-arg default plus named models.
+  - **Routing fix:** the runner now uses the exact pool the router chose (no-arg default or an explicit pin) instead of re-optimizing, so the launched command matches the routing decision (and pins take effect).
+  - **Failure reporting:** codex `turn.failed` / `type:error` and grok `type:error` events are surfaced as the blocked reason instead of the generic "exited with code 1".
+
+### Patch Changes
+
+- fd58ae8: Replace not-found string matching in detached-turn cleanup with typed errors.
+
+  - Introduces `EntityNotFoundError` (`src/core/tasks/errors.ts`), thrown by the task/run store instead of `new Error("... not found: ...")`. It carries `kind: "task" | "run"` and `id` and keeps `.message` byte-identical, so existing `.message` readers and tests are unaffected.
+  - The detached-turn cleanup in `src/daemon/agent-turn.ts` now swallows these via `instanceof EntityNotFoundError` instead of comparing `updateErr.message` strings, so a future wording change can no longer silently re-enable the crash that `0ca3b1e` suppressed.
+  - Converts all task/run not-found throw sites in the store layer (`runs.ts`, `tasks.ts`, `repo-binding.ts`, `workflow-revert.ts`) and the `read_task` MCP tool for consistency. HTTP route 404 response strings are unchanged.
+
 ## 0.5.0
 
 ### Minor Changes
