@@ -76,6 +76,7 @@ export interface HarnessTask {
   effort?: string;
   stageAgentOverrides?: Record<string, string>;
   stageEffortOverrides?: Record<string, string>;
+  stageModelPoolOverrides?: Record<string, string>;
   workflowRun?: WorkflowRun;
   label?: "proposal";
   proposalChange?: { kind: string; targetPath: string; content: string };

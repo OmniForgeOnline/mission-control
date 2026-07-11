@@ -34,6 +34,7 @@ import { normalizeExtension } from "../../core/agents/extensions/normalize.ts";
 import { probeAgentRuntime } from "../../core/agents/runtime/probe.ts";
 import {
   defaultUsageProviderDeps,
+  mapCodexModels,
   type UsageProviderDeps
 } from "../../core/agents/config/usage-providers.ts";
 import { asyncRoute, param, type ServerOptions } from "./helpers.ts";
@@ -44,6 +45,7 @@ export function createAgentConfigRouter(options: ServerOptions): Router {
   // In tests, don't spawn real provider processes or hit the network.
   const noopUsageDeps: UsageProviderDeps = {
     fetchCodexRateLimits: async () => null,
+    fetchCodexModels: async () => null,
     readClaudeOAuthToken: async () => null,
     fetchClaudeUsage: async () => ({})
   };
@@ -106,6 +108,52 @@ export function createAgentConfigRouter(options: ServerOptions): Router {
     asyncRoute(async (req, res) => {
       const config = await removeModelPool(options.root, param(req.params["id"], "id"));
       res.json({ config });
+    })
+  );
+
+  router.post(
+    "/agent-config/models/discover",
+    asyncRoute(async (req, res) => {
+      const toolId = param((req.body as { toolId?: string }).toolId, "toolId");
+      const config = await loadAgentConfig(options.root);
+      const tool = config.tools.find((t) => t.id === toolId);
+      if (!tool) {
+        res.status(404).json({ error: `Unknown tool "${toolId}".` });
+        return;
+      }
+      // Discovery is wired for codex (app-server model/list). Other tools don't
+      // expose a model list; the operator adds those by hand via the pools API.
+      if (tool.id !== "codex") {
+        res
+          .status(400)
+          .json({ error: `Model discovery is not supported for "${toolId}". Add models manually.` });
+        return;
+      }
+      try {
+        const models = mapCodexModels(await usageDeps.fetchCodexModels(tool.command, options.root));
+        let bundle = config;
+        for (const model of models) {
+          bundle = await upsertModelPool(options.root, {
+            id: model.id,
+            toolId,
+            displayName: model.displayName,
+            modelArgs: ["--model", model.id],
+            modelEnv: {},
+            capabilities: ["author", "reviewer", "code", "plan", "review"],
+            qualityWeight: 50,
+            tier: "paid",
+            usage: { kind: "usage-only" },
+            usageSource: "codex-app-server",
+            enabled: true,
+            builtin: false
+          });
+        }
+        res.json({ config: bundle, discovered: models.length });
+      } catch (err) {
+        res
+          .status(500)
+          .json({ error: err instanceof Error ? err.message : "Model discovery failed." });
+      }
     })
   );
 

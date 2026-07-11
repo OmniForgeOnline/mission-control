@@ -167,6 +167,125 @@ function ExtensionRow({ extension }: { extension: ToolExtension }) {
   );
 }
 
+/** Add a model entry (pool) to a tool. model id becomes `--model <id>`; the
+ * optional env JSON covers custom providers (e.g. z.ai on claude: base URL + token). */
+function AddModelForm({ toolId }: { toolId: string }) {
+  const [open, setOpen] = useState(false);
+  const [displayName, setDisplayName] = useState("");
+  const [modelId, setModelId] = useState("");
+  const [tier, setTier] = useState<"paid" | "free">("paid");
+  const [modelEnvRaw, setModelEnvRaw] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  async function add(): Promise<void> {
+    const name = displayName.trim();
+    const id = modelId.trim();
+    if (!name || !id) {
+      toast("Display name and model id are required.", { tone: "error" });
+      return;
+    }
+    let modelEnv: Record<string, string> = {};
+    if (modelEnvRaw.trim()) {
+      try {
+        const parsed = JSON.parse(modelEnvRaw);
+        if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("not an object");
+        modelEnv = parsed as Record<string, string>;
+      } catch {
+        toast('Model env must be a JSON object, e.g. {"ANTHROPIC_BASE_URL":"https://...","ANTHROPIC_AUTH_TOKEN":"..."}', { tone: "error" });
+        return;
+      }
+    }
+    setBusy(true);
+    try {
+      // Pool ids must be alphanumeric (._-). Model ids can contain other chars
+      // (e.g. the [1m] context suffix), so slugify the id while preserving the
+      // exact model id verbatim in --model.
+      const slug = id.replace(/[^a-zA-Z0-9._-]+/g, "-").replace(/^-+|-+$/g, "") || id;
+      await api("/api/agent-config/pools", {
+        method: "PUT",
+        body: JSON.stringify({
+          id: `${toolId}-${slug}`,
+          toolId,
+          displayName: name,
+          modelArgs: ["--model", id],
+          modelEnv,
+          capabilities: ["author", "reviewer", "code", "plan", "review"],
+          qualityWeight: 50,
+          tier,
+          usage: { kind: "usage-only" },
+          usageSource: "none",
+          enabled: true,
+          builtin: false
+        })
+      });
+      toast(`Added model "${name}".`, { tone: "success" });
+      setDisplayName("");
+      setModelId("");
+      setTier("paid");
+      setModelEnvRaw("");
+      setOpen(false);
+      refresh();
+    } catch (err) {
+      toast(err instanceof Error ? err.message : "Failed to add model.", { tone: "error" });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (!open) {
+    return (
+      <button class="btn btn-sm btn-ghost" type="button" onClick={() => setOpen(true)}>
+        + Add model
+      </button>
+    );
+  }
+  return (
+    <div class="model-add-form">
+      <input
+        class="input"
+        type="text"
+        placeholder="Display name (e.g. GLM 5.2)"
+        value={displayName}
+        disabled={busy}
+        onInput={(e) => setDisplayName((e.currentTarget as HTMLInputElement).value)}
+      />
+      <input
+        class="input"
+        type="text"
+        placeholder="Model id (e.g. glm-5.2) — passed to --model"
+        value={modelId}
+        disabled={busy}
+        onInput={(e) => setModelId((e.currentTarget as HTMLInputElement).value)}
+      />
+      <select
+        class="select"
+        value={tier}
+        disabled={busy}
+        onChange={(e) => setTier((e.currentTarget as HTMLSelectElement).value as "paid" | "free")}
+      >
+        <option value="paid">paid</option>
+        <option value="free">free</option>
+      </select>
+      <input
+        class="input model-add-env"
+        type="text"
+        placeholder='Optional env JSON: {"ANTHROPIC_BASE_URL":"https://...","ANTHROPIC_AUTH_TOKEN":"..."}'
+        value={modelEnvRaw}
+        disabled={busy}
+        onInput={(e) => setModelEnvRaw((e.currentTarget as HTMLInputElement).value)}
+      />
+      <div class="model-add-actions">
+        <button class="btn btn-sm btn-primary" type="button" disabled={busy} onClick={() => void add()}>
+          {busy ? "Adding…" : "Add"}
+        </button>
+        <button class="btn btn-sm" type="button" disabled={busy} onClick={() => setOpen(false)}>
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function ToolRow({
   tool,
   config,
@@ -180,6 +299,7 @@ function ToolRow({
 }) {
   const [busy, setBusy] = useState(false);
   const [extensionsOpen, setExtensionsOpen] = useState(false);
+  const [discovering, setDiscovering] = useState(false);
   const toolExtensions = extensionsForTool(extensions, tool.id);
   const supportsExtensions = tool.adapter === "claude" || tool.adapter === "codex" || tool.id === "kiro" || tool.id === "cursor";
 
@@ -211,6 +331,42 @@ function ToolRow({
       refresh();
     } catch (err) {
       toast(err instanceof Error ? err.message : "Failed to delete tool.", { tone: "error" });
+    }
+  }
+
+  async function removePool(poolId: string, name: string): Promise<void> {
+    const ok = await confirm({
+      title: `Remove model "${name}"?`,
+      message: "It will no longer be selectable for this tool. You can re-add it anytime.",
+      confirmLabel: "Remove",
+      tone: "danger"
+    });
+    if (!ok) return;
+    try {
+      await api(`/api/agent-config/pools/${encodeURIComponent(poolId)}`, { method: "DELETE" });
+      refresh();
+    } catch (err) {
+      toast(err instanceof Error ? err.message : "Failed to remove model.", { tone: "error" });
+    }
+  }
+
+  async function discoverModels(): Promise<void> {
+    setDiscovering(true);
+    try {
+      const result = await api<{ discovered?: number }>("/api/agent-config/models/discover", {
+        method: "POST",
+        body: JSON.stringify({ toolId: tool.id })
+      });
+      const count = result?.discovered ?? 0;
+      toast(
+        count > 0 ? `Discovered ${count} models for ${tool.displayName}.` : "No models discovered. Is the tool installed and logged in?",
+        { tone: count > 0 ? "success" : "error" }
+      );
+      refresh();
+    } catch (err) {
+      toast(err instanceof Error ? err.message : "Model discovery failed.", { tone: "error" });
+    } finally {
+      setDiscovering(false);
     }
   }
 
@@ -265,11 +421,32 @@ function ToolRow({
                 </span>
                 <span class="usage-text">{poolUsageText(pool, snap)}</span>
               </span>
+              <button
+                class="btn btn-sm btn-ghost pool-remove"
+                type="button"
+                title="Remove model"
+                onClick={() => void removePool(pool.id, pool.displayName)}
+              >
+                ✕
+              </button>
             </li>
           );
         })}
-        {pools.length === 0 ? <li class="pool-empty muted">No model pools.</li> : null}
+        {pools.length === 0 ? <li class="pool-empty muted">No models yet.</li> : null}
       </ul>
+      <div class="model-actions">
+        <AddModelForm toolId={tool.id} />
+        {tool.id === "codex" ? (
+          <button
+            class="btn btn-sm btn-ghost"
+            type="button"
+            disabled={discovering}
+            onClick={() => void discoverModels()}
+          >
+            {discovering ? "Discovering…" : "Discover models"}
+          </button>
+        ) : null}
+      </div>
       {supportsExtensions ? (
         <div class="tool-extensions">
           <button
@@ -345,7 +522,7 @@ export function AgentConfigSection() {
   return (
     <section class="settings-section" data-settings-panel="agent-config">
       <div class="catalog-section-label">
-        Tools &amp; model pools
+        Tools &amp; models
         <div class="catalog-section-actions">
           <span class="settings-usage-meta">{usageMeta}</span>
           <button class="btn btn-sm" type="button" disabled={refreshing} onClick={() => void refreshUsage()}>

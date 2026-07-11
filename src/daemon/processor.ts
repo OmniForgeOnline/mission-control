@@ -55,7 +55,7 @@ import {
 } from "../core/workflows/index.ts";
 import type { HarnessTask } from "../core/types.ts";
 import { listInflightTaskIds } from "../runtime/sessions.ts";
-import { createRunnerForTool } from "../runners/index.ts";
+import { createRunnerForRouting } from "../runners/index.ts";
 import type { ResolvedRouting } from "../core/agents/stage-agents.ts";
 import { buildMemoryRecallSection } from "../memory/recall.ts";
 import { executeAgentTurn, resolveTurnAgent, scheduleReviewerTurn } from "./agent-turn.ts";
@@ -236,7 +236,7 @@ export async function runTaskTurn(
     const reviewerRunner =
       options?.reviewerRunner ??
       options?.runner ??
-      (await createRunnerForTool(root, reviewerRouting.toolId, "reviewer"));
+      (await createRunnerForRouting(root, reviewerRouting));
     return executeAgentTurn(root, {
       task: (await getTask(root, refreshed.id))!,
       prompt,
@@ -310,7 +310,7 @@ export async function runTaskTurn(
 
   await markTaskRunning(root, refreshed.id, { startedAt: refreshed.startedAt ?? now() });
   const resolvedRunner =
-    options?.runner ?? (await createRunnerForTool(root, routing!.toolId, "author"));
+    options?.runner ?? (await createRunnerForRouting(root, routing!));
   return executeAgentTurn(root, {
     task: (await getTask(root, refreshed.id))!,
     prompt,

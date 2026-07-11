@@ -309,8 +309,12 @@ export class HeadlessAgentRunner implements AgentRunner {
   private parseOutput(stdout: string, stderr: string): { reply: string; sessionId?: string; errorReason?: string } {
     const parsed = parseAgentOutput(stdout, this.agent);
     const hasStructuredReply = parsed.reply !== stdout.trim();
-    const errorReason =
+    // A structured error event from the agent (codex turn.failed / grok
+    // type:error) is the authoritative failure reason; fall back to trailing
+    // stderr only when the agent printed nothing structured.
+    const stderrReason =
       !hasStructuredReply && stderr ? stderr.split(/\r?\n/).slice(-3).join(" ").trim() : undefined;
+    const errorReason = parsed.errorReason ?? stderrReason;
     return {
       reply: parsed.reply,
       ...(parsed.sessionId !== undefined ? { sessionId: parsed.sessionId } : {}),

@@ -36,6 +36,34 @@ export function windowLabel(minutes?: number): string | undefined {
   return `${Math.round(minutes / (24 * 60))}d`;
 }
 
+/** A model discovered from a tool, ready to become a model pool. */
+export interface DiscoveredModel {
+  id: string;
+  displayName: string;
+}
+
+/** Parse a codex app-server `model/list` result into model entries. */
+export function mapCodexModels(raw: unknown): DiscoveredModel[] {
+  const data = (raw as { data?: unknown[] } | null)?.data;
+  if (!Array.isArray(data)) return [];
+  const models: DiscoveredModel[] = [];
+  for (const entry of data) {
+    if (!entry || typeof entry !== "object") continue;
+    const rec = entry as Record<string, unknown>;
+    const id =
+      typeof rec["model"] === "string" && rec["model"]
+        ? rec["model"]
+        : typeof rec["id"] === "string" && rec["id"]
+          ? rec["id"]
+          : undefined;
+    if (!id) continue;
+    const displayName =
+      typeof rec["displayName"] === "string" && rec["displayName"] ? rec["displayName"] : id;
+    if (!models.some((m) => m.id === id)) models.push({ id, displayName });
+  }
+  return models;
+}
+
 /** Map a codex app-server `account/rateLimits/read` result to the most-constraining window. */
 export function mapCodexRateLimits(raw: unknown): UsageReading | null {
   const rl = (raw as { rateLimits?: { primary?: RateWindow; secondary?: RateWindow } })?.rateLimits;
@@ -92,12 +120,22 @@ export function mapClaudeUsage(raw: unknown): UsageReading | null {
 /** Injectable IO so the providers can be unit-tested without spawning/network. */
 export interface UsageProviderDeps {
   fetchCodexRateLimits(command: string, cwd: string): Promise<unknown>;
+  fetchCodexModels(command: string, cwd: string): Promise<unknown>;
   readClaudeOAuthToken(): Promise<string | null>;
   fetchClaudeUsage(token: string): Promise<unknown>;
 }
 
-/** Spawn `codex app-server` and read account rate limits over JSON-RPC. */
-function defaultFetchCodexRateLimits(command: string, cwd: string): Promise<unknown> {
+/**
+ * Spawn `codex app-server`, run the JSON-RPC handshake (initialize -> method),
+ * and resolve the method's result. Shared by usage + model discovery so the two
+ * calls can't drift apart.
+ */
+function codexAppServerRequest(
+  command: string,
+  cwd: string,
+  method: string,
+  params: Record<string, unknown> = {}
+): Promise<unknown> {
   return new Promise((resolve, reject) => {
     let bin: string;
     try {
@@ -129,9 +167,7 @@ function defaultFetchCodexRateLimits(command: string, cwd: string): Promise<unkn
         let msg: { id?: number; result?: unknown };
         try { msg = JSON.parse(line); } catch { continue; }
         if (msg.id === 1) {
-          child.stdin.write(
-            JSON.stringify({ jsonrpc: "2.0", id: 2, method: "account/rateLimits/read", params: {} }) + "\n"
-          );
+          child.stdin.write(JSON.stringify({ jsonrpc: "2.0", id: 2, method, params }) + "\n");
         } else if (msg.id === 2) {
           done(() => resolve(msg.result));
         }
@@ -146,6 +182,16 @@ function defaultFetchCodexRateLimits(command: string, cwd: string): Promise<unkn
       }) + "\n"
     );
   });
+}
+
+/** Spawn `codex app-server` and read account rate limits over JSON-RPC. */
+function defaultFetchCodexRateLimits(command: string, cwd: string): Promise<unknown> {
+  return codexAppServerRequest(command, cwd, "account/rateLimits/read");
+}
+
+/** Spawn `codex app-server` and list the account's available models over JSON-RPC. */
+function defaultFetchCodexModels(command: string, cwd: string): Promise<unknown> {
+  return codexAppServerRequest(command, cwd, "model/list");
 }
 
 /** Read the Claude Code OAuth token from the macOS keychain or the Linux credentials file. */
@@ -194,6 +240,7 @@ async function defaultFetchClaudeUsage(token: string): Promise<unknown> {
 
 export const defaultUsageProviderDeps: UsageProviderDeps = {
   fetchCodexRateLimits: defaultFetchCodexRateLimits,
+  fetchCodexModels: defaultFetchCodexModels,
   readClaudeOAuthToken: defaultReadClaudeOAuthToken,
   fetchClaudeUsage: defaultFetchClaudeUsage
 };

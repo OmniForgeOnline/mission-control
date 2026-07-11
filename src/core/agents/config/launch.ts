@@ -22,6 +22,13 @@ export async function resolveRunnerLaunch(
   const [bundle, usage] = await Promise.all([loadAgentConfig(root), loadUsageSnapshots(root)]);
   const tool = bundle.tools.find((entry) => entry.id === toolId);
   if (!tool) return null;
+  // Default: the tool's no-arg pool, so the tool runs with whatever model it is
+  // configured against (don't force a specific model by default). The optimizer
+  // is only a fallback when no no-arg pool exists.
+  const defaultPool = bundle.pools.find(
+    (pool) => pool.toolId === toolId && pool.enabled && pool.modelArgs.length === 0
+  );
+  if (defaultPool) return { tool, pool: defaultPool };
   const pool = bestPoolForTool(bundle, usage, toolId, role);
   if (!pool) return null;
   return { tool, pool };

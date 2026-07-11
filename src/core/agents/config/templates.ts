@@ -136,35 +136,47 @@ const CODEX_POOL: ModelPoolConfig = {
   builtin: true
 };
 
-const CLAUDE_POOL: ModelPoolConfig = {
-  id: "claude-default",
+const CLAUDE_MODELS: Array<[string, string, number]> = [
+  ["Fable", "claude-fable-5", 95],
+  ["Opus 4.8", "claude-opus-4-8", 90],
+  ["Sonnet 5", "claude-sonnet-5", 80],
+  ["Sonnet 4.5", "claude-sonnet-4-5", 70],
+  ["Haiku 4.5", "claude-haiku-4-5-20251001", 50]
+];
+const CLAUDE_POOLS: ModelPoolConfig[] = CLAUDE_MODELS.map(([displayName, modelId, qualityWeight]) => ({
+  id: modelId,
   toolId: "claude",
-  displayName: "Claude (default)",
-  modelArgs: [],
+  displayName,
+  modelArgs: ["--model", modelId],
   modelEnv: {},
   capabilities: ["author", "reviewer", "code", "plan", "review"],
-  qualityWeight: 90,
+  qualityWeight,
   tier: "paid",
   usage: { kind: "usage-only", softThresholdPercent: 80 },
   usageSource: "claude-oauth",
   enabled: true,
   builtin: true
-};
+}));
 
-const GROK_POOL: ModelPoolConfig = {
-  id: "grok-default",
+const GROK_MODELS: Array<[string, string, number]> = [
+  ["Grok Build 0.1", "grok-build-0.1", 80],
+  ["Composer 2.5", "grok-composer-2.5", 75],
+  ["Grok 4.5", "grok-4.5", 70]
+];
+const GROK_POOLS: ModelPoolConfig[] = GROK_MODELS.map(([displayName, modelId, qualityWeight]) => ({
+  id: modelId,
   toolId: "grok",
-  displayName: "Grok (default)",
-  modelArgs: [],
+  displayName,
+  modelArgs: ["--model", modelId],
   modelEnv: {},
   capabilities: ["author", "reviewer", "code", "plan", "review"],
-  qualityWeight: 70,
+  qualityWeight,
   tier: "paid",
   usage: { kind: "unavailable" },
   usageSource: "none",
   enabled: true,
   builtin: true
-};
+}));
 
 const OPENCODE_POOL: ModelPoolConfig = {
   id: "opencode-default",
@@ -212,14 +224,69 @@ const KIRO_TOOL: AgentToolConfig = {
   usage: { kind: "unavailable" }
 };
 
-const KIRO_POOL: ModelPoolConfig = {
+const KIRO_MODELS: Array<[string, string, number]> = [
+  ["Fable", "claude-fable-5", 95],
+  ["Opus 4.8", "claude-opus-4-8", 90],
+  ["Sonnet 5", "claude-sonnet-5", 80],
+  ["Sonnet 4.5", "claude-sonnet-4-5", 70],
+  ["Haiku 4.5", "claude-haiku-4-5-20251001", 50]
+];
+const KIRO_POOLS: ModelPoolConfig[] = KIRO_MODELS.map(([displayName, modelId, qualityWeight]) => ({
+  id: `kiro-${modelId}`,
+  toolId: "kiro",
+  displayName,
+  modelArgs: ["--model", modelId],
+  modelEnv: {},
+  capabilities: ["author", "reviewer", "code", "plan", "review"],
+  qualityWeight,
+  tier: "paid",
+  usage: { kind: "unavailable" },
+  usageSource: "none",
+  enabled: true,
+  builtin: true
+}));
+
+// "Default" pools pass no --model, so the tool runs with whatever model it is
+// currently configured against (codex config.toml, claude/z.ai settings, etc.).
+// This is the safe default; the named pools below only apply when explicitly pinned.
+const CLAUDE_DEFAULT_POOL: ModelPoolConfig = {
+  id: "claude-default",
+  toolId: "claude",
+  displayName: "Claude (default)",
+  modelArgs: [],
+  modelEnv: {},
+  capabilities: ["author", "reviewer", "code", "plan", "review"],
+  qualityWeight: 50,
+  tier: "paid",
+  usage: { kind: "usage-only", softThresholdPercent: 80 },
+  usageSource: "claude-oauth",
+  enabled: true,
+  builtin: true
+};
+
+const GROK_DEFAULT_POOL: ModelPoolConfig = {
+  id: "grok-default",
+  toolId: "grok",
+  displayName: "Grok (default)",
+  modelArgs: [],
+  modelEnv: {},
+  capabilities: ["author", "reviewer", "code", "plan", "review"],
+  qualityWeight: 50,
+  tier: "paid",
+  usage: { kind: "unavailable" },
+  usageSource: "none",
+  enabled: true,
+  builtin: true
+};
+
+const KIRO_DEFAULT_POOL: ModelPoolConfig = {
   id: "kiro-default",
   toolId: "kiro",
   displayName: "Kiro (default)",
   modelArgs: [],
   modelEnv: {},
   capabilities: ["author", "reviewer", "code", "plan", "review"],
-  qualityWeight: 85,
+  qualityWeight: 50,
   tier: "paid",
   usage: { kind: "unavailable" },
   usageSource: "none",
@@ -230,7 +297,16 @@ const KIRO_POOL: ModelPoolConfig = {
 export function builtinAgentConfigBundle(): AgentConfigBundle {
   return {
     tools: [CODEX_TOOL, CLAUDE_TOOL, GROK_TOOL, OPENCODE_TOOL, KIRO_TOOL].map((tool) => ({ ...tool })),
-    pools: [CODEX_POOL, CLAUDE_POOL, GROK_POOL, OPENCODE_POOL, KIRO_POOL].map((pool) => ({ ...pool })),
+    pools: [
+      CODEX_POOL,
+      CLAUDE_DEFAULT_POOL,
+      ...CLAUDE_POOLS,
+      GROK_DEFAULT_POOL,
+      ...GROK_POOLS,
+      OPENCODE_POOL,
+      KIRO_DEFAULT_POOL,
+      ...KIRO_POOLS
+    ].map((pool) => ({ ...pool })),
     profiles: DEFAULT_PROFILES.map((profile) => ({ ...profile }))
   };
 }

@@ -66,6 +66,20 @@ export function unregisteredAgentMessage(agentId: string): string {
   return `Agent "${agentId}" is not registered. Choose an agent from the dropdown.`;
 }
 
+/**
+ * Whether `poolId` is a registered model pool. The model dropdown is filtered
+ * from the agent config bundle's pools, so that bundle is the single source of
+ * truth for which pools are eligible to be pinned to a workflow step.
+ */
+export async function isRegisteredModelPool(root: string, poolId: string): Promise<boolean> {
+  const bundle = await loadAgentConfig(root);
+  return bundle.pools.some((pool) => pool.id === poolId);
+}
+
+export function unregisteredModelPoolMessage(poolId: string): string {
+  return `Model pool "${poolId}" is not registered. Choose a model from the dropdown.`;
+}
+
 async function saveStageAgentOverrides(root: string, config: StageAgentOverrides): Promise<void> {
   await writeJsonFile(stageAgentsPath(root), config);
 }
@@ -184,6 +198,7 @@ export async function resolveStepRouting(
   workflowId: string,
   stepId: string,
   taskOverrides?: Partial<Record<string, ToolId>>,
+  taskModelPoolOverrides?: Partial<Record<string, ModelPoolId>>,
   cwd?: string
 ): Promise<ResolvedRouting | null> {
   const [workflow, overrides, settings, bundle, usage] = await Promise.all([
@@ -203,6 +218,45 @@ export async function resolveStepRouting(
     ...(step ? { step } : {}),
     ...(cwd ? { cwd } : {})
   });
+
+  // An operator-pinned model pool wins when it belongs to the resolved tool and
+  // is enabled. A pool from a different tool (the agent was switched) or a
+  // disabled pool is ignored, and the optimizer routes as usual.
+  const overridePoolId = taskModelPoolOverrides?.[stepId];
+  const overridePool = overridePoolId
+    ? bundle.pools.find((pool) => pool.id === overridePoolId)
+    : undefined;
+  if (overridePool && overridePool.toolId === preferred && overridePool.enabled) {
+    return {
+      toolId: preferred,
+      modelPoolId: overridePool.id,
+      preferred,
+      source: "preferred",
+      supportsEffort: toolSupportsEffort(bundle, preferred),
+      extensions: resolvedExtensions.enabledIds,
+      extensionEntries: resolvedExtensions.entries
+    };
+  }
+
+  // Default: run the tool with no model override (its no-arg pool), so it uses
+  // whatever it is currently configured against. The optimizer's within-tool
+  // model pick is intentionally bypassed here — forcing a specific model by
+  // default breaks tools pointed at a custom provider. Fall back to the
+  // optimizer only when the tool has no no-arg pool.
+  const defaultPool = bundle.pools.find(
+    (pool) => pool.toolId === preferred && pool.enabled && pool.modelArgs.length === 0
+  );
+  if (defaultPool) {
+    return {
+      toolId: preferred,
+      modelPoolId: defaultPool.id,
+      preferred,
+      source: "preferred",
+      supportsEffort: toolSupportsEffort(bundle, preferred),
+      extensions: resolvedExtensions.enabledIds,
+      extensionEntries: resolvedExtensions.entries
+    };
+  }
 
   return routeWithPreferred(
     bundle,

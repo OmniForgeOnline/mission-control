@@ -19,6 +19,7 @@ import {
   upsertRoutingProfile,
   upsertTool
 } from "../src/core/agents/config/store.ts";
+import { resolveRunnerLaunch } from "../src/core/agents/config/launch.ts";
 import type { AgentToolConfig, ModelPoolConfig } from "../src/core/agents/config/types.ts";
 import {
   loadUsageSnapshots,
@@ -136,6 +137,51 @@ describe("agent config store", () => {
     expect(bundle.tools.find((tool) => tool.id === "codex")?.usage).toMatchObject({ kind: "usage-only" });
     const claude = bundle.tools.find((tool) => tool.id === "claude")!;
     expect(claude.usage.kind).toBe("usage-only");
+  });
+
+  it("seeds a no-arg default plus named models per tool", async () => {
+    const bundle = await loadAgentConfig(root);
+
+    // Every tool has a no-arg "default" pool that does not override the model,
+    // so the tool runs with whatever it is currently configured against.
+    for (const toolId of ["codex", "claude", "grok", "kiro", "opencode"]) {
+      const noArg = bundle.pools.find((p) => p.toolId === toolId && p.modelArgs.length === 0);
+      expect(noArg, `${toolId} should have a no-arg default pool`).toBeTruthy();
+    }
+
+    // The curated tools additionally ship named models that pin a --model.
+    const named = (toolId: string): string[] =>
+      bundle.pools.filter((p) => p.toolId === toolId && p.modelArgs.length > 0).map((p) => p.id);
+    expect(named("claude").sort()).toEqual(
+      ["claude-fable-5", "claude-opus-4-8", "claude-sonnet-5", "claude-sonnet-4-5", "claude-haiku-4-5-20251001"].sort()
+    );
+    expect(named("grok").sort()).toEqual(["grok-build-0.1", "grok-composer-2.5", "grok-4.5"].sort());
+    expect(named("kiro").sort()).toEqual(
+      [
+        "kiro-claude-fable-5",
+        "kiro-claude-opus-4-8",
+        "kiro-claude-sonnet-5",
+        "kiro-claude-sonnet-4-5",
+        "kiro-claude-haiku-4-5-20251001"
+      ].sort()
+    );
+
+    // Named models carry a real --model value.
+    for (const pool of bundle.pools.filter(
+      (p) => ["claude", "grok", "kiro"].includes(p.toolId) && p.modelArgs.length > 0
+    )) {
+      expect(pool.modelArgs[0]).toBe("--model");
+      expect(pool.modelArgs[1]).toBeTruthy();
+    }
+  });
+
+  it("resolveRunnerLaunch defaults to the tool's no-arg pool (does not force a model)", async () => {
+    await loadAgentConfig(root);
+    const launch = await resolveRunnerLaunch(root, "claude", "reviewer");
+    // claude has higher-quality named pools, but the default must be the no-arg
+    // pool so a tool pointed at a custom provider isn't overridden.
+    expect(launch?.pool.id).toBe("claude-default");
+    expect(launch?.pool.modelArgs).toEqual([]);
   });
 
   it("is idempotent across reloads", async () => {

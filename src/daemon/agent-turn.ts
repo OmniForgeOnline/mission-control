@@ -32,7 +32,7 @@ import {
   loadWorkflow
 } from "../core/workflows/index.ts";
 import type { HarnessTask } from "../core/types.ts";
-import { createRunnerForTool } from "../runners/index.ts";
+import { createRunnerForRouting } from "../runners/index.ts";
 import type { AgentActivity } from "../runners/types.ts";
 import { clearInflightTurn, registerInflightTurn } from "../runtime/sessions.ts";
 import { captureLessonFromReply } from "../memory/auto-capture.ts";
@@ -73,7 +73,8 @@ export async function requireStepAgent(root: string, task: HarnessTask, stepId: 
     root,
     task.workflowRun.workflowId,
     stepId,
-    task.stageAgentOverrides
+    task.stageAgentOverrides,
+    task.stageModelPoolOverrides
   );
   if (!routing) {
     const preferred = await resolveAgentForStep(
@@ -252,7 +253,7 @@ export async function scheduleAuthorRerun(
   if ("execution" in agentResult) return agentResult;
   const routing = agentResult;
   const resolvedRunner =
-    options?.runner ?? (await createRunnerForTool(root, routing.toolId, step.id));
+    options?.runner ?? (await createRunnerForRouting(root, routing));
   const turn = await executeAgentTurn(root, {
     task,
     prompt,

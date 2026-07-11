@@ -6,6 +6,7 @@ import { describe, expect, it, beforeEach, afterEach } from "vitest";
 import { ensureHarnessRepository } from "../src/core/bootstrap/repository.ts";
 import {
   mapCodexRateLimits,
+  mapCodexModels,
   mapClaudeUsage,
   fetchPoolUsage,
   windowLabel,
@@ -20,6 +21,27 @@ const codexTool = normalizeTool({ id: "codex", command: "codex", adapter: "codex
 const claudeTool = normalizeTool({ id: "claude", command: "claude", adapter: "claude" });
 
 describe("usage provider mappers", () => {
+  it("maps a codex model/list result into model entries", () => {
+    const raw = {
+      data: [
+        { id: "gpt-5.6-sol", model: "gpt-5.6-sol", displayName: "GPT-5.6-Sol", isDefault: true },
+        { id: "gpt-5.6-terra", model: "gpt-5.6-terra", displayName: "GPT-5.6-Terra" },
+        { id: "item-no-display", model: "gpt-bare" }
+      ]
+    };
+    expect(mapCodexModels(raw)).toEqual([
+      { id: "gpt-5.6-sol", displayName: "GPT-5.6-Sol" },
+      { id: "gpt-5.6-terra", displayName: "GPT-5.6-Terra" },
+      { id: "gpt-bare", displayName: "gpt-bare" }
+    ]);
+  });
+
+  it("returns no models when the codex model/list result is malformed", () => {
+    expect(mapCodexModels(null)).toEqual([]);
+    expect(mapCodexModels({})).toEqual([]);
+    expect(mapCodexModels({ data: "nope" })).toEqual([]);
+  });
+
   it("maps codex rate limits to the most-constraining window", () => {
     const reading = mapCodexRateLimits({
       rateLimits: {
@@ -57,6 +79,7 @@ describe("fetchPoolUsage", () => {
     fetchCodexRateLimits: async () => ({
       rateLimits: { secondary: { usedPercent: 50, windowDurationMins: 10080, resetsAt: 999 } }
     }),
+    fetchCodexModels: async () => null,
     readClaudeOAuthToken: async () => "tok",
     fetchClaudeUsage: async () => ({ seven_day: { utilization: 12, resets_at: null } })
   };
@@ -118,6 +141,7 @@ describe("refreshUsageSnapshots", () => {
       fetchCodexRateLimits: async () => ({
         rateLimits: { secondary: { usedPercent: 73, windowDurationMins: 10080, resetsAt: 555 } }
       }),
+      fetchCodexModels: async () => null,
       readClaudeOAuthToken: async () => null,
       fetchClaudeUsage: async () => ({})
     };

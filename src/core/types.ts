@@ -190,6 +190,10 @@ export interface HarnessTask {
   stageAgentOverrides?: Partial<Record<string, ToolId>>;
   /** Per-task per-step effort overrides (outrank task-level effort). */
   stageEffortOverrides?: Partial<Record<string, EffortLevel>>;
+  /** Per-task per-step model pool overrides (outrank the optimizer's pool pick
+   * for the resolved tool). Ignored at routing time when the pool is disabled or
+   * belongs to a different tool than the step's resolved agent. */
+  stageModelPoolOverrides?: Partial<Record<string, ModelPoolId>>;
   /** Number of manual resume attempts for the current step (capped to avoid infinite loops). */
   resumeAttempts?: number;
   /** Workflow step id the resumeAttempts counter applies to. The cap is per-step, so the

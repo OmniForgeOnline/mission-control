@@ -9,7 +9,12 @@ import { extractTargets, homeRootForHarness } from "../paths/targets.ts";
 import { resolveTargetsForGitWorkflow } from "./repo-binding.ts";
 import { EntityNotFoundError } from "./errors.ts";
 import { clearAgentSession } from "../agents/session.ts";
-import { isRegisteredAgent, unregisteredAgentMessage } from "../agents/stage-agents.ts";
+import {
+  isRegisteredAgent,
+  isRegisteredModelPool,
+  unregisteredAgentMessage,
+  unregisteredModelPoolMessage
+} from "../agents/stage-agents.ts";
 import { canApprovePlan, extractPlanFromTask } from "../prompts/plan-approval.ts";
 import { canRefinePlan, rewindWorkflowForPlanRefinement } from "../prompts/plan-refinement.ts";
 import {
@@ -52,6 +57,7 @@ import type {
   EffortLevel,
   HarnessMessage,
   HarnessTask,
+  ModelPoolId,
   PmStatus,
   Resolution,
   TaskStatus
@@ -767,6 +773,64 @@ export async function clearTaskStageEffortOverride(
       ? { ...current, stageEffortOverrides: nextOverrides }
       : omitTaskKeys(current, ["stageEffortOverrides"]);
     return { ...base, updatedAt: now() };
+  });
+}
+
+export async function setTaskStageModelPoolOverride(
+  root: string,
+  taskId: string,
+  stage: string,
+  poolId: ModelPoolId
+): Promise<HarnessTask> {
+  // Eligibility follows the model dropdown, filtered from the agent config
+  // bundle's pools. A model pin only applies to steps that run an agent.
+  if (!(await isRegisteredModelPool(root, poolId))) {
+    throw new Error(unregisteredModelPoolMessage(poolId));
+  }
+  const task = await getTask(root, taskId);
+  if (!task) {
+    throw new Error(`Task not found: ${taskId}`);
+  }
+  await assertTaskStageAgentStep(root, task, stage);
+  return updateTask(root, taskId, (current) => ({
+    ...current,
+    stageModelPoolOverrides: { ...current.stageModelPoolOverrides, [stage]: poolId },
+    // Pinning a model is a deliberate intervention to work around the cause of
+    // prior failures (e.g. an unsupported or exhausted model). Reset the resume
+    // budget so the attempt cap doesn't keep the step blocked.
+    resumeAttempts: 0,
+    resumeAttemptsStepId: stage,
+    updatedAt: now()
+  }));
+}
+
+export async function clearTaskStageModelPoolOverride(
+  root: string,
+  taskId: string,
+  stage: string
+): Promise<HarnessTask> {
+  const task = await getTask(root, taskId);
+  if (!task) {
+    throw new Error(`Task not found: ${taskId}`);
+  }
+  await assertTaskStageAgentStep(root, task, stage);
+  return updateTask(root, taskId, (current) => {
+    if (!current.stageModelPoolOverrides?.[stage]) {
+      return current;
+    }
+    const nextOverrides = { ...current.stageModelPoolOverrides };
+    delete nextOverrides[stage];
+    const base = Object.keys(nextOverrides).length
+      ? { ...current, stageModelPoolOverrides: nextOverrides }
+      : omitTaskKeys(current, ["stageModelPoolOverrides"]);
+    return {
+      ...base,
+      // Reverting to the optimizer default is also a deliberate change; reset the
+      // resume budget so the attempt cap doesn't keep the step blocked.
+      resumeAttempts: 0,
+      resumeAttemptsStepId: stage,
+      updatedAt: now()
+    };
   });
 }
 
