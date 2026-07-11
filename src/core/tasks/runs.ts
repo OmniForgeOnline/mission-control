@@ -6,6 +6,7 @@ import { readJsonFile, updateJsonFile, writeJsonFile } from "../infra/fs.ts";
 import { emitStateChange, type StateScope } from "../infra/state-bus.ts";
 import { ensureHarnessRepository } from "../bootstrap/repository.ts";
 import { listProjects, projectDir } from "../projects/registry.ts";
+import { EntityNotFoundError } from "./errors.ts";
 import type { HarnessRun } from "../types.ts";
 
 /**
@@ -76,7 +77,7 @@ export async function claimRunForTask(root: string, input: Omit<HarnessRun, "id"
 export async function updateRun(root: string, runId: string, updates: Partial<HarnessRun>): Promise<HarnessRun> {
   const located = (await listAllRuns(root)).find((run) => run.id === runId);
   if (!located) {
-    throw new Error(`Run not found: ${runId}`);
+    throw new EntityNotFoundError("run", runId);
   }
   const defined = Object.fromEntries(
     Object.entries(updates).filter(([, value]) => value !== undefined)

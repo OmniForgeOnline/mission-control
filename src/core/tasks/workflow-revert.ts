@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 
 import { updateTask, getTask } from "./tasks.ts";
+import { EntityNotFoundError } from "./errors.ts";
 import { requireAttachments } from "../attachments/store.ts";
 import {
   canRevertToStep,
@@ -103,7 +104,7 @@ export async function revertTaskToWorkflowStep(
   options?: RevertTaskOptions
 ): Promise<HarnessTask> {
   const task = await getTask(root, taskId);
-  if (!task) throw new Error(`Task not found: ${taskId}`);
+  if (!task) throw new EntityNotFoundError("task", taskId);
   if (!task.workflowRun) throw new Error(`Task ${taskId} has no workflow run.`);
 
   const workflow = await loadWorkflow(root, task.workflowRun.workflowId);

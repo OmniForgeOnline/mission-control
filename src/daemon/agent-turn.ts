@@ -4,6 +4,7 @@ import path from "node:path";
 import { ensureDir } from "../core/infra/fs.ts";
 import { runHooks } from "../core/review/hooks.ts";
 import { claimRunForTask, updateRun } from "../core/tasks/runs.ts";
+import { EntityNotFoundError } from "../core/tasks/errors.ts";
 import { HEARTBEAT_INTERVAL_MS } from "../core/tasks/activity.ts";
 import {
   prepareStepWorkspace
@@ -221,14 +222,14 @@ export async function executeAgentTurn(root: string, internal: RunTurnInternal):
       completedAt: now(),
       blockedReason: reason
     }).catch((updateErr) => {
-      if (updateErr instanceof Error && updateErr.message === `Run not found: ${run.id}`) return;
+      if (updateErr instanceof EntityNotFoundError) return;
       throw updateErr;
     });
     await markTaskBlocked(root, task.id, reason, {
       completedAt: now(),
       runId: run.id
     }).catch((updateErr) => {
-      if (updateErr instanceof Error && updateErr.message === `Task not found: ${task.id}`) return;
+      if (updateErr instanceof EntityNotFoundError) return;
       throw updateErr;
     });
   });

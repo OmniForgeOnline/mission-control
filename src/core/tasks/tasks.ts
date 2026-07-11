@@ -7,6 +7,7 @@ import { spreadDefined } from "../infra/record.ts";
 import { ensureHarnessRepository } from "../bootstrap/repository.ts";
 import { extractTargets, homeRootForHarness } from "../paths/targets.ts";
 import { resolveTargetsForGitWorkflow } from "./repo-binding.ts";
+import { EntityNotFoundError } from "./errors.ts";
 import { clearAgentSession } from "../agents/session.ts";
 import { isRegisteredAgent, unregisteredAgentMessage } from "../agents/stage-agents.ts";
 import { canApprovePlan, extractPlanFromTask } from "../prompts/plan-approval.ts";
@@ -212,7 +213,7 @@ export async function addTaskMessage(
 
 export async function approveTask(root: string, taskId: string): Promise<HarnessTask> {
   const task = await getTask(root, taskId);
-  if (!task) throw new Error(`Task not found: ${taskId}`);
+  if (!task) throw new EntityNotFoundError("task", taskId);
   if (!task.workflowRun) throw new Error(`Task ${taskId} has no workflow run.`);
 
   const workflow = await loadWorkflow(root, task.workflowRun.workflowId);
@@ -257,7 +258,7 @@ export async function preparePlanRefinementTurn(root: string, taskId: string): P
 
 export async function approvePlanForImplementation(root: string, taskId: string): Promise<HarnessTask> {
   const task = await getTask(root, taskId);
-  if (!task?.workflowRun) throw new Error(`Task not found: ${taskId}`);
+  if (!task?.workflowRun) throw new EntityNotFoundError("task", taskId);
 
   const workflow = await loadWorkflow(root, task.workflowRun.workflowId);
   if (!canApprovePlan(task, workflow)) {
@@ -306,7 +307,7 @@ export async function advanceTaskWorkflowStep(
   completedStepId?: string
 ): Promise<HarnessTask> {
   const task = await getTask(root, taskId);
-  if (!task?.workflowRun) throw new Error(`Task not found: ${taskId}`);
+  if (!task?.workflowRun) throw new EntityNotFoundError("task", taskId);
 
   const workflow = await loadWorkflow(root, task.workflowRun.workflowId);
   let { run, done } = advanceWorkflowStep(workflow, task.workflowRun, branch, completedStepId);
@@ -358,7 +359,7 @@ export async function routeTaskToImplementationStep(
   branch?: "changes_requested"
 ): Promise<HarnessTask> {
   const task = await getTask(root, taskId);
-  if (!task?.workflowRun) throw new Error(`Task not found: ${taskId}`);
+  if (!task?.workflowRun) throw new EntityNotFoundError("task", taskId);
 
   const workflow = await loadWorkflow(root, task.workflowRun.workflowId);
   const nextRun = routeWorkflowToImplementation(workflow, task.workflowRun, branch);
@@ -386,7 +387,7 @@ export async function routeTaskToMergeRequestStep(
   taskId: string
 ): Promise<HarnessTask> {
   const task = await getTask(root, taskId);
-  if (!task?.workflowRun) throw new Error(`Task not found: ${taskId}`);
+  if (!task?.workflowRun) throw new EntityNotFoundError("task", taskId);
 
   const workflow = await loadWorkflow(root, task.workflowRun.workflowId);
   const nextRun = routeWorkflowToMergeRequest(workflow, task.workflowRun);
@@ -407,7 +408,7 @@ export async function routeTaskToMergeRequestStep(
 
 export async function requeueTask(root: string, taskId: string): Promise<HarnessTask> {
   const task = await getTask(root, taskId);
-  if (!task) throw new Error(`Task not found: ${taskId}`);
+  if (!task) throw new EntityNotFoundError("task", taskId);
   const workflowId = task.workflowRun?.workflowId ?? DEFAULT_WORKFLOW_ID;
   const workflow = await loadWorkflow(root, workflowId);
   const workflowRun = createWorkflowRun(workflow);
@@ -665,7 +666,7 @@ export async function setTaskStageAgentOverride(
   }
   const task = await getTask(root, taskId);
   if (!task) {
-    throw new Error(`Task not found: ${taskId}`);
+    throw new EntityNotFoundError("task", taskId);
   }
   await assertTaskStageAgentStep(root, task, stage);
   return updateTask(root, taskId, (current) => ({
@@ -687,7 +688,7 @@ export async function clearTaskStageAgentOverride(
 ): Promise<HarnessTask> {
   const task = await getTask(root, taskId);
   if (!task) {
-    throw new Error(`Task not found: ${taskId}`);
+    throw new EntityNotFoundError("task", taskId);
   }
   await assertTaskStageAgentStep(root, task, stage);
   return updateTask(root, taskId, (current) => {
@@ -736,7 +737,7 @@ export async function setTaskStageEffortOverride(
   }
   const task = await getTask(root, taskId);
   if (!task) {
-    throw new Error(`Task not found: ${taskId}`);
+    throw new EntityNotFoundError("task", taskId);
   }
   await assertTaskStageEffortStep(root, task, stage);
   return updateTask(root, taskId, (current) => ({
@@ -753,7 +754,7 @@ export async function clearTaskStageEffortOverride(
 ): Promise<HarnessTask> {
   const task = await getTask(root, taskId);
   if (!task) {
-    throw new Error(`Task not found: ${taskId}`);
+    throw new EntityNotFoundError("task", taskId);
   }
   await assertTaskStageEffortStep(root, task, stage);
   return updateTask(root, taskId, (current) => {
@@ -825,7 +826,7 @@ export async function deleteTask(root: string, taskId: string): Promise<HarnessT
   const tasks = await listTasks(root);
   const index = tasks.findIndex((task) => task.id === taskId);
   if (index === -1) {
-    throw new Error(`Task not found: ${taskId}`);
+    throw new EntityNotFoundError("task", taskId);
   }
   const [deleted] = tasks.splice(index, 1);
   await writeJsonFile(tasksPath(root), tasks);
@@ -917,7 +918,7 @@ export async function updateTask(
   const tasks = await listTasks(root);
   const index = tasks.findIndex((task) => task.id === taskId);
   if (index === -1) {
-    throw new Error(`Task not found: ${taskId}`);
+    throw new EntityNotFoundError("task", taskId);
   }
   const updated = updater(tasks[index]!);
   tasks[index] = updated;
