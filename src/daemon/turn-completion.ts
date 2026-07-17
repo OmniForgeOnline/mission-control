@@ -389,8 +389,10 @@ export async function completeAgentTurn(params: CompleteAgentTurnParams): Promis
 
   const gitState = await inspectPostTurnGit(workspace);
   const repoAuthorStep = workspace.isRepo && stepModifiesRepo(step) && !internal.reviewer && !internal.conversation;
+  // Interactive Done (operator or auto handoff) is an explicit completion signal:
+  // always evaluate the git contract. Headless still uses final-answer heuristics.
   const authorHandoffFailure =
-    repoAuthorStep && looksLikeFinalAnswer(replyBody)
+    repoAuthorStep && (interactiveDone || looksLikeFinalAnswer(replyBody))
       ? describeAuthorGitHandoffFailure(workspace.branch, gitState)
       : null;
   if (authorHandoffFailure) {
