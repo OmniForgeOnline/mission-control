@@ -6,7 +6,7 @@ For plan and authoring steps, you do not just watch a log: Mission Control opens
 
 It is designed for agentic workflows you can inspect: source code stays on your machine, runtime state lives outside the checkout, and connectors are optional.
 
-![Mission Control home view](https://raw.githubusercontent.com/OmniForgeOnline/mission-control/main/docs/screenshot.webp)
+![Mission Control home view](https://raw.githubusercontent.com/OmniForgeOnline/mission-control/main/docs/screenshot.png)
 
 ## What You Can Do
 
