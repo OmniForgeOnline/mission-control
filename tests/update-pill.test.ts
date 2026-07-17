@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { awaitServerRestart, updatePillModel, type VersionStatus } from "../src/ui/shell/update-pill.ts";
+import {
+  awaitServerRestart,
+  updatePillModel,
+  type RestartWatcherDeps,
+  type VersionStatus
+} from "../src/ui/shell/update-pill.ts";
 
 function status(overrides: Partial<VersionStatus> = {}): VersionStatus {
   return {
@@ -33,20 +38,16 @@ describe("updatePillModel", () => {
 
 // Fake clock + probe harness for the restart watcher. `now()` advances a fixed
 // step on every call so the loop terminates without real timers; `probe` reads
-// the next queued reachability value, holding the last one once the queue drains.
-function watchHarness(probeResults: boolean[]) {
+// the next queued version status (or null for an unreachable server), holding
+// the last one once the queue drains.
+function restartHarness(results: (VersionStatus | null)[]) {
   let idx = 0;
   let clock = 0;
   const events: string[] = [];
-  const deps = {
-    probe: async (): Promise<boolean> => {
-      const up = probeResults[Math.min(idx++, probeResults.length - 1)] ?? false;
-      events.push(`probe=${up}`);
-      return up;
-    },
-    sleep: async (): Promise<void> => {
-      events.push("sleep");
-    },
+  const deps: RestartWatcherDeps = {
+    probe: async (): Promise<VersionStatus | null> =>
+      results[Math.min(idx++, results.length - 1)] ?? null,
+    sleep: async (): Promise<void> => {},
     now: (): number => {
       const t = clock;
       clock += 1000;
@@ -62,24 +63,49 @@ function watchHarness(probeResults: boolean[]) {
   return { deps, events };
 }
 
+const BEHIND = status();
+const DONE = status({
+  installed: "0.1.4",
+  behind: false,
+  lastUpdate: { result: "ok", from: "0.1.3", to: "0.1.4", at: "2026-07-17T00:00:01.000Z" }
+});
+
 describe("awaitServerRestart", () => {
-  it("reloads once the server goes down and comes back", async () => {
-    // old server still up briefly, then restarting (down), then back up (new version)
-    const { deps, events } = watchHarness([true, false, true, true]);
+  it("reloads on a fresh successful outcome without ever observing downtime", async () => {
+    // Fast restart: every probe reaches the server, but a fresh ok outcome
+    // appears once the new server is up. The outage-based watcher missed this.
+    const { deps, events } = restartHarness([BEHIND, BEHIND, DONE]);
     await awaitServerRestart(deps, 1, 10_000);
     expect(events).toContain("reload");
     expect(events).not.toContain("timeout");
   });
 
-  it("falls back to onTimeout when the server never restarts", async () => {
-    const { deps, events } = watchHarness([true]);
+  it("reloads when the server goes down and comes back with a fresh outcome", async () => {
+    const { deps, events } = restartHarness([BEHIND, null, DONE]);
+    await awaitServerRestart(deps, 1, 10_000);
+    expect(events).toContain("reload");
+    expect(events).not.toContain("timeout");
+  });
+
+  it("does not reload on a stale outcome already present at the start", async () => {
+    // A pre-existing ok outcome must not trigger a reload before this update
+    // completes; only a freshly written one (different `at`) should.
+    const stale = status({ behind: false, lastUpdate: DONE.lastUpdate });
+    const { deps, events } = restartHarness([stale]);
     await awaitServerRestart(deps, 1, 10_000);
     expect(events).toContain("timeout");
     expect(events).not.toContain("reload");
   });
 
-  it("falls back to onTimeout when the server goes down but never returns", async () => {
-    const { deps, events } = watchHarness([false]);
+  it("falls back to onTimeout when the server stays up but never completes", async () => {
+    const { deps, events } = restartHarness([BEHIND]);
+    await awaitServerRestart(deps, 1, 10_000);
+    expect(events).toContain("timeout");
+    expect(events).not.toContain("reload");
+  });
+
+  it("falls back to onTimeout when the server goes down and never returns", async () => {
+    const { deps, events } = restartHarness([BEHIND, null]);
     await awaitServerRestart(deps, 1, 10_000);
     expect(events).toContain("timeout");
     expect(events).not.toContain("reload");

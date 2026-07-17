@@ -119,7 +119,7 @@ async function applyFromModal(mode: "now" | "idle"): Promise<void> {
     if (mode === "now" && res?.applying) {
       setModalStatus("Installed. Restarting...");
       void awaitServerRestart({
-        probe: probeServerUp,
+        probe: probeVersionStatus,
         sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
         now: () => Date.now(),
         reload: () => window.location.reload(),
@@ -134,20 +134,19 @@ async function applyFromModal(mode: "now" | "idle"): Promise<void> {
   }
 }
 
-/** Resolve true when the server answers, false on any network failure. */
-async function probeServerUp(): Promise<boolean> {
+/** Resolve the version status when the server answers, null on any network failure. */
+async function probeVersionStatus(): Promise<VersionStatus | null> {
   try {
-    await api("/api/version");
-    return true;
+    return await api<VersionStatus>("/api/version");
   } catch {
-    return false;
+    return null;
   }
 }
 
 /** Injectable dependencies so the restart watcher is testable without a browser. */
 export interface RestartWatcherDeps {
-  /** Resolve true when the server answers, false on any network failure. */
-  probe: () => Promise<boolean>;
+  /** Resolve the version status when the server answers, null on any network failure. */
+  probe: () => Promise<VersionStatus | null>;
   sleep: (ms: number) => Promise<void>;
   now: () => number;
   reload: () => void;
@@ -161,11 +160,17 @@ const RESTART_INTERVAL_MS = 1500;
 const RESTART_TIMEOUT_MS = 6 * 60 * 1000;
 
 /**
- * After "Update now" returns `applying: true`, watch for the server to restart
- * (go unreachable, then come back) and reload the page so the freshly installed
- * client bundle is loaded. Falls back to `onTimeout` when no restart is
- * observed within the deadline, so the UI never sits on a "Restarting..."
- * promise it cannot fulfill.
+ * After "Update now" returns `applying: true`, watch for the update to complete
+ * and reload the page so the freshly installed client bundle is loaded.
+ *
+ * Completion is read from state, not inferred from an outage: the detached
+ * updater writes a fresh `lastUpdate` outcome to disk *before* it relaunches
+ * the server, so the moment the new server answers `/api/version` it reports a
+ * `lastUpdate.at` newer than the one captured here as the baseline. Detecting
+ * that fresh outcome reloads correctly even when the restart falls entirely
+ * between two probes (which an outage-based check would miss). Falls back to
+ * `onTimeout` when no fresh outcome appears within the deadline, so the UI
+ * never sits on a "Restarting..." promise it cannot fulfill.
  */
 export async function awaitServerRestart(
   deps: RestartWatcherDeps,
@@ -173,16 +178,13 @@ export async function awaitServerRestart(
   timeoutMs = RESTART_TIMEOUT_MS
 ): Promise<void> {
   const deadline = deps.now() + timeoutMs;
-  let sawDown = false;
+  const baselineAt = (await deps.probe())?.lastUpdate?.at ?? null;
   while (deps.now() < deadline) {
     await deps.sleep(intervalMs);
-    if (await deps.probe()) {
-      if (sawDown) {
-        deps.reload();
-        return;
-      }
-    } else {
-      sawDown = true;
+    const outcome = (await deps.probe())?.lastUpdate;
+    if (outcome && outcome.result === "ok" && outcome.at !== baselineAt) {
+      deps.reload();
+      return;
     }
   }
   deps.onTimeout();
