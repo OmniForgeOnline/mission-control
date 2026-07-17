@@ -107,6 +107,10 @@ async function applyFromModal(mode: "now" | "idle"): Promise<void> {
   }
 
   try {
+    // Capture the prior outcome before the updater spawns. If the new server is
+    // already up by the watcher's first probe, that fresh outcome must read as
+    // "new", not as the baseline (which would reproduce the original timeout).
+    const baselineAt = mode === "now" ? (await probeVersionStatus())?.lastUpdate?.at ?? null : null;
     const res = await api<{ applying?: boolean; queued?: boolean }>("/api/update/apply", {
       method: "POST",
       body: JSON.stringify({ mode })
@@ -118,12 +122,83 @@ async function applyFromModal(mode: "now" | "idle"): Promise<void> {
     }
     if (mode === "now" && res?.applying) {
       setModalStatus("Installed. Restarting...");
+      void awaitServerRestart(
+        {
+          probe: probeVersionStatus,
+          sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+          now: () => Date.now(),
+          reload: () => window.location.reload(),
+          onTimeout: () =>
+            setModalStatus("Restart is taking longer than expected. Refresh the page to continue.")
+        },
+        baselineAt
+      );
     }
   } catch (error) {
     setModalStatus(`Failed: ${(error as Error).message}`);
     if (nowBtn) nowBtn.disabled = false;
     if (idleBtn) idleBtn.disabled = false;
   }
+}
+
+/** Resolve the version status when the server answers, null on any network failure. */
+async function probeVersionStatus(): Promise<VersionStatus | null> {
+  try {
+    return await api<VersionStatus>("/api/version");
+  } catch {
+    return null;
+  }
+}
+
+/** Injectable dependencies so the restart watcher is testable without a browser. */
+export interface RestartWatcherDeps {
+  /** Resolve the version status when the server answers, null on any network failure. */
+  probe: () => Promise<VersionStatus | null>;
+  sleep: (ms: number) => Promise<void>;
+  now: () => number;
+  reload: () => void;
+  /** Called when no restart is observed before the deadline. */
+  onTimeout: () => void;
+}
+
+const RESTART_INTERVAL_MS = 1500;
+// Exceeds the detached updater's 5-min `npm install` cap plus boot, so a slow
+// install still recovers instead of falling back to the manual-refresh message.
+const RESTART_TIMEOUT_MS = 6 * 60 * 1000;
+
+/**
+ * After "Update now" returns `applying: true`, watch for the update to complete
+ * and reload the page so the freshly installed client bundle is loaded.
+ *
+ * `baselineAt` is the `lastUpdate.at` captured BEFORE the apply request spawned
+ * the updater. The detached updater writes a fresh `lastUpdate` outcome to disk
+ * *before* it relaunches the server, so the moment the new server answers
+ * `/api/version` it reports an outcome whose `at` differs from the baseline.
+ * Detecting that fresh outcome reloads correctly even when the restart falls
+ * entirely between two probes (which an outage-based check would miss) and even
+ * when the new server is already up by the first watch probe (which would
+ * otherwise mistake the fresh outcome for the baseline). Any fresh outcome
+ * counts as completion, success or failure: a failed update reloads so polling
+ * can toast the error instead of sitting on "Restarting..." until the deadline.
+ * Falls back to `onTimeout` when no fresh outcome appears in time, so the UI
+ * never sits on a promise it cannot fulfill.
+ */
+export async function awaitServerRestart(
+  deps: RestartWatcherDeps,
+  baselineAt: string | null,
+  intervalMs = RESTART_INTERVAL_MS,
+  timeoutMs = RESTART_TIMEOUT_MS
+): Promise<void> {
+  const deadline = deps.now() + timeoutMs;
+  while (deps.now() < deadline) {
+    await deps.sleep(intervalMs);
+    const outcome = (await deps.probe())?.lastUpdate;
+    if (outcome && outcome.at !== baselineAt) {
+      deps.reload();
+      return;
+    }
+  }
+  deps.onTimeout();
 }
 
 function toastOutcome(outcome: UpdateOutcome): void {
