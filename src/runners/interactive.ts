@@ -5,6 +5,7 @@ import type { ToolId } from "../core/types.ts";
 import type { AgentToolConfig, ModelPoolConfig } from "../core/agents/config/types.ts";
 import { buildInteractiveLaunch } from "../terminal/interactive-launch.ts";
 import { buildPtyEnvironment } from "../terminal/env.ts";
+import { isAuthorHandoffReady } from "../terminal/handoff-ready.ts";
 import { getTerminalSessionManager } from "../terminal/manager.ts";
 import {
   beginInteractiveWait,
@@ -15,6 +16,8 @@ import { emitStateChange, taskScopes } from "../core/infra/state-bus.ts";
 import type { AgentRunner, AgentTurnRequest, AgentTurnResult } from "./types.ts";
 import type { RunnerLaunchContext } from "./headless.ts";
 
+const HANDOFF_POLL_MS = 5_000;
+
 function nowIso(): string {
   return new Date().toISOString();
 }
@@ -22,8 +25,13 @@ function nowIso(): string {
 /**
  * Runs an agent CLI in a real PTY (interactive TUI). The harness starts the
  * same prompt/mode/model session the headless runner would — as one PTY the UI
- * attaches to. The turn stays open until the operator marks Done/Block or aborts;
- * process exit alone does not finish the workflow step.
+ * attaches to.
+ *
+ * Planning (`mode: plan`) waits for operator Done/Block so the human can answer
+ * questions. Authoring/implement turns also auto-complete when the agent process
+ * exits or the git handoff contract is met (commit + push), so the workflow can
+ * chain into automated steps without a mandatory Done click — while the operator
+ * can still type into the TUI or press Block at any time.
  */
 export class InteractiveAgentRunner implements AgentRunner {
   agent: ToolId;
@@ -145,6 +153,38 @@ export class InteractiveAgentRunner implements AgentRunner {
     // Push interactiveSessions into /api/state so the UI auto-attaches.
     emitStateChange(taskScopes(request.task.id));
 
+    // Planning stays operator-driven (Done). Authoring auto-advances when the
+    // process exits or the git handoff contract is met so automated steps chain.
+    const planningTurn = request.mode === "plan" || request.mode === "classify";
+    const unsubExit = manager.subscribe(session.id, (msg) => {
+      if (msg.type !== "exit") return;
+      if (planningTurn) return;
+      if (this.aborted) return;
+      const code = msg.code ?? 1;
+      completeInteractiveTurn(request.task.id, {
+        kind: code === 0 ? "done" : "aborted",
+        note:
+          code === 0
+            ? "Agent process exited; advancing workflow."
+            : `Agent process exited with code ${code}.`
+      });
+    });
+
+    let handoffPoll: ReturnType<typeof setInterval> | undefined;
+    if (!planningTurn) {
+      handoffPoll = setInterval(() => {
+        if (this.aborted) return;
+        void isAuthorHandoffReady(request.cwd).then((ready) => {
+          if (!ready || this.aborted) return;
+          completeInteractiveTurn(request.task.id, {
+            kind: "done",
+            note: "Author handoff detected (committed and pushed); advancing workflow."
+          });
+        });
+      }, HANDOFF_POLL_MS);
+      handoffPoll.unref?.();
+    }
+
     const fullCommand = [launch.command, ...spawnArgs].join(" ");
     const modelNote = this.pool.modelArgs.length
       ? ` modelArgs=${JSON.stringify(this.pool.modelArgs)}`
@@ -157,7 +197,9 @@ export class InteractiveAgentRunner implements AgentRunner {
         `[${this.agent}] command: ${fullCommand}\n` +
         `[${this.agent}] pool=${this.pool.id}${modelNote}${effortNote}${modeNote}\n` +
         `[${this.agent}] cwd: ${request.cwd}\n` +
-        `[${this.agent}] attach in the UI terminal; Done advances the workflow\n`
+        (planningTurn
+          ? `[${this.agent}] planning: interact in the UI terminal; Done advances when you are ready\n`
+          : `[${this.agent}] authoring: interact anytime; Done/Block still work; auto-advances on exit or successful push\n`)
     );
     request.onActivity?.({ label: "interactive terminal open", at: nowIso() });
     request.onEvent?.({
@@ -177,7 +219,13 @@ export class InteractiveAgentRunner implements AgentRunner {
       }
     }
 
-    const outcome = await outcomePromise;
+    let outcome;
+    try {
+      outcome = await outcomePromise;
+    } finally {
+      unsubExit();
+      if (handoffPoll) clearInterval(handoffPoll);
+    }
 
     if (this.currentSessionId) {
       try {
@@ -213,7 +261,8 @@ export class InteractiveAgentRunner implements AgentRunner {
       };
     }
     return {
-      reply: note || "Interactive turn completed by operator.",
+      // Avoid "completed"/"done" markers that trip looksLikeFinalAnswer falsely.
+      reply: note || "Operator finished the interactive step.",
       exitCode: 0,
       command: fullCommand,
       rawLog: "",
