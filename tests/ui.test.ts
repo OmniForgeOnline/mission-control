@@ -872,7 +872,7 @@ describe("ui slice 3 surfaces", () => {
     const tree = await readClientTree();
     expect(tree).toContain("getPrimaryAction");
     expect(tree).toContain("runNodeAction");
-    expect(tree).toContain("Stage {stepNumber} of {totalSteps}");
+    expect(tree).not.toContain("Stage {stepNumber} of {totalSteps}");
     expect(tree).toContain("liveness(task)");
     expect(tree).toContain("Advancing automatically");
     expect(tree).toContain("operator-gated");

@@ -39,14 +39,12 @@ describe("InteractiveAgentRunner", () => {
   it("waits for operator Done and returns interactive outcome", async () => {
     setTerminalSessionManagerForTests(createSessionManager({ spawn: fakeSpawn }));
 
-    // Avoid resolveCommandBinary by using absolute path that still fails resolve
-    // unless we mock — InteractiveAgentRunner uses buildInteractiveLaunch which
-    // resolves the binary. Stub via generic adapter with absolute command that
-    // exists: /bin/zsh.
+    // buildInteractiveLaunch resolves via login-shell `command -v`. Use /bin/echo
+    // (present on macOS and Linux CI); /bin/zsh is not guaranteed in CI images.
     const tool = normalizeTool({
       id: "shell-agent",
       adapter: "generic",
-      command: "/bin/zsh",
+      command: "/bin/echo",
       enabled: true,
       displayName: "Shell",
       cli: {},
