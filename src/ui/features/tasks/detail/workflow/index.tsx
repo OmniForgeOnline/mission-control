@@ -58,7 +58,6 @@ export function WorkflowPane({
         <span>
           <span class="wf-legend-bar daemon" /> Auto (daemon)
         </span>
-        <span class="faint">drag to pan · scroll to zoom · drag splitter to resize panel</span>
       </div>
 
       <WorkflowSplitPane

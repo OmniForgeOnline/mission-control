@@ -9,7 +9,6 @@ import {
   type FitTransform
 } from "./fit.js";
 import { layoutFromWorkflowSummary } from "./layout.js";
-import { WorkflowMinimap } from "./minimap.js";
 import { WorkflowNode } from "./node.js";
 import { decorateLayoutEdges } from "./state.js";
 import { stepShowsAutoAdvanceNote } from "@ui/app/workflow-steps.js";
@@ -77,6 +76,8 @@ export function WorkflowCanvas({
     layout.bounds.height,
     layout.content.minX,
     layout.content.maxX,
+    layout.content.minY,
+    layout.content.maxY,
     fitConfig
   ]);
 
@@ -105,15 +106,6 @@ export function WorkflowCanvas({
   function zoomBy(factor: number): void {
     setTransform((current) => ({ ...current, scale: clampZoom(current.scale * factor) }));
   }
-
-  const wrap = wrapRef.current;
-  const viewport = {
-    width: wrap?.clientWidth ?? 800,
-    height: wrap?.clientHeight ?? 600,
-    translateX: transform.x,
-    translateY: transform.y,
-    scale: transform.scale
-  };
 
   return (
     <div
@@ -278,7 +270,6 @@ export function WorkflowCanvas({
         ))}
       </div>
 
-      <WorkflowMinimap task={task} workflow={workflow} layout={layout} viewport={viewport} />
     </div>
   );
 }

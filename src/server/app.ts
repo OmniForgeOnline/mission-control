@@ -18,6 +18,7 @@ import { createSettingsRouter } from "./routes/settings.ts";
 import { createTasksRouter } from "./routes/tasks.ts";
 import { createVersionRouter } from "./routes/version.ts";
 import { createWorkflowsRouter } from "./routes/workflows.ts";
+import { createTerminalRouter } from "./routes/terminal.ts";
 import type { ServerOptions } from "./routes/helpers.ts";
 
 export type { ServerOptions } from "./routes/helpers.ts";
@@ -65,6 +66,7 @@ export function createServer(options: ServerOptions): express.Express {
   app.use("/api", createConnectorsRouter(options));
   app.use("/api", createWorkflowsRouter(options));
   app.use("/api", createVersionRouter(options));
+  app.use("/api", createTerminalRouter(options));
 
   app.post("/api/shutdown", (req, res) => {
     // Authenticate before any side effect: the caller must present this server's

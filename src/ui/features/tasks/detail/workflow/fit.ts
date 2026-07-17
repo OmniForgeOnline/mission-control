@@ -1,16 +1,8 @@
 /* Pure view-transform math for the workflow canvas.
  *
- * The same WorkflowCanvas is used in two very different viewports:
- *   - "panel": the narrow, scrollable ticket-detail sidebar. Nodes must stay
- *     readable, so the fit keeps a high minimum scale and pins the graph to
- *     the top.
- *   - "contain": the wide workflow editor canvas. The goal is to see the whole
- *     workflow at once, so the fit may shrink the graph to fit the viewport
- *     height and centers it vertically.
- *
- * Scale is derived from the padded bounds box. Horizontal placement uses the
- * tighter rendered content box so a workflow does not load shifted away from
- * the visible content. Kept Preact-free so it is unit-testable in isolation. */
+ * Scale is derived from the padded bounds box. Placement uses the tighter
+ * content box so the graph sits flush in the viewport instead of floating in
+ * empty plane space. Kept Preact-free so it is unit-testable in isolation. */
 
 export interface FitBounds {
   width: number;
@@ -20,6 +12,8 @@ export interface FitBounds {
 export interface FitContent {
   minX: number;
   maxX: number;
+  minY?: number;
+  maxY?: number;
 }
 
 export interface FitTransform {
@@ -38,21 +32,24 @@ export interface FitMode {
 }
 
 /** Absolute pan/zoom clamps shared by the canvas zoom controls. */
-export const ZOOM_MIN_SCALE = 0.4;
+export const ZOOM_MIN_SCALE = 0.45;
 export const ZOOM_MAX_SCALE = 1.8;
 
-/** Ticket-detail sidebar: keep nodes readable, pin to top. */
-export const PANEL_FIT: FitMode = { minScale: 1.12, maxScale: 1.5, centerY: false };
+/**
+ * Ticket-detail canvas: fit the graph into the strip and center it so a short
+ * left→right flow does not sit stuck in the top-left corner of empty space.
+ */
+export const PANEL_FIT: FitMode = { minScale: 0.55, maxScale: 1.15, centerY: true };
 
 /** Workflow editor: fit the whole graph and center it. */
 export const CONTAIN_FIT: FitMode = { minScale: ZOOM_MIN_SCALE, maxScale: 1, centerY: true };
 
-const FIT_PAD = 48;
-const LEFT_EDGE_GUARD = 16;
-const TOP_PIN = 24;
+const FIT_PAD = 32;
+const LEFT_EDGE_GUARD = 12;
+const TOP_PIN = 12;
 
 export const DEFAULT_TRANSFORM: FitTransform = {
-  x: 120,
+  x: LEFT_EDGE_GUARD,
   y: TOP_PIN,
   scale: PANEL_FIT.minScale
 };
@@ -72,20 +69,30 @@ export function computeFitTransform(
     return { ...DEFAULT_TRANSFORM, scale: clampZoom(mode.minScale) };
   }
 
-  const widthScale = (viewportWidth - FIT_PAD) / bounds.width;
-  const heightScale = (viewportHeight - FIT_PAD) / bounds.height;
+  const contentMinY = content.minY ?? 0;
+  const contentMaxY = content.maxY ?? bounds.height;
+  const contentWidth = Math.max(1, content.maxX - content.minX);
+  const contentHeight = Math.max(1, contentMaxY - contentMinY);
+
+  // Prefer fitting the tight content box so unused bounds padding does not
+  // shrink the graph or invent empty vertical space.
+  const widthScale = (viewportWidth - FIT_PAD) / contentWidth;
+  const heightScale = (viewportHeight - FIT_PAD) / contentHeight;
   const natural = Math.min(widthScale, heightScale);
   const bounded = Math.min(Math.max(natural, mode.minScale), mode.maxScale);
   const scale = clampZoom(bounded);
 
-  const contentWidth = content.maxX - content.minX;
   const contentCenter = (content.minX + content.maxX) / 2;
   const centeredX = viewportWidth / 2 - contentCenter * scale;
   const x =
     contentWidth * scale <= viewportWidth
       ? centeredX
       : LEFT_EDGE_GUARD - content.minX * scale;
-  const y = mode.centerY ? Math.max(LEFT_EDGE_GUARD, (viewportHeight - bounds.height * scale) / 2) : TOP_PIN;
+
+  const contentCenterY = (contentMinY + contentMaxY) / 2;
+  const y = mode.centerY
+    ? Math.max(LEFT_EDGE_GUARD, viewportHeight / 2 - contentCenterY * scale)
+    : TOP_PIN - contentMinY * scale;
 
   return { x, y, scale };
 }

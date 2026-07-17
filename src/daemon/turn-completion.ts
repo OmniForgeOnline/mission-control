@@ -245,9 +245,16 @@ export async function completeAgentTurn(params: CompleteAgentTurnParams): Promis
   };
   const baseClear: Array<keyof HarnessTask> = ["currentActivity"];
 
+  // Interactive PTY turns are completed by the operator (Done/Block), not by
+  // final-answer heuristics or process exit alone.
+  const interactiveDone =
+    result.interactive === true && result.operatorOutcome === "done" && turnSucceeded && !isAborted;
+
   if (internal.conversation) {
     const plan = extractFinalPlan(normalizeReplyForPlanExtraction(replyBody, internal.agent));
-    if (plan && turnSucceeded && !isAborted) {
+    // Operator Done in interactive mode advances even without a parseable plan
+    // block — the human is the completion signal.
+    if ((plan || interactiveDone) && turnSucceeded && !isAborted) {
       await advanceTaskWorkflowStep(root, task.id);
       const updated = await patchTaskExecution(
         root,
@@ -496,7 +503,8 @@ export async function completeAgentTurn(params: CompleteAgentTurnParams): Promis
     return scheduleReviewerTurn(root, task.id, options);
   }
 
-  const shouldAdvanceWorkflow = (pushedAt || looksLikeFinalAnswer(replyBody)) && !scheduleReview;
+  const shouldAdvanceWorkflow =
+    (interactiveDone || pushedAt || looksLikeFinalAnswer(replyBody)) && !scheduleReview;
   if (shouldAdvanceWorkflow) {
     return advanceAuthorTurnWorkflow(root, {
       task,

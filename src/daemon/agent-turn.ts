@@ -253,7 +253,14 @@ export async function scheduleAuthorRerun(
   if ("execution" in agentResult) return agentResult;
   const routing = agentResult;
   const resolvedRunner =
-    options?.runner ?? (await createRunnerForRouting(root, routing));
+    options?.runner ??
+    (await createRunnerForRouting(root, routing, {
+      stepContext: {
+        stepKind: step.kind,
+        reviewer: false,
+        checksRemediation: Boolean(meta?.checksRemediation)
+      }
+    }));
   const turn = await executeAgentTurn(root, {
     task,
     prompt,

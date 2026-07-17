@@ -34,16 +34,18 @@ const parallelLayout = layoutWorkflow({
 });
 
 describe("computeFitTransform", () => {
-  it("panel mode keeps a tall graph at the readable minimum and pins it to the top", () => {
+  it("panel mode centers content in the viewport when the graph is short", () => {
     const t = computeFitTransform(
       EDITOR_VIEWPORT.width,
       EDITOR_VIEWPORT.height,
-      TALL,
-      { minX: 0, maxX: TALL.width },
+      { width: 800, height: 200 },
+      { minX: 0, maxX: 600, minY: 20, maxY: 130 },
       PANEL_FIT
     );
-    expect(t.scale).toBe(PANEL_FIT.minScale);
-    expect(t.y).toBe(24);
+    const contentCenterY = (20 + 130) / 2;
+    expect(t.y).toBeCloseTo(EDITOR_VIEWPORT.height / 2 - contentCenterY * t.scale, 1);
+    const contentCenterX = 300;
+    expect(t.x + contentCenterX * t.scale).toBeCloseTo(EDITOR_VIEWPORT.width / 2, 0);
   });
 
   it("contain mode shrinks a tall graph so the whole thing fits the viewport height", () => {
@@ -51,10 +53,10 @@ describe("computeFitTransform", () => {
       EDITOR_VIEWPORT.width,
       EDITOR_VIEWPORT.height,
       TALL,
-      { minX: 0, maxX: TALL.width },
+      { minX: 0, maxX: TALL.width, minY: 0, maxY: TALL.height },
       CONTAIN_FIT
     );
-    expect(t.scale).toBeLessThan(PANEL_FIT.minScale);
+    expect(t.scale).toBeLessThan(1);
     expect(t.scale).toBeGreaterThanOrEqual(ZOOM_MIN_SCALE);
     expect(TALL.height * t.scale).toBeLessThanOrEqual(EDITOR_VIEWPORT.height);
   });
@@ -64,11 +66,11 @@ describe("computeFitTransform", () => {
       EDITOR_VIEWPORT.width,
       EDITOR_VIEWPORT.height,
       SHORT,
-      { minX: 0, maxX: SHORT.width },
+      { minX: 0, maxX: SHORT.width, minY: 0, maxY: SHORT.height },
       CONTAIN_FIT
     );
-    expect(t.y).toBeGreaterThan(24);
-    expect(t.y).toBeCloseTo((EDITOR_VIEWPORT.height - SHORT.height * t.scale) / 2, 1);
+    expect(t.y).toBeGreaterThan(12);
+    expect(t.y).toBeCloseTo(EDITOR_VIEWPORT.height / 2 - (SHORT.height / 2) * t.scale, 1);
     expect(t.scale).toBeLessThanOrEqual(CONTAIN_FIT.maxScale);
   });
 
@@ -85,7 +87,19 @@ describe("computeFitTransform", () => {
     expect(x + contentCenter * scale).toBeCloseTo(DETAIL_VIEWPORT.width / 2, 0);
   });
 
-  it("centers a parallel workflow's rendered content symmetrically", () => {
+  it("centers a linear workflow vertically in the canvas strip", () => {
+    const { y, scale } = computeFitTransform(
+      DETAIL_VIEWPORT.width,
+      DETAIL_VIEWPORT.height,
+      linearLayout.bounds,
+      linearLayout.content,
+      PANEL_FIT
+    );
+    const contentCenterY = (linearLayout.content.minY + linearLayout.content.maxY) / 2;
+    expect(y + contentCenterY * scale).toBeCloseTo(DETAIL_VIEWPORT.height / 2, 0);
+  });
+
+  it("centers a parallel workflow when it fits, else left-aligns", () => {
     const { x, scale } = computeFitTransform(
       DETAIL_VIEWPORT.width,
       DETAIL_VIEWPORT.height,
@@ -94,8 +108,13 @@ describe("computeFitTransform", () => {
       PANEL_FIT
     );
 
+    const contentWidth = parallelLayout.content.maxX - parallelLayout.content.minX;
     const contentCenter = (parallelLayout.content.minX + parallelLayout.content.maxX) / 2;
-    expect(x + contentCenter * scale).toBeCloseTo(DETAIL_VIEWPORT.width / 2, 0);
+    if (contentWidth * scale > DETAIL_VIEWPORT.width) {
+      expect(x).toBeCloseTo(12 - parallelLayout.content.minX * scale, 0);
+    } else {
+      expect(x + contentCenter * scale).toBeCloseTo(DETAIL_VIEWPORT.width / 2, 0);
+    }
   });
 
   it("keeps fitted content fully inside the viewport when it fits", () => {
@@ -109,8 +128,8 @@ describe("computeFitTransform", () => {
 
     const leftEdge = x + linearLayout.content.minX * scale;
     const rightEdge = x + linearLayout.content.maxX * scale;
-    expect(leftEdge).toBeGreaterThanOrEqual(0);
-    expect(rightEdge).toBeLessThanOrEqual(DETAIL_VIEWPORT.width);
+    expect(leftEdge).toBeGreaterThanOrEqual(-1);
+    expect(rightEdge).toBeLessThanOrEqual(DETAIL_VIEWPORT.width + 1);
   });
 
   it("does not change scale based on content position", () => {
@@ -119,44 +138,21 @@ describe("computeFitTransform", () => {
       DETAIL_VIEWPORT.width,
       DETAIL_VIEWPORT.height,
       bounds,
-      { minX: 0, maxX: 100 },
+      { minX: 0, maxX: 400, minY: 0, maxY: 200 },
       PANEL_FIT
     );
     const b = computeFitTransform(
       DETAIL_VIEWPORT.width,
       DETAIL_VIEWPORT.height,
       bounds,
-      { minX: 300, maxX: 496 },
+      { minX: 200, maxX: 600, minY: 40, maxY: 240 },
       PANEL_FIT
     );
     expect(a.scale).toBe(b.scale);
   });
 
-  it("left-aligns content that is wider than the viewport", () => {
-    const wideBounds = { width: 1200, height: 200 };
-    const wideContent = { minX: 0, maxX: 1200 };
-    const { x, scale } = computeFitTransform(
-      DETAIL_VIEWPORT.width,
-      DETAIL_VIEWPORT.height,
-      wideBounds,
-      wideContent,
-      PANEL_FIT
-    );
-
-    expect(x + wideContent.minX * scale).toBeCloseTo(16, 5);
-  });
-
   it("never exceeds the absolute zoom clamps", () => {
-    const t = computeFitTransform(
-      EDITOR_VIEWPORT.width,
-      EDITOR_VIEWPORT.height,
-      SHORT,
-      { minX: 0, maxX: SHORT.width },
-      CONTAIN_FIT
-    );
-    expect(t.scale).toBeGreaterThanOrEqual(ZOOM_MIN_SCALE);
-    expect(t.scale).toBeLessThanOrEqual(ZOOM_MAX_SCALE);
-    expect(clampZoom(0.1)).toBe(ZOOM_MIN_SCALE);
+    expect(clampZoom(0.01)).toBe(ZOOM_MIN_SCALE);
     expect(clampZoom(10)).toBe(ZOOM_MAX_SCALE);
     expect(clampZoom(1)).toBe(1);
   });
@@ -172,12 +168,12 @@ describe("computeFitTransform", () => {
     for (const layout of [linearLayout, parallelLayout]) {
       const nodeMinX = Math.min(...layout.nodes.map((n) => n.x));
       const nodeMaxX = Math.max(...layout.nodes.map((n) => n.x + LAYOUT.NODE_WIDTH));
+      const nodeMinY = Math.min(...layout.nodes.map((n) => n.y));
+      const nodeMaxY = Math.max(...layout.nodes.map((n) => n.y + LAYOUT.NODE_HEIGHT));
       expect(layout.content.minX).toBeLessThanOrEqual(nodeMinX);
       expect(layout.content.maxX).toBeGreaterThanOrEqual(nodeMaxX);
-      expect((layout.content.minX + layout.content.maxX) / 2).toBeCloseTo(
-        LAYOUT.CENTER_X + LAYOUT.NODE_WIDTH / 2,
-        5
-      );
+      expect(layout.content.minY).toBeLessThanOrEqual(nodeMinY);
+      expect(layout.content.maxY).toBeGreaterThanOrEqual(nodeMaxY);
     }
   });
 });

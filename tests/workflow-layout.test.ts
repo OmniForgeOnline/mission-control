@@ -24,8 +24,8 @@ const parallelFixture: LayoutWorkflowInput = {
   }
 };
 
-describe("workflow layout", () => {
-  it("places linear steps on the center spine", () => {
+describe("workflow layout (left → right)", () => {
+  it("places linear steps along the horizontal spine", () => {
     const layout = layoutWorkflow({
       initial: "a",
       steps: {
@@ -37,8 +37,10 @@ describe("workflow layout", () => {
 
     expect(layout.nodes.map((n) => n.id)).toEqual(["a", "b", "c"]);
     expect(layout.nodes.every((n) => n.column === 0)).toBe(true);
-    expect(layout.nodes[0]!.y).toBeLessThan(layout.nodes[1]!.y);
-    expect(layout.nodes[1]!.y).toBeLessThan(layout.nodes[2]!.y);
+    expect(layout.nodes[0]!.x).toBeLessThan(layout.nodes[1]!.x);
+    expect(layout.nodes[1]!.x).toBeLessThan(layout.nodes[2]!.x);
+    // Main spine shares one y.
+    expect(layout.nodes.every((n) => n.y === layout.nodes[0]!.y)).toBe(true);
     expect(layout.edges).toEqual(
       expect.arrayContaining([
         { from: "a", to: "b", kind: "sequential" },
@@ -48,13 +50,16 @@ describe("workflow layout", () => {
     expect(layout.edges).toHaveLength(2);
   });
 
-  it("fans parallel jobs across lanes and groups them", () => {
+  it("fans parallel jobs across vertical lanes and groups them", () => {
     const layout = layoutWorkflow(parallelFixture);
     const parallel = layout.nodes.filter((n) => n.parallelGroup === "implement");
 
     expect(parallel.map((n) => n.id).sort()).toEqual(["lint", "typecheck", "unit"]);
+    // Same flow index (x), different lanes (y).
     expect(new Set(parallel.map((n) => n.row)).size).toBe(1);
     expect(new Set(parallel.map((n) => n.column)).size).toBe(3);
+    expect(new Set(parallel.map((n) => n.x)).size).toBe(1);
+    expect(new Set(parallel.map((n) => n.y)).size).toBe(3);
 
     expect(layout.laneGroups).toHaveLength(1);
     expect(layout.laneGroups[0]!.stepIds.sort()).toEqual(["lint", "typecheck", "unit"]);
@@ -68,7 +73,7 @@ describe("workflow layout", () => {
     expect(fanIn.every((e) => e.to === "create_merge_request")).toBe(true);
   });
 
-  it("computes fan-out and fan-in edge geometry from node anchors", () => {
+  it("computes fan-out and fan-in edge geometry left → right", () => {
     const layout = layoutWorkflow(parallelFixture);
     const geometry = computeEdgeGeometry(layout.nodes, layout.edges);
     const fanOut = geometry.find((e) => e.from === "implement" && e.to === "lint");
@@ -76,10 +81,12 @@ describe("workflow layout", () => {
 
     expect(fanOut).toBeDefined();
     expect(fanIn).toBeDefined();
-    expect(fanOut!.length).toBeGreaterThan(LAYOUT.LANE_WIDTH * 0.5);
-    expect(fanIn!.length).toBeGreaterThan(LAYOUT.ROW_HEIGHT * 0.2);
+    expect(fanOut!.length).toBeGreaterThan(LAYOUT.COL_WIDTH * 0.3);
+    expect(fanIn!.length).toBeGreaterThan(LAYOUT.COL_WIDTH * 0.3);
     expect(fanOut!.branch).toBe(false);
-    expect(fanOut!.x1).toBeGreaterThan(fanOut!.x2);
+    // Source is left of target along the flow.
+    expect(fanOut!.x1).toBeLessThan(fanOut!.x2);
+    expect(fanIn!.x1).toBeLessThan(fanIn!.x2);
   });
 
   it("marks remediation edges as branch geometry", () => {
@@ -99,10 +106,9 @@ describe("workflow layout", () => {
     const geometry = computeEdgeGeometry(layout.nodes, layout.edges);
     const branchGeom = geometry.find((e) => e.from === "checks" && e.to === "implement");
     expect(branchGeom?.branch).toBe(true);
-    expect(branchGeom!.x1).toBeGreaterThan(branchGeom!.x2 - 1);
   });
 
-  it("routes branch edges as a curve that bows clear of the column", () => {
+  it("routes branch edges as a curve that bows below the graph", () => {
     const layout = layoutWorkflow({
       initial: "implement",
       gitPipeline: { remediationStepId: "implement" },
@@ -113,19 +119,17 @@ describe("workflow layout", () => {
       }
     });
 
-    const maxRight = Math.max(...layout.nodes.map((n) => n.x + LAYOUT.NODE_WIDTH));
+    const maxBottom = Math.max(...layout.nodes.map((n) => n.y + LAYOUT.NODE_HEIGHT));
     const branches = computeBranchEdgeGeometry(layout.nodes, layout.edges);
 
     expect(branches).toHaveLength(1);
     const rework = branches[0]!;
     expect(rework.from).toBe("checks");
     expect(rework.to).toBe("implement");
-    // Cubic bezier, not a straight line.
     expect(rework.path.startsWith("M")).toBe(true);
     expect(rework.path).toContain("C");
-    // Bows out to the right of every node so it never overlaps the column.
-    expect(rework.bowX).toBeGreaterThan(maxRight);
-    expect(rework.labelX).toBeGreaterThan(maxRight);
+    expect(rework.bowY).toBeGreaterThan(maxBottom);
+    expect(rework.labelY).toBeGreaterThan(maxBottom * 0.5);
   });
 
   it("fans multiple branch edges so they do not stack", () => {
@@ -142,7 +146,7 @@ describe("workflow layout", () => {
 
     const branches = computeBranchEdgeGeometry(layout.nodes, layout.edges);
     expect(branches.length).toBeGreaterThanOrEqual(2);
-    const bows = branches.map((b) => b.bowX);
+    const bows = branches.map((b) => b.bowY);
     expect(new Set(bows).size).toBe(bows.length);
   });
 });

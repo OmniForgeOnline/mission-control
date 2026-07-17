@@ -41,6 +41,11 @@ import { isAwaitingOperator, isTaskRunning } from "../../core/tasks/status.ts";
 import { loadWorkflow } from "../../core/workflows/index.ts";
 import { isRegisteredAgent, isRegisteredModelPool, unregisteredAgentMessage, unregisteredModelPoolMessage } from "../../core/agents/stage-agents.ts";
 import { abortInflightTurn, deliverOperatorMessageToLiveTurn, listInflightTaskIds } from "../../runtime/sessions.ts";
+import {
+  completeInteractiveTurn,
+  getInteractiveWait,
+  listInteractiveWaits
+} from "../../terminal/interactive-control.ts";
 import type { ToolId, CreateTaskInput, HarnessTask, PmStatus } from "../../core/types.ts";
 import { isEffortLevel } from "../../core/types.ts";
 import { asyncRoute, asStringArray, param, turnOptions, type ServerOptions } from "./helpers.ts";
@@ -102,6 +107,42 @@ export function createTasksRouter(options: ServerOptions): Router {
       }
       abortInflightTurn(id);
       res.json(await cancelTask(options.root, id));
+    })
+  );
+
+  /**
+   * Complete an interactive (PTY) authoring turn. The agent TUI stays open until
+   * the operator marks Done or Blocked — process exit alone does not advance.
+   */
+  router.post(
+    "/tasks/:id/interactive/complete",
+    asyncRoute(async (req, res) => {
+      const id = param(req.params["id"], "id");
+      const body = req.body as { outcome?: string; note?: string };
+      const outcomeRaw = (body.outcome ?? "").trim().toLowerCase();
+      if (outcomeRaw !== "done" && outcomeRaw !== "blocked") {
+        res.status(400).json({ error: "outcome must be 'done' or 'blocked'." });
+        return;
+      }
+      const note = typeof body.note === "string" ? body.note.trim() : undefined;
+      const wait = getInteractiveWait(id);
+      if (!wait) {
+        res.status(409).json({
+          error: "No interactive turn is waiting for this task.",
+          interactiveSessions: listInteractiveWaits()
+        });
+        return;
+      }
+      const ok = completeInteractiveTurn(id, {
+        kind: outcomeRaw,
+        ...(note ? { note } : {})
+      });
+      if (!ok) {
+        res.status(409).json({ error: "Interactive turn could not be completed." });
+        return;
+      }
+      // Runner owns PTY teardown after the waiter resolves.
+      res.json({ completed: true, outcome: outcomeRaw, taskId: id });
     })
   );
 

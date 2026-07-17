@@ -300,6 +300,12 @@ export interface AppState {
   workflow?: WorkflowMetadata;
   stageAgentOverrides?: Record<string, string>;
   inflightTaskIds?: string[];
+  /** Interactive PTY turns waiting for operator Done/Block. */
+  interactiveSessions?: Array<{
+    taskId: string;
+    terminalSessionId?: string;
+    runId?: string;
+  }>;
   activityThresholds?: { staleMs: number; longRunMs: number };
   intakeSession?: IntakeSession;
   /** Desktop editors offered by the ticket "Open worktree" handoff. */
