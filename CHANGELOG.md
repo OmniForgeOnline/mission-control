@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.7.2
+
+### Patch Changes
+
+- 09d90fa: Interactive implement turns auto-advance when the agent finishes so automated steps can chain.
+
+  - Authoring/implement PTY sessions auto-complete on process exit (success) or when the harness branch is committed, clean, and pushed — Done is no longer required to unlock create_merge_request / review.
+  - Planning/conversation stays operator-driven (Done) so questions are not skipped when the CLI exits.
+  - Operator can still type into the TUI anytime and use Done / Block.
+  - Git handoff is always checked on interactive Done for repo author steps (not only when reply text looks like a final answer).
+
+- 610b9ed: Fix update modal auto-recovery: after "Update now" the modal now polls until the server restarts and reloads the page automatically, instead of sitting on a "Restarting..." message that required a manual refresh.
+- 09d90fa: Fix plan/conversation workspace cwd: agents (interactive and headless) start in the project directory instead of Application Support scratch.
+
+  - Non-mutating steps use the destination project path so agents can inspect the real codebase.
+  - Isolated harness worktrees still apply only to repo-changing steps (implement, review, MR, conflicts).
+  - Scratch remains only when a task has no project target.
+  - Push-flow heuristics require a harness worktree branch so plan turns on the main checkout never look like a completed author push.
+
 ## 0.7.1
 
 ### Patch Changes
