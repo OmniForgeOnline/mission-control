@@ -118,12 +118,74 @@ async function applyFromModal(mode: "now" | "idle"): Promise<void> {
     }
     if (mode === "now" && res?.applying) {
       setModalStatus("Installed. Restarting...");
+      void awaitServerRestart({
+        probe: probeServerUp,
+        sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+        now: () => Date.now(),
+        reload: () => window.location.reload(),
+        onTimeout: () =>
+          setModalStatus("Restart is taking longer than expected. Refresh the page to continue.")
+      });
     }
   } catch (error) {
     setModalStatus(`Failed: ${(error as Error).message}`);
     if (nowBtn) nowBtn.disabled = false;
     if (idleBtn) idleBtn.disabled = false;
   }
+}
+
+/** Resolve true when the server answers, false on any network failure. */
+async function probeServerUp(): Promise<boolean> {
+  try {
+    await api("/api/version");
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Injectable dependencies so the restart watcher is testable without a browser. */
+export interface RestartWatcherDeps {
+  /** Resolve true when the server answers, false on any network failure. */
+  probe: () => Promise<boolean>;
+  sleep: (ms: number) => Promise<void>;
+  now: () => number;
+  reload: () => void;
+  /** Called when no restart is observed before the deadline. */
+  onTimeout: () => void;
+}
+
+const RESTART_INTERVAL_MS = 1500;
+// Exceeds the detached updater's 5-min `npm install` cap plus boot, so a slow
+// install still recovers instead of falling back to the manual-refresh message.
+const RESTART_TIMEOUT_MS = 6 * 60 * 1000;
+
+/**
+ * After "Update now" returns `applying: true`, watch for the server to restart
+ * (go unreachable, then come back) and reload the page so the freshly installed
+ * client bundle is loaded. Falls back to `onTimeout` when no restart is
+ * observed within the deadline, so the UI never sits on a "Restarting..."
+ * promise it cannot fulfill.
+ */
+export async function awaitServerRestart(
+  deps: RestartWatcherDeps,
+  intervalMs = RESTART_INTERVAL_MS,
+  timeoutMs = RESTART_TIMEOUT_MS
+): Promise<void> {
+  const deadline = deps.now() + timeoutMs;
+  let sawDown = false;
+  while (deps.now() < deadline) {
+    await deps.sleep(intervalMs);
+    if (await deps.probe()) {
+      if (sawDown) {
+        deps.reload();
+        return;
+      }
+    } else {
+      sawDown = true;
+    }
+  }
+  deps.onTimeout();
 }
 
 function toastOutcome(outcome: UpdateOutcome): void {
