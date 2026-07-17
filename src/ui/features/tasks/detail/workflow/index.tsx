@@ -42,24 +42,6 @@ export function WorkflowPane({
 
   return (
     <div class="wf-shell">
-      <div class="wf-legend">
-        <span>
-          <span class="wf-legend-swatch done" /> Completed
-        </span>
-        <span>
-          <span class="wf-legend-swatch current" /> Current
-        </span>
-        <span>
-          <span class="wf-legend-swatch upcoming" /> Upcoming
-        </span>
-        <span>
-          <span class="wf-legend-bar operator" /> Operator-gated
-        </span>
-        <span>
-          <span class="wf-legend-bar daemon" /> Auto (daemon)
-        </span>
-      </div>
-
       <WorkflowSplitPane
         canvas={
           <WorkflowCanvas

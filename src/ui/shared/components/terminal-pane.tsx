@@ -22,7 +22,6 @@ export interface TerminalSessionInfo {
 }
 
 interface TerminalPaneProps {
-  taskId: string;
   /**
    * Session created by the daemon interactive runner. When absent, the pane
    * shows a waiting state (no free-floating shell/TUI spawn).

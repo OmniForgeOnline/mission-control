@@ -73,12 +73,6 @@ export function setRailCollapsed(collapsed: boolean): void {
   }
 }
 
-export function getRailCollapsed(): boolean {
-  const shell = document.querySelector<HTMLElement>(".app-shell");
-  if (shell) return shell.classList.contains("collapsed");
-  return readStoredRailCollapsed();
-}
-
 /**
  * Restore the persisted rail width and wire the drag handle + collapse chevron.
  * Idempotent: safe to call once on bootstrap. Controls live as direct children of

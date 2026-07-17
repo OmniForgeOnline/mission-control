@@ -258,46 +258,6 @@ button.status-badge-btn:focus-visible {
   text-transform: capitalize;
 }
 
-.wf-legend {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--s-3);
-  padding: var(--s-2) var(--s-5);
-  border-bottom: 1px solid var(--hairline);
-  background: var(--surface);
-  font-size: var(--t-xs);
-  color: var(--ink-muted);
-}
-
-.wf-legend > span {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.wf-legend-swatch {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-}
-
-.wf-legend-swatch.done { background: var(--status-completed); }
-.wf-legend-swatch.current { background: var(--accent); }
-.wf-legend-swatch.upcoming {
-  background: var(--surface-3);
-  border: 1px solid var(--hairline-strong);
-}
-
-.wf-legend-bar {
-  width: 18px;
-  height: 0;
-  border-top: 3px solid;
-  border-radius: 2px;
-}
-
-.wf-legend-bar.operator { border-color: var(--status-await-operator); }
-.wf-legend-bar.daemon { border-color: var(--status-running); }
-
 .wf-shell {
   display: flex;
   flex-direction: column;
@@ -992,10 +952,6 @@ button.status-badge-btn:focus-visible {
   font-size: var(--t-xs);
   color: var(--ink-muted);
   margin-top: 2px;
-}
-
-.wf-agent-effective {
-  font-size: var(--t-xs);
 }
 
 /* step-scoped Agent / Effort dropdowns (popover) */

@@ -1,7 +1,6 @@
 // Bottom details panel (step/terminal) vs top workflow canvas.
 // Default: short workflow strip. User can drag the splitter to grow the canvas.
 
-export const DEFAULT_WORKFLOW_PANEL_RATIO = 0.82;
 // Fallback before the body has been measured (panel-biased).
 export const DEFAULT_WORKFLOW_PANEL_HEIGHT = 520;
 export const MIN_WORKFLOW_PANEL_HEIGHT = 180;

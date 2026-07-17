@@ -405,7 +405,6 @@ export function WorkflowStepPanel({
 
       {interactiveStep ? (
         <TerminalPane
-          taskId={task.id}
           {...(interactiveSessionId ? { sessionId: interactiveSessionId } : {})}
           active={isActive && isRunning}
         />
