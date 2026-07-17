@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { access, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { access, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -56,7 +56,7 @@ describe("workflow repo step detection", () => {
     expect(stepUsesRepoWorkspace(step, {})).toBe(true);
   });
 
-  it("keeps conversation steps off repo worktrees", () => {
+  it("keeps conversation steps off isolated worktrees (they still use the project cwd)", () => {
     const step: WorkflowStep = {
       id: "scope",
       kind: "conversation",
@@ -66,6 +66,7 @@ describe("workflow repo step detection", () => {
       next: "plan"
     };
     expect(stepModifiesRepo(step)).toBe(false);
+    // No worktree isolation for plan — but prepareStepWorkspace still uses the project dir.
     expect(stepUsesRepoWorkspace(step, { repoPath: "/repo", workspacePath: "/wt" })).toBe(false);
   });
 
@@ -114,7 +115,7 @@ describe("prepareStepWorkspace", () => {
     expect(branchNameFor(task)).toBe("harness/fix-worktree-branch-naming-9b4de099a5ff");
   });
 
-  it("uses scratch for conversation steps even when the target is a git repo", async () => {
+  it("runs conversation steps in the project repo, not Application Support scratch", async () => {
     const task = makeTask({
       id: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
       targets: [{ raw: `@${destinationRepo}`, path: destinationRepo, kind: "directory" }]
@@ -129,9 +130,36 @@ describe("prepareStepWorkspace", () => {
 
     const workspace = await prepareStepWorkspace(task, step, { harnessRoot });
 
+    // Context cwd is the destination project so plan agents can inspect code.
+    // No harness worktree/branch yet (push-flow stays off via isRepo: false).
+    // git may resolve macOS /var → /private/var; compare via realpath.
+    const expectedRepo = await realpath(destinationRepo);
+    expect(workspace.isRepo).toBe(false);
+    expect(workspace.created).toBe(false);
+    expect(workspace.branch).toBeUndefined();
+    expect(workspace.repoPath).toBe(expectedRepo);
+    expect(workspace.cwd).toBe(expectedRepo);
+    expect(workspace.cwd).not.toContain(path.join("data", "state", "scratch"));
+    expect(workspace.cwd).not.toContain(path.join("data", "state", "worktrees"));
+  });
+
+  it("falls back to scratch only when the task has no project target", async () => {
+    const task = makeTask({
+      id: "cccccccc-dddd-eeee-ffff-000000000000",
+      targets: []
+    });
+    const step: WorkflowStep = {
+      id: "plan",
+      kind: "conversation",
+      agent: "author",
+      approval: "none",
+      next: "implement"
+    };
+
+    const workspace = await prepareStepWorkspace(task, step, { harnessRoot });
+
     expect(workspace.isRepo).toBe(false);
     expect(workspace.cwd).toContain(path.join("data", "state", "scratch"));
-    expect(workspace.created).toBe(false);
   });
 
   it("creates an isolated worktree and branch for repo-changing steps", async () => {

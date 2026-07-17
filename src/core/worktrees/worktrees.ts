@@ -201,6 +201,37 @@ async function prepareScratchWorkspace(task: HarnessTask, harnessRoot: string): 
   return { cwd: scratch, isRepo: false, created: false };
 }
 
+/**
+ * Project-context workspace for non-mutating steps (plan/conversation, analysis).
+ * Agents must start in the real project so they can inspect code — not Application
+ * Support scratch. Does not create a worktree/branch; push-flow stays off (`isRepo: false`).
+ * Scratch only when the task has no destination target at all.
+ */
+async function prepareProjectContextWorkspace(
+  task: HarnessTask,
+  harnessRoot: string
+): Promise<PreparedWorkspace> {
+  const targetDir = await pickTargetDir(task);
+  if (!targetDir) {
+    return prepareScratchWorkspace(task, harnessRoot);
+  }
+
+  await ensureDir(targetDir);
+  const repoPath = await gitTopLevel(targetDir);
+  if (!repoPath) {
+    return { cwd: targetDir, isRepo: false, created: false };
+  }
+
+  // Sit in the destination repo checkout for context. Isolated harness worktrees
+  // are created later by prepareWorkspace when a step actually modifies the repo.
+  return {
+    cwd: repoPath,
+    repoPath,
+    isRepo: false,
+    created: false
+  };
+}
+
 async function withPrepareLock<T>(worktreeDir: string, prepare: () => Promise<T>): Promise<T> {
   const previous = prepareLocks.get(worktreeDir);
   if (previous) {
@@ -275,8 +306,10 @@ export async function prepareWorkspace(
 }
 
 /**
- * Pick a workspace for a workflow step. Planning/conversation steps use scratch;
- * repo-changing steps get an isolated worktree + branch so parallel tasks do not clash.
+ * Pick a workspace for a workflow step. Same rules for interactive and headless:
+ * - Non-mutating steps (plan/conversation, analysis) → project directory when
+ *   the task has a target (scratch only if there is no destination at all).
+ * - Repo-changing steps → isolated worktree + branch so parallel tasks do not clash.
  */
 export async function prepareStepWorkspace(
   task: HarnessTask,
@@ -284,7 +317,7 @@ export async function prepareStepWorkspace(
   options: PrepareWorkspaceOptions
 ): Promise<PreparedWorkspace> {
   if (!stepUsesRepoWorkspace(step, task)) {
-    return prepareScratchWorkspace(task, options.harnessRoot);
+    return prepareProjectContextWorkspace(task, options.harnessRoot);
   }
 
   const targetDir = await pickTargetDir(task);
