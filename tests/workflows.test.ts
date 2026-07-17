@@ -301,10 +301,11 @@ describe("workflow types", () => {
     expect(bugfix.steps['review']?.branch?.['changes_requested']).toBe("fix");
   });
 
-  it("marks repo-changing implement steps and keeps planning off worktrees", async () => {
+  it("marks repo-changing implement steps and keeps planning off worktree isolation", async () => {
     const codeFeature = await loadWorkflow(root, "code-feature");
     expect(stepModifiesRepo(codeFeature.steps['implement']!)).toBe(true);
     expect(stepModifiesRepo(codeFeature.steps['plan']!)).toBe(false);
+    // Planning does not create a harness worktree; prepareStepWorkspace still uses the project cwd.
     expect(stepUsesRepoWorkspace(codeFeature.steps['plan']!, {})).toBe(false);
     expect(stepUsesRepoWorkspace(codeFeature.steps['review']!, { repoPath: "/repo" })).toBe(true);
 

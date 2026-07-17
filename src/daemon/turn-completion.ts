@@ -410,7 +410,16 @@ export async function completeAgentTurn(params: CompleteAgentTurnParams): Promis
   let commitCount: number | undefined;
   let scheduleReview = false;
 
-  if (gitState && gitState.commitCount > 0 && !gitState.hasUnpushedCommits && !gitState.hasUncommittedChanges) {
+  // Push-flow heuristics only apply on isolated harness worktrees (branch set).
+  // Plan/conversation steps may run in the destination project for context without
+  // a harness branch; do not treat the main checkout as a completed author push.
+  if (
+    gitState &&
+    workspace.branch &&
+    gitState.commitCount > 0 &&
+    !gitState.hasUnpushedCommits &&
+    !gitState.hasUncommittedChanges
+  ) {
     pushedAt = completedAt;
     commitCount = gitState.commitCount;
     const nextAfterPush = step.next ? getStep(workflow, step.next) : null;
