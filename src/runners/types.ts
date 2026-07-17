@@ -69,6 +69,10 @@ export interface AgentTurnResult {
   blockedReason?: string;
   /** Concatenated stdout+stderr captured from the agent (for the run log). */
   rawLog: string;
+  /** True when the turn ran via an interactive PTY (operator-driven completion). */
+  interactive?: boolean;
+  /** How the operator (or abort) finished an interactive turn. */
+  operatorOutcome?: "done" | "blocked" | "aborted";
 }
 
 export interface AgentRunner {

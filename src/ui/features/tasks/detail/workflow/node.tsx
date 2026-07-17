@@ -81,7 +81,9 @@ export function WorkflowNode({
       <div class="wf-node-head">
         <span class="wf-node-dot" aria-hidden="true" />
         <span class="wf-node-name">{stepLabel(stepId)}</span>
-        {isDraft ? null : <span class="wf-node-state">{nodeStateLabel(state)}</span>}
+        {isDraft || state === "blocked" ? null : (
+          <span class="wf-node-state">{nodeStateLabel(state)}</span>
+        )}
       </div>
       <div class="wf-node-meta">
         <span class="wf-tag">{step.kind}</span>

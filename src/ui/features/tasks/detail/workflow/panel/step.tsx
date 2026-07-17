@@ -5,10 +5,6 @@ import { toast, errorToast } from "@ui/overlays/toast.js";
 import { confirm } from "@ui/overlays/confirm.js";
 import { taskIsRunning } from "@ui/app/task-status.js";
 import {
-  isDaemonDrivenStep,
-  isOperatorGatedStep
-} from "@ui/app/workflow-steps.js";
-import {
   effectiveTaskEffort,
   isStepActive,
   modelPoolDisplayName,
@@ -18,11 +14,6 @@ import {
   ui,
   workflowStepAgent
 } from "@ui/app/state.js";
-import {
-  nodeStateLabel,
-  nodeVisualState,
-  parallelPosition
-} from "../state.js";
 import { StepChat } from "./step-chat.js";
 import { StepSettingMenu, type StepSettingOption } from "./step-setting-menu.js";
 import { agentVisual, effortBarSpec, type AgentVisual } from "./step-setting-visual.js";
@@ -30,7 +21,8 @@ import { AgentLogo, isKnownAgentLogo } from "./agent-logo.js";
 import { WorkflowEmptyState } from "./empty-state.js";
 import { MergeRequestChip } from "@ui/shared/components/task-chips.js";
 import { AttachmentChips } from "@ui/shared/components/attachments.js";
-import type { AgentSummary, HarnessTask, ProjectSummary, WorkflowSummary } from "@ui/app/types.js";
+import { TerminalPane } from "@ui/shared/components/terminal-pane.js";
+import type { AgentSummary, HarnessTask, WorkflowSummary } from "@ui/app/types.js";
 
 function settingSwatch(visual: AgentVisual) {
   return (
@@ -57,11 +49,7 @@ function settingBars(levels: readonly string[], current: string) {
   );
 }
 
-function stepLabel(stepId: string): string {
-  return stepId.replace(/_/g, " ");
-}
-
-type NodeAction = "approve" | "rollback" | "skip";
+type NodeAction = "approve" | "rollback";
 
 async function runNodeAction(taskId: string, stepId: string, action: NodeAction): Promise<void> {
   try {
@@ -74,6 +62,22 @@ async function runNodeAction(taskId: string, stepId: string, action: NodeAction)
   } catch (err) {
     errorToast((err as Error).message);
   }
+}
+
+async function completeInteractiveTurn(
+  taskId: string,
+  outcome: "done" | "blocked",
+  note: string
+): Promise<void> {
+  await api(`/api/tasks/${taskId}/interactive/complete`, {
+    method: "POST",
+    body: JSON.stringify({
+      outcome,
+      ...(note.trim() ? { note: note.trim() } : {})
+    })
+  });
+  toast(outcome === "done" ? "Step marked done" : "Step blocked", { tone: "success" });
+  requestRefresh();
 }
 
 async function setStepAgent(taskId: string, stepId: string, agent: string): Promise<void> {
@@ -136,35 +140,6 @@ async function setStepModel(taskId: string, stepId: string, poolId: string): Pro
   }
 }
 
-function targetName(path: string): string {
-  return path.split("/").filter(Boolean).at(-1) ?? path;
-}
-
-function projectTarget(task: HarnessTask): { name: string; path: string; empty: boolean } {
-  const target = task.targets?.[0];
-  if (!target) {
-    return { name: "No project selected", path: "Add a project path before the next run.", empty: true };
-  }
-  return { name: targetName(target.path), path: target.path, empty: false };
-}
-
-function projectOptionLabel(project: ProjectSummary): string {
-  return `${project.name} — ${project.repoPath}`;
-}
-
-async function bindProject(taskId: string, path: string): Promise<void> {
-  try {
-    await api(`/api/tasks/${taskId}/bind-repo`, {
-      method: "POST",
-      body: JSON.stringify({ path })
-    });
-    toast("Project updated", { tone: "success" });
-    requestRefresh();
-  } catch (err) {
-    errorToast((err as Error).message);
-  }
-}
-
 export function WorkflowStepPanel({
   task,
   workflow,
@@ -174,6 +149,8 @@ export function WorkflowStepPanel({
   workflow: WorkflowSummary;
   stepId: string | null;
 }) {
+  const [completeBusy, setCompleteBusy] = useState(false);
+
   if (!stepId) {
     return (
       <div class="wf-pane">
@@ -199,11 +176,9 @@ export function WorkflowStepPanel({
     );
   }
 
-  const state = nodeVisualState(stepId, task, workflow);
   const capacityNote = stepAgentCapacityNote(task, stepId);
   const defaultAgent = workflowStepAgent(task, stepId);
   const agents = ui.data?.agents ?? [];
-  const projects = ui.data?.projects ?? [];
   const agentById = (id: string): AgentSummary | undefined => agents.find((a) => a.id === id);
   const selectedAgent = task.stageAgentOverrides?.[stepId] ?? "";
   const hasAgent = step.agent !== "none";
@@ -242,19 +217,11 @@ export function WorkflowStepPanel({
     }))
   ];
 
-  const project = projectTarget(task);
   const isRunning = taskIsRunning(task);
-  const [editingProject, setEditingProject] = useState(project.empty);
-  const [projectPath, setProjectPath] = useState(project.empty ? "" : project.path);
   const approved = task.workflowRun?.stepApprovals[stepId]?.status === "approved";
-  const parallel = parallelPosition(stepId, workflow);
-  const advancement = isOperatorGatedStep(workflow, stepId)
-    ? "Operator approval required"
-    : isDaemonDrivenStep(workflow, stepId)
-      ? "Daemon advances automatically"
-      : "Standard";
   const needsApproval = step.approval === "required" && !approved;
   const isActive = isStepActive(task, stepId);
+  const canRollback = Boolean(task.workflowRun?.completedSteps.includes(stepId));
   // Model recorded on the run that executed this step (completed or active);
   // falls back to the live run only for the step currently in flight.
   const stepModel = modelPoolDisplayName(stepRunModelPoolId(task, stepId));
@@ -287,132 +254,136 @@ export function WorkflowStepPanel({
     }))
   ];
   const showModelMenu = hasAgent && (stepModelPools.length > 0 || Boolean(selectedModelPool));
+  const interactiveStep = hasAgent && (step.kind === "agent_turn" || step.kind === "conversation");
+  const interactiveSessionId = (ui.data?.interactiveSessions ?? []).find((s) => s.taskId === task.id)
+    ?.terminalSessionId;
+  const showInteractiveComplete = interactiveStep && (Boolean(interactiveSessionId) || (isActive && isRunning));
+  const showSettingsActions = needsApproval || canRollback || showInteractiveComplete;
+
+  async function onInteractiveComplete(outcome: "done" | "blocked"): Promise<void> {
+    if (completeBusy) return;
+    setCompleteBusy(true);
+    try {
+      await completeInteractiveTurn(task.id, outcome, "");
+    } catch (err) {
+      errorToast((err as Error).message);
+    } finally {
+      setCompleteBusy(false);
+    }
+  }
 
   return (
-    <div class="wf-pane">
-      <div class="wf-step-head">
-        <span class={`wf-node-dot is-${state}`} aria-hidden="true" />
-        <h3>{stepLabel(stepId)}</h3>
-        <span class="wf-node-state">{nodeStateLabel(state)}</span>
-      </div>
-
+    <div class={`wf-pane${interactiveStep ? " is-terminal" : ""}`}>
       <div class="wf-details">
-        <div class="wf-detail">
-          <span class="k">Agent</span>
-          <span class="v">
-            {hasAgent ? (
-              <StepSettingMenu
-                label="Agent for this step"
-                heading="Agent for this step"
-                options={agentOptions}
-                selected={selectedAgent}
-                triggerLeading={agentLeading(effectiveAgentId, effectiveAgent?.displayName)}
-                triggerLabel={agentTriggerLabel}
-                onSelect={(value) => void setStepAgent(task.id, stepId, value)}
-              />
-            ) : (
-              <span class="mono">—</span>
-            )}
-            {capacityNote ? <span class="muted wf-agent-capacity">{capacityNote}</span> : null}
-          </span>
-        </div>
-        {showModelMenu ? (
-          <div class="wf-detail">
-            <span class="k">Model</span>
-            <span class="v">
-              <StepSettingMenu
-                label="Model for this step"
-                heading="Model for this step"
-                options={modelOptions}
-                selected={selectedModelPool}
-                triggerLeading={settingSwatch({ color: "var(--ink-faint)", initial: "·" })}
-                triggerLabel={modelTriggerLabel}
-                onSelect={(value) => void setStepModel(task.id, stepId, value)}
-              />
-            </span>
+        <div class="wf-detail wide wf-settings-line">
+          <div class="wf-settings-core" role="group" aria-label="Agent settings">
+            <div class="wf-setting-cell">
+              <span class="k">Agent</span>
+              <span class="v">
+                {hasAgent ? (
+                  <StepSettingMenu
+                    label="Agent for this step"
+                    heading="Agent for this step"
+                    options={agentOptions}
+                    selected={selectedAgent}
+                    triggerLeading={agentLeading(effectiveAgentId, effectiveAgent?.displayName)}
+                    triggerLabel={agentTriggerLabel}
+                    onSelect={(value) => void setStepAgent(task.id, stepId, value)}
+                  />
+                ) : (
+                  <span class="mono">—</span>
+                )}
+                {capacityNote ? <span class="muted wf-agent-capacity">{capacityNote}</span> : null}
+              </span>
+            </div>
+            {showModelMenu || stepModel ? (
+              <div class="wf-setting-cell">
+                <span class="k">Model</span>
+                <span class="v">
+                  {showModelMenu ? (
+                    <StepSettingMenu
+                      label="Model for this step"
+                      heading="Model for this step"
+                      options={modelOptions}
+                      selected={selectedModelPool}
+                      triggerLeading={settingSwatch({ color: "var(--ink-faint)", initial: "·" })}
+                      triggerLabel={modelTriggerLabel}
+                      onSelect={(value) => void setStepModel(task.id, stepId, value)}
+                    />
+                  ) : (
+                    <span class="mono">{stepModel}</span>
+                  )}
+                </span>
+              </div>
+            ) : null}
+            {showEffort ? (
+              <div class="wf-setting-cell">
+                <span class="k">Effort</span>
+                <span class="v">
+                  <StepSettingMenu
+                    label="Reasoning effort for this step"
+                    heading="Reasoning effort"
+                    options={effortOptions}
+                    selected={selectedEffort}
+                    triggerLeading={settingBars(effortLevels, effectiveEffort)}
+                    triggerLabel={effectiveEffort || "default"}
+                    onSelect={(value) => void setStepEffort(task.id, stepId, value)}
+                  />
+                </span>
+              </div>
+            ) : null}
           </div>
-        ) : stepModel ? (
-          <div class="wf-detail">
-            <span class="k">Model</span>
-            <span class="v mono">{stepModel}</span>
-          </div>
-        ) : null}
-        {showEffort ? (
-          <div class="wf-detail">
-            <span class="k">Effort</span>
-            <span class="v">
-              <StepSettingMenu
-                label="Reasoning effort for this step"
-                heading="Reasoning effort"
-                options={effortOptions}
-                selected={selectedEffort}
-                triggerLeading={settingBars(effortLevels, effectiveEffort)}
-                triggerLabel={effectiveEffort || "default"}
-                onSelect={(value) => void setStepEffort(task.id, stepId, value)}
-              />
-            </span>
-          </div>
-        ) : null}
-        <div class="wf-detail wide">
-          <span class="k">Project</span>
-          <span class="v project-target">
-            {editingProject ? (
-              <div class="project-target-editor">
-                <select
-                  class="select project-target-select"
-                  value={projectPath}
-                  disabled={isRunning || projects.length === 0}
-                  aria-label="Project"
-                  onChange={(e) => setProjectPath((e.currentTarget as HTMLSelectElement).value)}
+          {showSettingsActions ? (
+            <div class="wf-settings-actions">
+              {needsApproval ? (
+                <button
+                  type="button"
+                  class="btn btn-sm btn-primary"
+                  onClick={() => void runNodeAction(task.id, stepId, "approve")}
                 >
-                  <option value="" disabled>
-                    {projects.length ? "Select a project" : "No projects available"}
-                  </option>
-                  {projects.map((candidate) => (
-                    <option key={candidate.id} value={candidate.repoPath}>
-                      {projectOptionLabel(candidate)}
-                    </option>
-                  ))}
-                </select>
-                <span class="project-target-actions">
+                  Approve step
+                </button>
+              ) : null}
+              {showInteractiveComplete ? (
+                <>
                   <button
                     type="button"
                     class="btn btn-sm btn-primary"
-                    disabled={!projectPath.trim() || isRunning}
-                    onClick={() => void bindProject(task.id, projectPath.trim())}
+                    disabled={completeBusy || !interactiveSessionId}
+                    onClick={() => void onInteractiveComplete("done")}
                   >
-                    Save
+                    Done
                   </button>
                   <button
                     type="button"
-                    class="btn btn-sm"
-                    onClick={() => {
-                      setProjectPath(project.empty ? "" : project.path);
-                      setEditingProject(false);
-                    }}
+                    class="btn btn-sm btn-danger"
+                    disabled={completeBusy || !interactiveSessionId}
+                    onClick={() => void onInteractiveComplete("blocked")}
                   >
-                    Cancel
+                    Block
                   </button>
-                </span>
-              </div>
-            ) : (
-              <>
-                <span class={project.empty ? "muted" : ""}>{project.name}</span>
-                <span class="muted mono project-target-path">{project.path}</span>
+                </>
+              ) : null}
+              {canRollback ? (
                 <button
                   type="button"
-                  class="btn btn-sm"
-                  disabled={isRunning}
-                  onClick={() => setEditingProject(true)}
+                  class="btn btn-sm btn-danger"
+                  onClick={() => {
+                    void confirm({
+                      title: "Rollback to this step?",
+                      message: "Downstream progress will be trimmed.",
+                      confirmLabel: "Rollback",
+                      tone: "danger"
+                    }).then((ok) => {
+                      if (ok) void runNodeAction(task.id, stepId, "rollback");
+                    });
+                  }}
                 >
-                  Change project
+                  Rollback
                 </button>
-              </>
-            )}
-            {isRunning ? (
-              <span class="muted wf-agent-effective">Stop the running task before changing project.</span>
-            ) : null}
-          </span>
+              ) : null}
+            </div>
+          ) : null}
         </div>
         {task.mergeRequest ? (
           <div class="wf-detail wide">
@@ -430,70 +401,16 @@ export function WorkflowStepPanel({
             </span>
           </div>
         ) : null}
-        <div class="wf-detail">
-          <span class="k">Kind</span>
-          <span class="v">{step.kind}</span>
-        </div>
-        <div class="wf-detail">
-          <span class="k">Approval</span>
-          <span class="v">
-            {step.approval === "required" ? (approved ? "approved" : "required") : "none"}
-          </span>
-        </div>
-        <div class="wf-detail">
-          <span class="k">Advancement</span>
-          <span class="v">{advancement}</span>
-        </div>
-        <div class="wf-detail">
-          <span class="k">Parallel</span>
-          <span class="v">
-            {parallel
-              ? `job ${parallel.index} of ${parallel.total} in "${parallel.groupId.replace(/_/g, " ")}"`
-              : "—"}
-          </span>
-        </div>
       </div>
 
-      <div class="wf-step-actions">
-        {needsApproval ? (
-          <button
-            type="button"
-            class="btn btn-sm btn-primary"
-            onClick={() => void runNodeAction(task.id, stepId, "approve")}
-          >
-            Approve step
-          </button>
-        ) : null}
-        {isActive && step.kind !== "terminal" ? (
-          <button
-            type="button"
-            class="btn btn-sm"
-            onClick={() => void runNodeAction(task.id, stepId, "skip")}
-          >
-            Skip
-          </button>
-        ) : null}
-        {task.workflowRun?.completedSteps.includes(stepId) ? (
-          <button
-            type="button"
-            class="btn btn-sm btn-danger"
-            onClick={() => {
-              void confirm({
-                title: "Rollback to this step?",
-                message: "Downstream progress will be trimmed.",
-                confirmLabel: "Rollback",
-                tone: "danger"
-              }).then((ok) => {
-                if (ok) void runNodeAction(task.id, stepId, "rollback");
-              });
-            }}
-          >
-            Rollback
-          </button>
-        ) : null}
-      </div>
-
-      <StepChat task={task} stepId={stepId} canRevert={canRevertStep} />
+      {interactiveStep ? (
+        <TerminalPane
+          {...(interactiveSessionId ? { sessionId: interactiveSessionId } : {})}
+          active={isActive && isRunning}
+        />
+      ) : (
+        <StepChat task={task} stepId={stepId} canRevert={canRevertStep} />
+      )}
     </div>
   );
 }

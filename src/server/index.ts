@@ -9,6 +9,8 @@ import { gracefulShutdown, setShutdownTarget } from "./lifecycle.ts";
 import { startListening } from "./listen.ts";
 import { DEFAULT_HARNESS_ROOT, ensureHarnessRepository } from "../core/bootstrap/repository.ts";
 import { ensureLoginShellEnvironment } from "../core/agents/resolver.ts";
+import { attachTerminalWebSocketServer } from "../terminal/ws-server.ts";
+import { disposeAllTerminalSessions, getTerminalSessionManager } from "../terminal/manager.ts";
 import { getConnectorVault } from "../connectors/vault/index.ts";
 import { loadAgentConfig } from "../core/agents/config/store.ts";
 import { loadAllWorkflows } from "../core/workflows/index.ts";
@@ -86,6 +88,20 @@ if (!existsSync(uiIndex)) {
 // the running server's pid/token and strand it beyond `mission-control stop`.
 const server = await startListening(app, port, host);
 
+// Interactive terminal sessions (xterm.js clients attach via WebSocket).
+// Failures to load node-pty are logged but do not block the API/UI.
+try {
+  attachTerminalWebSocketServer(server, {
+    manager: getTerminalSessionManager(),
+    listenHost: host,
+    authToken: shutdownToken
+  });
+} catch (err) {
+  console.warn(
+    `Interactive terminal disabled: ${err instanceof Error ? err.message : String(err)}`
+  );
+}
+
 console.log(`OmniForge Mission Control running at http://${host}:${port}`);
 console.log(`UI served at: http://${host}:${port}`);
 console.log(`Mission Control root: ${root}`);
@@ -99,7 +115,10 @@ const daemonHandle = startDaemonLoop({ root, intervalMs, autonomy });
 setShutdownTarget({
   server,
   daemon: daemonHandle,
-  onShutdown: () => removeServerInfo(root)
+  onShutdown: async () => {
+    disposeAllTerminalSessions();
+    await removeServerInfo(root);
+  }
 });
 await writeServerInfo(root, { pid: process.pid, port, host, startedAt: new Date().toISOString(), shutdownToken });
 

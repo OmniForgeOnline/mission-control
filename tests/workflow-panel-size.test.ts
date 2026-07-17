@@ -1,62 +1,70 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  clampWorkflowPanelWidth,
-  DEFAULT_WORKFLOW_PANEL_RATIO,
-  DEFAULT_WORKFLOW_PANEL_WIDTH,
-  defaultWorkflowPanelWidth,
-  MAX_WORKFLOW_PANEL_WIDTH,
-  MIN_WORKFLOW_CANVAS_WIDTH,
-  MIN_WORKFLOW_PANEL_WIDTH,
-  panelWidthFromPointer,
-  WORKFLOW_SPLITTER_WIDTH
+  clampWorkflowPanelHeight,
+  COLLAPSED_WORKFLOW_PANEL_HEIGHT,
+  DEFAULT_WORKFLOW_CANVAS_HEIGHT,
+  DEFAULT_WORKFLOW_PANEL_HEIGHT,
+  defaultWorkflowPanelHeight,
+  MAX_WORKFLOW_CANVAS_HEIGHT,
+  maxCanvasHeightForBody,
+  MIN_WORKFLOW_CANVAS_HEIGHT,
+  MIN_WORKFLOW_PANEL_HEIGHT,
+  panelHeightFromPointer,
+  WORKFLOW_SPLITTER_HEIGHT
 } from "../src/ui/features/tasks/detail/workflow/panel-size.ts";
 
-describe("workflow panel size", () => {
-  it("defaults wider than the old fixed panel", () => {
-    expect(DEFAULT_WORKFLOW_PANEL_WIDTH).toBeGreaterThan(392);
+describe("workflow panel size (vertical split)", () => {
+  it("exposes a slim collapsed bar height", () => {
+    expect(COLLAPSED_WORKFLOW_PANEL_HEIGHT).toBeLessThan(MIN_WORKFLOW_PANEL_HEIGHT);
+    expect(COLLAPSED_WORKFLOW_PANEL_HEIGHT).toBeGreaterThan(0);
   });
 
-  it("uses a 60/40 canvas/panel ratio for the default", () => {
-    expect(DEFAULT_WORKFLOW_PANEL_RATIO).toBe(0.4);
+  it("defaults tall enough for a terminal pane", () => {
+    expect(DEFAULT_WORKFLOW_PANEL_HEIGHT).toBeGreaterThanOrEqual(300);
   });
 
-  it("derives the default panel width as 40% of the body, clamped", () => {
-    // 40% of a roomy body → panel gets ~40%, canvas keeps ~60%.
-    const bodyWidth = 1400;
-    const expected = Math.round((bodyWidth - WORKFLOW_SPLITTER_WIDTH) * DEFAULT_WORKFLOW_PANEL_RATIO);
-    expect(defaultWorkflowPanelWidth(bodyWidth)).toBe(expected);
-    // The 40% result must respect the max bound on very wide bodies.
-    expect(defaultWorkflowPanelWidth(4000)).toBe(MAX_WORKFLOW_PANEL_WIDTH);
-    // …and the min bound on narrow bodies.
-    expect(defaultWorkflowPanelWidth(700)).toBe(MIN_WORKFLOW_PANEL_WIDTH);
+  it("defaults the canvas strip to a short bare-minimum height", () => {
+    const bodyHeight = 1000;
+    const panel = defaultWorkflowPanelHeight(bodyHeight);
+    const canvas = bodyHeight - WORKFLOW_SPLITTER_HEIGHT - panel;
+    expect(canvas).toBe(DEFAULT_WORKFLOW_CANVAS_HEIGHT);
+    expect(DEFAULT_WORKFLOW_CANVAS_HEIGHT).toBeLessThan(MAX_WORKFLOW_CANVAS_HEIGHT);
   });
 
-  it("clamps panel width between min and max for the body", () => {
-    expect(clampWorkflowPanelWidth(200, 1200)).toBe(MIN_WORKFLOW_PANEL_WIDTH);
-    expect(clampWorkflowPanelWidth(900, 1200)).toBe(MAX_WORKFLOW_PANEL_WIDTH);
-    expect(clampWorkflowPanelWidth(500, 1200)).toBe(500);
+  it("allows the user to expand the canvas past the default by dragging", () => {
+    const body = 900;
+    const defaultPanel = defaultWorkflowPanelHeight(body);
+    // Dragging the splitter down reduces panel height → grows canvas.
+    const expandedCanvas = 400;
+    const panelForExpanded = body - WORKFLOW_SPLITTER_HEIGHT - expandedCanvas;
+    const clamped = clampWorkflowPanelHeight(panelForExpanded, body);
+    const canvas = body - WORKFLOW_SPLITTER_HEIGHT - clamped;
+    expect(canvas).toBeGreaterThan(DEFAULT_WORKFLOW_CANVAS_HEIGHT);
+    expect(canvas).toBeLessThanOrEqual(maxCanvasHeightForBody(body));
+    expect(clamped).toBeLessThan(defaultPanel);
   });
 
-  it("never leaves less than the minimum canvas width", () => {
-    const bodyWidth = MIN_WORKFLOW_CANVAS_WIDTH + MIN_WORKFLOW_PANEL_WIDTH + WORKFLOW_SPLITTER_WIDTH;
-    expect(clampWorkflowPanelWidth(900, bodyWidth)).toBe(MIN_WORKFLOW_PANEL_WIDTH);
+  it("never shrinks the canvas under the node-row floor", () => {
+    const body = 900;
+    const maxPanel = body - MIN_WORKFLOW_CANVAS_HEIGHT - WORKFLOW_SPLITTER_HEIGHT;
+    expect(clampWorkflowPanelHeight(5000, body)).toBe(maxPanel);
   });
 
-  it("derives panel width from pointer position against the body edge", () => {
+  it("derives panel height from pointer position against the body bottom", () => {
     const rect = {
       width: 1000,
-      right: 1400,
-      left: 400,
-      top: 0,
-      bottom: 0,
-      height: 0,
-      x: 400,
-      y: 0,
+      height: 800,
+      right: 1000,
+      left: 0,
+      top: 100,
+      bottom: 900,
+      x: 0,
+      y: 100,
       toJSON: () => ({})
-    } as Parameters<typeof panelWidthFromPointer>[1];
+    } as Parameters<typeof panelHeightFromPointer>[1];
 
-    expect(panelWidthFromPointer(980, rect)).toBe(420);
-    expect(panelWidthFromPointer(1200, rect)).toBe(MIN_WORKFLOW_PANEL_WIDTH);
+    const value = panelHeightFromPointer(540, rect);
+    expect(value).toBeGreaterThanOrEqual(MIN_WORKFLOW_PANEL_HEIGHT);
   });
 });

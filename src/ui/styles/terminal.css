@@ -1,0 +1,102 @@
+/* Interactive PTY pane (xterm.js) on workflow step panels — chrome stays thin
+   so the host can claim as much vertical space as the step panel allows. */
+
+.term-pane {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  margin: 0;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  min-height: 0;
+}
+
+.term-host-wrap {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+/* Status chip floats over the terminal so it does not cost a header row. */
+.term-host-wrap > .term-status {
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  z-index: 2;
+  pointer-events: none;
+  background: color-mix(in srgb, var(--bg-elev, #0d1117) 88%, transparent);
+  backdrop-filter: blur(4px);
+}
+
+.term-status {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 0.12rem 0.45rem;
+  border-radius: 999px;
+  border: 1px solid var(--hairline);
+  color: var(--ink-faint);
+}
+
+.term-status.is-live {
+  color: #3fb950;
+  border-color: rgba(63, 185, 80, 0.4);
+}
+
+.term-status.is-connecting {
+  color: #d29922;
+  border-color: rgba(210, 153, 34, 0.4);
+}
+
+.term-status.is-error,
+.term-status.is-exited {
+  color: #f85149;
+  border-color: rgba(248, 81, 73, 0.35);
+}
+
+/* Grow into leftover step-panel space; xterm ResizeObserver refits on host size. */
+.term-host {
+  width: 100%;
+  flex: 1 1 auto;
+  min-height: 160px;
+  height: auto;
+  border-radius: var(--r-md);
+  overflow: hidden;
+  background: #0d1117;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.term-host.is-empty {
+  flex: 1 1 auto;
+  min-height: 120px;
+  opacity: 0.55;
+}
+
+.term-waiting {
+  position: absolute;
+  left: 12px;
+  top: 8px;
+  z-index: 2;
+  margin: 0;
+  font-size: var(--t-xs);
+  padding: 0;
+  flex-shrink: 0;
+  pointer-events: none;
+}
+
+.term-host .xterm {
+  height: 100%;
+  padding: 4px 6px;
+}
+
+.term-host .xterm-viewport {
+  overflow-y: auto !important;
+}
+
+.term-pane.is-daemon .term-host {
+  border-color: rgba(63, 185, 80, 0.28);
+}

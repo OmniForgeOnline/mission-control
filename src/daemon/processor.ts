@@ -310,7 +310,14 @@ export async function runTaskTurn(
 
   await markTaskRunning(root, refreshed.id, { startedAt: refreshed.startedAt ?? now() });
   const resolvedRunner =
-    options?.runner ?? (await createRunnerForRouting(root, routing!));
+    options?.runner ??
+    (await createRunnerForRouting(root, routing!, {
+      stepContext: {
+        stepKind: step.kind,
+        reviewer: false,
+        checksRemediation: false
+      }
+    }));
   return executeAgentTurn(root, {
     task: (await getTask(root, refreshed.id))!,
     prompt,

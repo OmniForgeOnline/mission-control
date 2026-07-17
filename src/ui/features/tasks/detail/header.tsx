@@ -1,11 +1,8 @@
 import { useEffect, useRef, useState } from "preact/hooks";
 import { api } from "@ui/data/api.js";
-import { liveness, relativeTime, workflowForTask } from "@ui/app/state.js";
-import { taskExecution, taskIsRunning, taskPmStatus } from "@ui/app/task-status.js";
-import { currentStepIndex } from "@ui/app/workflow-steps.js";
-import { navigateBack } from "@ui/app/router.js";
+import { workflowForTask } from "@ui/app/state.js";
+import { taskExecution, taskPmStatus } from "@ui/app/task-status.js";
 import { requestRefresh } from "@ui/data/refresh.js";
-import { icon } from "@ui/shell/icons.js";
 import { toast } from "@ui/overlays/toast.js";
 import { DetailPrimaryActionButton, getPrimaryAction } from "@ui/shared/components/task-actions.js";
 import { WorktreeHandoffMenu } from "./worktree-handoff.js";
@@ -54,11 +51,6 @@ function execLabel(task: HarnessTask): string {
   return "Idle";
 }
 
-function resolutionText(task: HarnessTask): string | null {
-  if (!task.resolution) return null;
-  return task.resolution.replace(/_/g, " ");
-}
-
 const OPERATOR_ACTIONS: Array<{ value: "backlog" | "cancelled"; label: string; hint: string }> = [
   { value: "backlog", label: "Move to Backlog", hint: "Park this ticket — the pipeline won't move it back" },
   { value: "cancelled", label: "Cancel ticket", hint: "Abandon as won't-fix / duplicate" }
@@ -66,8 +58,7 @@ const OPERATOR_ACTIONS: Array<{ value: "backlog" | "cancelled"; label: string; h
 
 export function TaskTicketHeader({ task }: { task: HarnessTask }) {
   const workflow = workflowForTask(task);
-  const workflowDef = workflowForTask(task);
-  const derivedPm = workflowDef ? taskPmStatus(task) : "in_progress";
+  const derivedPm = workflow ? taskPmStatus(task) : "in_progress";
   const override = task.statusOverride?.value;
   const effective = derivedPm;
   const statusNote = override
@@ -77,15 +68,6 @@ export function TaskTicketHeader({ task }: { task: HarnessTask }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const primaryAction = getPrimaryAction(task);
-  const live = liveness(task);
-  const run = task.workflowRun;
-  const stepNumber = workflow && run ? currentStepIndex(workflow, run.currentStepId) : 0;
-  const totalSteps = workflow?.stepIds.length ?? 0;
-  const stageLabel = run?.currentStepId.replace(/_/g, " ") ?? "—";
-  const timingNote =
-    taskIsRunning(task) && task.startedAt
-      ? ` · ${live?.text ?? `running ${relativeTime(task.startedAt)}`}`
-      : "";
 
   useEffect(() => {
     function onDocClick(event: MouseEvent): void {
@@ -115,27 +97,19 @@ export function TaskTicketHeader({ task }: { task: HarnessTask }) {
 
   return (
     <div class="ticket-head" id="taskDetailHeader">
-      <div class="ticket-head-top">
-        <button class="btn btn-ghost detail-back" id="backBtn" type="button" onClick={() => navigateBack()}>
-          <span dangerouslySetInnerHTML={{ __html: icon("arrow-left", 14) }} />
-          <span>Back</span>
-        </button>
-        <div>
-          <div class="ticket-title">{task.title}</div>
+      <div class="ticket-head-main">
+        <div class="ticket-head-identity">
+          <h1 class="ticket-title">{task.title}</h1>
           <span class="ticket-id">
             {task.id.slice(0, 8).toUpperCase()} · {workflow?.name ?? "workflow"}
           </span>
         </div>
         <div class="ticket-head-actions">
           <div class="statuswrap" ref={menuRef}>
-            <span class="status-badge" title={statusNote}>
-              <span class={`swatch ${pmStatusSwatch(effective)}`} />
-              <span class="lbl">{pmStatusLabel(effective)}</span>
-              <span class="status-src">{override ? "operator" : "auto"}</span>
-            </span>
             <button
-              class="status-ovf"
+              class={`status-badge status-badge-btn${menuOpen ? " open" : ""}`}
               type="button"
+              title={statusNote}
               aria-label="Operator actions"
               aria-haspopup="menu"
               aria-expanded={menuOpen}
@@ -144,7 +118,8 @@ export function TaskTicketHeader({ task }: { task: HarnessTask }) {
                 setMenuOpen((open) => !open);
               }}
             >
-              ⋯
+              <span class={`swatch ${pmStatusSwatch(effective)}`} />
+              <span class="lbl">{pmStatusLabel(effective)}</span>
             </button>
             <div class={`status-menu${menuOpen ? " open" : ""}`} role="menu">
               <div class="status-menu-title">Operator actions</div>
@@ -174,15 +149,8 @@ export function TaskTicketHeader({ task }: { task: HarnessTask }) {
             {execLabel(task)}
           </span>
 
-          {resolutionText(task) ? (
-            <span class="resolution-pill">Resolution · {resolutionText(task)}</span>
-          ) : null}
-
-          {run ? (
-            <span class="ticket-stage">
-              Stage {stepNumber} of {totalSteps} · {stageLabel}
-              {timingNote}
-            </span>
+          {task.resolution ? (
+            <span class="resolution-pill">Resolution · {task.resolution.replace(/_/g, " ")}</span>
           ) : null}
 
           {primaryAction ? <DetailPrimaryActionButton spec={primaryAction} /> : null}

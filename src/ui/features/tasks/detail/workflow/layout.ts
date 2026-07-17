@@ -1,12 +1,22 @@
 export const LAYOUT = {
   NODE_WIDTH: 196,
   NODE_HEIGHT: 110,
+  /** Horizontal step spacing along the flow (left → right). */
+  COL_WIDTH: 220,
+  /** Vertical spacing between parallel lanes. */
+  LANE_HEIGHT: 128,
+  LEFT_PADDING: 20,
+  TOP_PADDING: 20,
+  /** Outer padding added around content when computing canvas bounds. */
+  BOUNDS_PAD: 28,
+  LANE_GROUP_PAD: 12,
+  LANE_GROUP_EXTRA_WIDTH: 20,
+  // Legacy aliases for older call sites / tests.
   CENTER_X: 300,
-  LANE_WIDTH: 232,
-  ROW_HEIGHT: 150,
-  TOP_PADDING: 36,
-  LANE_GROUP_PAD: 14,
-  LANE_GROUP_HEIGHT: 128
+  CENTER_Y: 20,
+  LANE_WIDTH: 220,
+  ROW_HEIGHT: 128,
+  LANE_GROUP_HEIGHT: 120
 } as const;
 
 export type LayoutEdgeKind = "sequential" | "fan-out" | "fan-in" | "branch";
@@ -28,7 +38,9 @@ export interface LayoutNode {
   id: string;
   x: number;
   y: number;
+  /** Lane offset from the main spine (parallel jobs). */
   column: number;
+  /** Index along the left→right flow. */
   row: number;
   parallelGroup?: string;
 }
@@ -54,10 +66,8 @@ export interface WorkflowLayout {
   edges: LayoutEdge[];
   laneGroups: LaneGroup[];
   bounds: { width: number; height: number };
-  /** Tight horizontal extent of the rendered content (nodes + lane groups),
-   *  used to center the workflow in the canvas viewport. Unlike `bounds` this
-   *  excludes the surrounding padding, so centering lands on the real content. */
-  content: { minX: number; maxX: number };
+  /** Tight content box of nodes + lane groups (used for fit, not the padded bounds). */
+  content: { minX: number; maxX: number; minY: number; maxY: number };
 }
 
 interface Placement {
@@ -75,18 +85,19 @@ function distributeColumns(count: number): number[] {
   return cols;
 }
 
-function colX(column: number): number {
-  return LAYOUT.CENTER_X + column * LAYOUT.LANE_WIDTH;
-}
-
-function rowY(row: number): number {
-  return LAYOUT.TOP_PADDING + row * LAYOUT.ROW_HEIGHT;
+/** Flow position → canvas x (left → right). */
+function flowX(row: number): number {
+  return LAYOUT.LEFT_PADDING + row * LAYOUT.COL_WIDTH;
 }
 
 function edgeKey(from: string, to: string, kind: LayoutEdgeKind): string {
   return `${from}->${to}:${kind}`;
 }
 
+/**
+ * Lay out the workflow left-to-right. `row` advances along the flow (x);
+ * `column` is the parallel lane offset (y).
+ */
 export function layoutWorkflow(input: LayoutWorkflowInput): WorkflowLayout {
   const placements = new Map<string, Placement>();
   const edgeSeen = new Set<string>();
@@ -180,10 +191,17 @@ export function layoutWorkflow(input: LayoutWorkflowInput): WorkflowLayout {
     }
   }
 
+  // Map parallel columns to y starting at TOP_PADDING so the graph is not
+  // floating in empty vertical space (no centered spine gap).
+  let minColumn = 0;
+  for (const p of placements.values()) {
+    if (p.column < minColumn) minColumn = p.column;
+  }
+
   const nodes: LayoutNode[] = [...placements.entries()].map(([id, p]) => ({
     id,
-    x: colX(p.column),
-    y: rowY(p.row),
+    x: flowX(p.row),
+    y: LAYOUT.TOP_PADDING + (p.column - minColumn) * LAYOUT.LANE_HEIGHT,
     column: p.column,
     row: p.row,
     ...(p.parallelGroup ? { parallelGroup: p.parallelGroup } : {})
@@ -199,23 +217,24 @@ export function layoutWorkflow(input: LayoutWorkflowInput): WorkflowLayout {
   }
 
   for (const [groupId, members] of groups) {
-    const minX = Math.min(...members.map((n) => n.x));
-    const maxX = Math.max(...members.map((n) => n.x)) + LAYOUT.NODE_WIDTH;
-    const y = members[0]!.y;
+    const minY = Math.min(...members.map((n) => n.y));
+    const maxY = Math.max(...members.map((n) => n.y)) + LAYOUT.NODE_HEIGHT;
+    const x = members[0]!.x;
     laneGroups.push({
       id: groupId,
       label: groupId.replace(/_/g, " "),
-      x: minX - LAYOUT.LANE_GROUP_PAD,
-      y: y - 18,
-      width: maxX - minX + LAYOUT.LANE_GROUP_PAD * 2,
-      height: LAYOUT.LANE_GROUP_HEIGHT,
+      x: x - LAYOUT.LANE_GROUP_PAD,
+      y: minY - 18,
+      width: LAYOUT.NODE_WIDTH + LAYOUT.LANE_GROUP_PAD * 2 + LAYOUT.LANE_GROUP_EXTRA_WIDTH,
+      height: maxY - minY + 28,
       stepIds: members.map((n) => n.id)
     });
   }
 
+  const extent = contentExtent(nodes, laneGroups);
   const maxX = nodes.length
-    ? Math.max(...nodes.map((n) => n.x + LAYOUT.NODE_WIDTH), LAYOUT.CENTER_X + LAYOUT.NODE_WIDTH)
-    : LAYOUT.CENTER_X + LAYOUT.NODE_WIDTH;
+    ? Math.max(...nodes.map((n) => n.x + LAYOUT.NODE_WIDTH), LAYOUT.LEFT_PADDING + LAYOUT.NODE_WIDTH)
+    : LAYOUT.LEFT_PADDING + LAYOUT.NODE_WIDTH;
   const maxY = nodes.length
     ? Math.max(...nodes.map((n) => n.y + LAYOUT.NODE_HEIGHT), LAYOUT.TOP_PADDING + LAYOUT.NODE_HEIGHT)
     : LAYOUT.TOP_PADDING + LAYOUT.NODE_HEIGHT;
@@ -224,31 +243,43 @@ export function layoutWorkflow(input: LayoutWorkflowInput): WorkflowLayout {
     nodes,
     edges,
     laneGroups,
-    bounds: { width: maxX + LAYOUT.LANE_WIDTH, height: maxY + LAYOUT.ROW_HEIGHT },
-    content: contentExtent(nodes, laneGroups)
+    bounds: {
+      width: maxX + LAYOUT.BOUNDS_PAD,
+      height: maxY + LAYOUT.BOUNDS_PAD
+    },
+    content: extent
   };
 }
 
-/** Horizontal extent of the placed nodes and their lane groups, with no outer
- *  padding. Falls back to the center spine when there is nothing to render. */
 function contentExtent(
   nodes: LayoutNode[],
   laneGroups: LaneGroup[]
-): { minX: number; maxX: number } {
+): { minX: number; maxX: number; minY: number; maxY: number } {
   if (!nodes.length) {
-    return { minX: 0, maxX: LAYOUT.CENTER_X + LAYOUT.NODE_WIDTH };
+    return {
+      minX: 0,
+      maxX: LAYOUT.LEFT_PADDING + LAYOUT.NODE_WIDTH,
+      minY: 0,
+      maxY: LAYOUT.TOP_PADDING + LAYOUT.NODE_HEIGHT
+    };
   }
   let minX = Infinity;
   let maxX = -Infinity;
+  let minY = Infinity;
+  let maxY = -Infinity;
   for (const node of nodes) {
     minX = Math.min(minX, node.x);
     maxX = Math.max(maxX, node.x + LAYOUT.NODE_WIDTH);
+    minY = Math.min(minY, node.y);
+    maxY = Math.max(maxY, node.y + LAYOUT.NODE_HEIGHT);
   }
   for (const group of laneGroups) {
     minX = Math.min(minX, group.x);
     maxX = Math.max(maxX, group.x + group.width);
+    minY = Math.min(minY, group.y);
+    maxY = Math.max(maxY, group.y + group.height);
   }
-  return { minX, maxX };
+  return { minX, maxX, minY, maxY };
 }
 
 export function layoutFromWorkflowSummary(

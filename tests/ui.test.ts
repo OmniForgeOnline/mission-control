@@ -531,10 +531,16 @@ describe("mission-control client surface", () => {
     expect(tree).toContain("bulkDelete");
   });
 
-  it("does not depend on terminal-streaming primitives", async () => {
+  it("embeds interactive terminal primitives (xterm + WS) for agent TUIs", async () => {
     const tree = await readClientTree();
-    expect(tree).not.toContain("xterm");
-    expect(tree).not.toContain("WebSocket(");
+    expect(tree).toContain("@xterm/xterm");
+    expect(tree).toContain("WebSocket");
+    expect(tree).toContain("/api/terminal/ws");
+    expect(tree).toContain("TerminalPane");
+    // Workflow steps attach to the daemon session only — no free-floating shell/TUI spawn.
+    expect(tree).not.toContain("Open agent TUI");
+    expect(tree).not.toContain("Open shell");
+    // Headless run tail stays SSE/HTTP; no per-run terminal path.
     expect(tree).not.toContain("/api/runs/${runId}/terminal");
   });
 
@@ -665,12 +671,14 @@ describe("mission-control client surface", () => {
     expect(tasksCss).toContain("flex-shrink: 0");
   });
 
-  it("shows an editable project target in the workflow step panel", async () => {
-    const tree = await readClientTree();
-    expect(tree).toContain("Project");
-    expect(tree).toContain("Change project");
-    expect(tree).toContain("/api/tasks/${taskId}/bind-repo");
-    expect(tree).toContain("project-target");
+  it("does not expose project rebinding from the workflow step panel", async () => {
+    const stepPanel = await readFile(
+      path.join(process.cwd(), "src/ui/features/tasks/detail/workflow/panel/step.tsx"),
+      "utf8"
+    );
+    expect(stepPanel).not.toContain("project-target");
+    expect(stepPanel).not.toContain("bind-repo");
+    expect(stepPanel).not.toContain("bindProject");
   });
 
   it("supports keyboard navigation in @ target suggestions", async () => {
@@ -864,7 +872,7 @@ describe("ui slice 3 surfaces", () => {
     const tree = await readClientTree();
     expect(tree).toContain("getPrimaryAction");
     expect(tree).toContain("runNodeAction");
-    expect(tree).toContain("Stage {stepNumber} of {totalSteps}");
+    expect(tree).not.toContain("Stage {stepNumber} of {totalSteps}");
     expect(tree).toContain("liveness(task)");
     expect(tree).toContain("Advancing automatically");
     expect(tree).toContain("operator-gated");
@@ -957,41 +965,17 @@ describe("ui workflow step panel merge request", () => {
     expect(html).not.toContain("MR #");
   });
 
-  it("renders project binding as a dropdown of onboarded projects", async () => {
+  it("does not render project rebinding controls on the step panel", async () => {
     const { h } = await import("preact");
     const { renderToString } = await import("preact-render-to-string");
     const { WorkflowStepPanel } = await import("../src/ui/features/tasks/detail/workflow/panel/step.tsx");
-    const appState = await import("../src/ui/app/state.ts");
-
-    appState.ui.data = minimalAppState({
-      workflows: [workflow],
-      projects: [
-        {
-          id: "proj-harness",
-          name: "Mission Control",
-          repoPath: "/home/user/harness",
-          status: "active",
-          createdAt: "2026-06-06T12:00:00.000Z",
-          updatedAt: "2026-06-06T12:00:00.000Z"
-        },
-        {
-          id: "proj-app",
-          name: "OmniForge App",
-          repoPath: "/home/user/repos/omniforge-app",
-          status: "active",
-          createdAt: "2026-06-06T12:00:00.000Z",
-          updatedAt: "2026-06-06T12:00:00.000Z"
-        }
-      ]
-    });
 
     const html = renderToString(h(WorkflowStepPanel, { task: reviewTask(), workflow, stepId: "review" }));
 
-    expect(html).toContain("project-target-select");
-    expect(html).toContain("Mission Control");
-    expect(html).toContain("/home/user/harness");
-    expect(html).toContain("OmniForge App");
-    expect(html).not.toContain('placeholder="/path/to/git/repo"');
+    expect(html).not.toContain("project-target");
+    expect(html).not.toContain("project-target-select");
+    expect(html).not.toContain(">Change<");
+    expect(html).not.toContain("bind-repo");
   });
 });
 
@@ -1582,9 +1566,9 @@ describe("ui rail resize", () => {
     expect(shellCss).toContain(".app-shell.collapsed .rail-resize-handle");
   });
 
-  it("hides the resize handle in the narrow responsive layout", async () => {
+  it("hides the resize handle and collapse chevron in the narrow responsive layout", async () => {
     const responsiveCss = await readFile(path.join(process.cwd(), "src/ui/styles/responsive.css"), "utf8");
-    expect(responsiveCss).toMatch(/\.rail-resize-handle\s*\{\s*display: none/);
+    expect(responsiveCss).toMatch(/\.rail-resize-handle,\s*\n\s*\.rail-collapse\s*\{\s*display: none/);
   });
 
   it("wires pointer drag, persistence, and keyboard a11y on the handle", async () => {
@@ -1601,6 +1585,29 @@ describe("ui rail resize", () => {
     expect(source).toContain("ArrowLeft");
     expect(source).toContain("ArrowRight");
     expect(source).toContain('role", "separator"');
+  });
+
+  it("wires a collapse chevron that toggles .app-shell.collapsed and persists", async () => {
+    const source = readFileSync(
+      path.join(process.cwd(), "src/ui/shell/rail-resize.ts"),
+      "utf8"
+    );
+    expect(source).toContain("RAIL_COLLAPSED_KEY");
+    expect(source).toContain("harness:rail:collapsed");
+    expect(source).toContain("setRailCollapsed");
+    expect(source).toContain("rail-collapse");
+    expect(source).toContain("Collapse sidebar");
+    expect(source).toContain("Expand sidebar");
+    expect(source).toContain("chevron-left");
+    expect(source).toContain("chevron-right");
+
+    const shellCss = await readFile(path.join(process.cwd(), "src/ui/styles/shell.css"), "utf8");
+    expect(shellCss).toContain(".rail-collapse {");
+    expect(shellCss).toContain(".app-shell.collapsed .rail-collapse");
+    expect(shellCss).toContain(".app-shell.collapsed .rail-project-tickets");
+
+    const icons = await readFile(path.join(process.cwd(), "src/ui/shell/icons.ts"), "utf8");
+    expect(icons).toContain('"chevron-left"');
   });
 
   it("restores persisted width before first paint in bootstrap", async () => {

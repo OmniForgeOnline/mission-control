@@ -49,14 +49,25 @@ export function updateChromeCounts(): void {
   updateRailCounts(data);
 }
 
+function railTip(label: string, count?: number | null): string {
+  return count !== undefined && count !== null ? `${label} (${count})` : label;
+}
+
 function updateRailCounts(data: NonNullable<typeof ui.data>): void {
   const counts = countTaskBuckets(data.tasks);
 
   $("#appRail")?.querySelectorAll<HTMLElement>(".rail-link").forEach((link) => {
     const filter = link.dataset["filter"];
     if (!filter || !(filter in counts)) return;
+    const count = counts[filter as keyof typeof counts];
     const badge = link.querySelector(".count");
-    if (badge) badge.textContent = String(counts[filter as keyof typeof counts]);
+    if (badge) badge.textContent = String(count);
+    const label = link.querySelector(".label")?.textContent?.trim();
+    if (label) {
+      const tip = railTip(label, count);
+      link.dataset["tip"] = tip;
+      link.setAttribute("aria-label", tip);
+    }
   });
 }
 
@@ -272,7 +283,7 @@ function projectRailHtml(): string {
           <button class="rail-project-toggle" data-collapse-project-id="${escapeHtml(project.id)}" type="button" title="${isCollapsed ? "Expand project" : "Collapse project"}">
             ${icon(isCollapsed ? "chevron-right" : "chevron-down", 14)}
           </button>
-          <button class="rail-link rail-project-link" data-view="project" data-project-id="${escapeHtml(project.id)}" type="button">
+          <button class="rail-link rail-project-link" data-view="project" data-project-id="${escapeHtml(project.id)}" type="button" data-tip="${escapeHtml(railTip(project.name, open.length || null))}" aria-label="${escapeHtml(railTip(project.name, open.length || null))}">
             ${icon("folder", 16)}
             <span class="label">${escapeHtml(project.name)}</span>
             ${open.length ? `<span class="count">${open.length}</span>` : ""}
@@ -400,12 +411,13 @@ function toggleProjectExpand(projectId: string): void {
 }
 
 function railItemHtml(item: RailItem): string {
+  const tip = railTip(item.label, item.count);
   const count =
     item.count !== undefined && item.count !== null
       ? `<span class="count" ${item.tone ? `data-tone="${item.tone}"` : ""}>${item.count}</span>`
       : "";
   return `
-    <button class="rail-link" data-view="${item.view}"${item.filter ? ` data-filter="${item.filter}"` : ""} type="button">
+    <button class="rail-link" data-view="${item.view}"${item.filter ? ` data-filter="${item.filter}"` : ""} type="button" data-tip="${escapeHtml(tip)}" aria-label="${escapeHtml(tip)}">
       ${icon(item.iconName, 14)}
       <span class="label">${item.label}</span>
       ${count}

@@ -1,15 +1,18 @@
 import { useEffect, useRef, useState } from "preact/hooks";
 import type { ComponentChildren } from "preact";
+import { icon } from "@ui/shell/icons.js";
 import {
-  clampWorkflowPanelWidth,
-  defaultWorkflowPanelWidth,
-  getWorkflowPanelWidth,
-  hasStoredWorkflowPanelWidth,
-  MAX_WORKFLOW_PANEL_WIDTH,
-  MIN_WORKFLOW_PANEL_WIDTH,
-  panelWidthFromPointer,
-  setWorkflowPanelWidth,
-  WORKFLOW_SPLITTER_WIDTH
+  clampWorkflowPanelHeight,
+  defaultWorkflowPanelHeight,
+  getWorkflowPanelCollapsed,
+  getWorkflowPanelHeight,
+  hasStoredWorkflowPanelHeight,
+  MAX_WORKFLOW_PANEL_HEIGHT,
+  MIN_WORKFLOW_PANEL_HEIGHT,
+  panelHeightFromPointer,
+  setWorkflowPanelCollapsed,
+  setWorkflowPanelHeight,
+  WORKFLOW_SPLITTER_HEIGHT
 } from "./panel-size.js";
 
 export interface WorkflowSplitPaneProps {
@@ -17,31 +20,44 @@ export interface WorkflowSplitPaneProps {
   panel: ComponentChildren;
 }
 
+function Icon({ name, size = 14 }: { name: string; size?: number }) {
+  return <span dangerouslySetInnerHTML={{ __html: icon(name, size) }} />;
+}
+
+/**
+ * Vertical split: workflow canvas on top, details/terminal panel on the bottom.
+ * Collapse hides the upper workflow so the details/terminal fill the view.
+ */
 export function WorkflowSplitPane({ canvas, panel }: WorkflowSplitPaneProps) {
   const bodyRef = useRef<HTMLDivElement>(null);
-  const [panelWidth, setPanelWidth] = useState(getWorkflowPanelWidth());
+  const [panelHeight, setPanelHeight] = useState(getWorkflowPanelHeight());
+  const [collapsed, setCollapsed] = useState(getWorkflowPanelCollapsed());
   const [resizing, setResizing] = useState(false);
 
-  // Apply the 60/40 default from the measured body width on first mount,
-  // unless the operator has already dragged the splitter (persisted choice).
+  // First visit: short workflow strip. If the user has dragged before, restore
+  // that height (clamped so they can still grow/shrink within limits).
   useEffect(() => {
-    if (hasStoredWorkflowPanelWidth()) return;
     const body = bodyRef.current;
     if (!body) return;
-    const width = body.clientWidth;
-    if (width <= 0) return;
-    setPanelWidth(defaultWorkflowPanelWidth(width));
+    const height = body.clientHeight;
+    if (height <= 0) return;
+    const preferred = hasStoredWorkflowPanelHeight()
+      ? getWorkflowPanelHeight()
+      : defaultWorkflowPanelHeight(height);
+    const next = clampWorkflowPanelHeight(preferred, height);
+    setWorkflowPanelHeight(next);
+    setPanelHeight(next);
   }, []);
 
   useEffect(() => {
-    if (!resizing) return;
+    if (!resizing || collapsed) return;
 
     function onMouseMove(event: MouseEvent): void {
       const body = bodyRef.current;
       if (!body) return;
-      const next = panelWidthFromPointer(event.clientX, body.getBoundingClientRect());
-      setWorkflowPanelWidth(next);
-      setPanelWidth(next);
+      const next = panelHeightFromPointer(event.clientY, body.getBoundingClientRect());
+      setWorkflowPanelHeight(next);
+      setPanelHeight(next);
     }
 
     function onMouseUp(): void {
@@ -54,49 +70,95 @@ export function WorkflowSplitPane({ canvas, panel }: WorkflowSplitPaneProps) {
       window.removeEventListener("mousemove", onMouseMove);
       window.removeEventListener("mouseup", onMouseUp);
     };
-  }, [resizing]);
+  }, [resizing, collapsed]);
+
+  function toggleCollapsed(): void {
+    const next = !collapsed;
+    setWorkflowPanelCollapsed(next);
+    setCollapsed(next);
+  }
 
   return (
     <div
       ref={bodyRef}
-      class={`wf-body${resizing ? " is-resizing" : ""}`}
-      style={{ "--wf-panel-width": `${panelWidth}px` } as Record<string, string>}
+      class={`wf-body${resizing ? " is-resizing" : ""}${collapsed ? " is-collapsed" : ""}`}
+      style={
+        collapsed
+          ? undefined
+          : ({ "--wf-panel-height": `${panelHeight}px` } as Record<string, string>)
+      }
     >
-      {canvas}
+      {collapsed ? (
+        <div class="wf-canvas-collapsed">
+          <button
+            type="button"
+            class="wf-panel-expand"
+            aria-expanded={false}
+            aria-label="Show workflow canvas"
+            title="Show workflow"
+            onClick={toggleCollapsed}
+          >
+            <Icon name="chevron-down" size={16} />
+            <span>Workflow</span>
+          </button>
+        </div>
+      ) : (
+        canvas
+      )}
 
-      <div
-        class="wf-splitter"
-        role="separator"
-        aria-orientation="vertical"
-        aria-valuenow={panelWidth}
-        aria-valuemin={MIN_WORKFLOW_PANEL_WIDTH}
-        aria-valuemax={MAX_WORKFLOW_PANEL_WIDTH}
-        tabIndex={0}
-        style={{ width: `${WORKFLOW_SPLITTER_WIDTH}px` }}
-        onMouseDown={(event) => {
-          event.preventDefault();
-          setResizing(true);
-        }}
-        onKeyDown={(event) => {
-          const body = bodyRef.current;
-          if (!body) return;
-          const step = event.shiftKey ? 48 : 16;
-          if (event.key === "ArrowLeft") {
+      {collapsed ? null : (
+        <div
+          class="wf-splitter"
+          role="separator"
+          aria-orientation="horizontal"
+          aria-valuenow={panelHeight}
+          aria-valuemin={MIN_WORKFLOW_PANEL_HEIGHT}
+          aria-valuemax={MAX_WORKFLOW_PANEL_HEIGHT}
+          tabIndex={0}
+          style={{ height: `${WORKFLOW_SPLITTER_HEIGHT}px` }}
+          onMouseDown={(event) => {
+            if ((event.target as HTMLElement).closest(".wf-panel-collapse")) return;
             event.preventDefault();
-            const next = clampWorkflowPanelWidth(panelWidth + step, body.clientWidth);
-            setWorkflowPanelWidth(next);
-            setPanelWidth(next);
-          }
-          if (event.key === "ArrowRight") {
-            event.preventDefault();
-            const next = clampWorkflowPanelWidth(panelWidth - step, body.clientWidth);
-            setWorkflowPanelWidth(next);
-            setPanelWidth(next);
-          }
-        }}
-      />
+            setResizing(true);
+          }}
+          onKeyDown={(event) => {
+            const body = bodyRef.current;
+            if (!body) return;
+            const step = event.shiftKey ? 48 : 16;
+            if (event.key === "ArrowUp") {
+              event.preventDefault();
+              const next = clampWorkflowPanelHeight(panelHeight + step, body.clientHeight);
+              setWorkflowPanelHeight(next);
+              setPanelHeight(next);
+            }
+            if (event.key === "ArrowDown") {
+              event.preventDefault();
+              const next = clampWorkflowPanelHeight(panelHeight - step, body.clientHeight);
+              setWorkflowPanelHeight(next);
+              setPanelHeight(next);
+            }
+          }}
+        >
+          <button
+            type="button"
+            class="wf-panel-collapse"
+            aria-expanded={true}
+            aria-label="Hide workflow canvas"
+            title="Hide workflow — expand details"
+            onClick={(event) => {
+              event.stopPropagation();
+              toggleCollapsed();
+            }}
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <Icon name="chevron-up" size={16} />
+          </button>
+        </div>
+      )}
 
-      <aside class="wf-panel">{panel}</aside>
+      <aside class="wf-panel" aria-label="Workflow details">
+        <div class="wf-panel-body">{panel}</div>
+      </aside>
     </div>
   );
 }

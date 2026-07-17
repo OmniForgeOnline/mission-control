@@ -1,44 +1,73 @@
 /* ---------- workflow canvas (ticket detail) ---------- */
 
 .ticket-head {
-  padding: var(--s-4) var(--s-5);
+  padding: var(--s-3) var(--s-5);
   border-bottom: 1px solid var(--hairline);
   background: var(--bg-elev);
   box-shadow: inset 0 1px 0 color-mix(in srgb, white 5%, transparent);
 }
 
-.ticket-head-top {
+.ticket-head-main {
   display: flex;
   align-items: center;
-  gap: var(--s-3);
+  gap: var(--s-4);
+  min-width: 0;
 }
 
-.ticket-head-top .detail-back {
-  flex-shrink: 0;
-  margin: 0;
-  align-self: center;
+.ticket-head-identity {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1 1 auto;
 }
 
 .ticket-title {
+  margin: 0;
   font-size: var(--t-xl);
   font-weight: var(--w-semi);
   letter-spacing: -0.01em;
   color: var(--ink-strong);
-  text-wrap: balance;
+  line-height: 1.25;
+  min-width: 0;
 }
 
 .ticket-id {
   font-family: var(--font-mono);
   font-size: var(--t-sm);
   color: var(--ink-faint);
+  line-height: 1.3;
 }
 
 .ticket-head-actions {
-  margin-left: auto;
   display: flex;
   align-items: center;
+  justify-content: flex-end;
   gap: var(--s-2);
   flex-wrap: wrap;
+  flex: 0 1 auto;
+  margin-left: auto;
+}
+
+/* Shared chip geometry for header action row (status / exec / primary / handoff). */
+.ticket-head-actions .status-badge,
+.ticket-head-actions .exec-badge,
+.ticket-head-actions .resolution-pill,
+.ticket-head-actions .btn,
+.ticket-head-actions .worktree-handoff-btn {
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 30px;
+  min-height: 30px;
+  padding: 0 12px;
+  border-radius: var(--r-pill);
+  font-size: var(--t-sm);
+  font-weight: var(--w-medium);
+  line-height: 1;
+  white-space: nowrap;
 }
 
 .statuswrap {
@@ -49,52 +78,36 @@
 }
 
 .status-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 5px 10px;
-  border-radius: var(--r-pill);
   border: 1px solid var(--hairline);
   background: var(--surface);
-  font-size: var(--t-sm);
   color: var(--ink);
 }
 
+button.status-badge-btn {
+  font: inherit;
+  cursor: pointer;
+  transition:
+    border-color var(--d-fast) var(--ease-out),
+    background var(--d-fast) var(--ease-out);
+}
+
+button.status-badge-btn:hover,
+button.status-badge-btn.open,
+button.status-badge-btn:focus-visible {
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--hairline));
+  background: color-mix(in srgb, var(--accent) 8%, var(--surface));
+  outline: none;
+}
+
 .status-badge .swatch {
-  width: 9px;
-  height: 9px;
+  width: 8px;
+  height: 8px;
   border-radius: 50%;
+  flex: none;
 }
 
 .status-badge .lbl {
   font-weight: var(--w-medium);
-}
-
-.status-src {
-  font-size: var(--t-xs);
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: var(--ink-faint);
-}
-
-.status-ovf {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 26px;
-  height: 26px;
-  border-radius: var(--r-md);
-  border: 1px solid transparent;
-  background: transparent;
-  color: var(--ink-muted);
-  font-size: 18px;
-  line-height: 1;
-  cursor: pointer;
-}
-
-.status-ovf:hover {
-  background: var(--surface-2);
-  color: var(--ink);
 }
 
 .status-menu {
@@ -189,22 +202,16 @@
 }
 
 .exec-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 5px 10px;
-  border-radius: var(--r-pill);
-  font-size: var(--t-sm);
-  font-weight: var(--w-medium);
   color: var(--status-running);
   background: color-mix(in srgb, var(--status-running) 12%, transparent);
   border: 1px solid color-mix(in srgb, var(--status-running) 40%, transparent);
 }
 
 .exec-badge .dot {
-  width: 7px;
-  height: 7px;
+  width: 8px;
+  height: 8px;
   border-radius: 50%;
+  flex: none;
   background: currentColor;
   animation: pulse-dot 1.6s ease-in-out infinite;
 }
@@ -237,11 +244,6 @@
 }
 
 .resolution-pill {
-  display: inline-flex;
-  align-items: center;
-  padding: 5px 10px;
-  border-radius: var(--r-pill);
-  font-size: var(--t-sm);
   color: var(--ink-muted);
   border: 1px solid var(--hairline);
   background: var(--surface);
@@ -256,46 +258,6 @@
   text-transform: capitalize;
 }
 
-.wf-legend {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--s-3);
-  padding: var(--s-2) var(--s-5);
-  border-bottom: 1px solid var(--hairline);
-  background: var(--surface);
-  font-size: var(--t-xs);
-  color: var(--ink-muted);
-}
-
-.wf-legend > span {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.wf-legend-swatch {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-}
-
-.wf-legend-swatch.done { background: var(--status-completed); }
-.wf-legend-swatch.current { background: var(--accent); }
-.wf-legend-swatch.upcoming {
-  background: var(--surface-3);
-  border: 1px solid var(--hairline-strong);
-}
-
-.wf-legend-bar {
-  width: 18px;
-  height: 0;
-  border-top: 3px solid;
-  border-radius: 2px;
-}
-
-.wf-legend-bar.operator { border-color: var(--status-await-operator); }
-.wf-legend-bar.daemon { border-color: var(--status-running); }
-
 .wf-shell {
   display: flex;
   flex-direction: column;
@@ -306,16 +268,32 @@
 
 .wf-body {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) var(--wf-split, 6px) var(--wf-panel-width, 440px);
+  grid-template-rows: minmax(0, 1fr) var(--wf-split, 6px) var(--wf-panel-height, 360px);
   height: 100%;
   min-height: 0;
   flex: 1;
 }
 
+/* Collapse hides the upper workflow; details/terminal take the full body. */
+.wf-body.is-collapsed {
+  grid-template-rows: 36px minmax(0, 1fr);
+}
+
+.wf-canvas-collapsed {
+  display: flex;
+  align-items: stretch;
+  min-height: 0;
+  border-bottom: 1px solid var(--hairline);
+  background: color-mix(in srgb, var(--surface) 92%, var(--bg));
+}
+
 .wf-splitter {
   position: relative;
   z-index: 5;
-  cursor: col-resize;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: row-resize;
   touch-action: none;
   background: var(--hairline);
   transition: background var(--d-fast) var(--ease-out);
@@ -324,10 +302,10 @@
 .wf-splitter::after {
   content: "";
   position: absolute;
-  top: 0;
-  bottom: 0;
-  left: -4px;
-  right: -4px;
+  left: 0;
+  right: 0;
+  top: -6px;
+  bottom: -6px;
 }
 
 .wf-splitter:hover,
@@ -342,7 +320,7 @@
 }
 
 .wf-body.is-resizing {
-  cursor: col-resize;
+  cursor: row-resize;
   user-select: none;
 }
 
@@ -690,65 +668,102 @@
   animation: pulse-dot 1.6s ease-in-out infinite;
 }
 
-.wf-minimap {
-  position: absolute;
-  bottom: var(--s-3);
-  right: var(--s-3);
-  width: 110px;
-  height: 150px;
-  z-index: 4;
-  border: 1px solid var(--hairline-strong);
-  border-radius: var(--r-md);
-  background: color-mix(in srgb, var(--bg-elev) 88%, transparent);
+.wf-panel {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  background: var(--bg-elev);
+  border-top: 1px solid var(--hairline);
+}
+
+.wf-panel-body {
+  display: grid;
+  grid-template-rows: auto 1fr;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
   overflow: hidden;
-  box-shadow: var(--shadow-popover);
 }
 
-.wf-mm-node {
-  position: absolute;
-  border-radius: 2px;
-  background: var(--hairline-strong);
+/* Centered pill on the splitter: hide workflow (collapse upward). */
+.wf-panel-collapse {
+  position: relative;
+  z-index: 7;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 22px;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--hairline-strong, var(--hairline));
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--ink);
+  cursor: pointer;
+  box-shadow: 0 1px 3px rgb(0 0 0 / 18%);
 }
 
-.wf-mm-node.done {
-  background: color-mix(in srgb, var(--status-completed) 70%, transparent);
+.wf-panel-collapse:hover,
+.wf-panel-collapse:focus-visible {
+  color: var(--ink-strong, var(--ink));
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--hairline));
+  background: color-mix(in srgb, var(--accent) 12%, var(--surface));
+  outline: none;
 }
 
-.wf-mm-node.current {
-  background: var(--accent);
+/* Thin top strip to bring the workflow canvas back. */
+.wf-panel-expand {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--s-2);
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0 var(--s-3);
+  border: 0;
+  background: transparent;
+  color: var(--ink-muted);
+  font: inherit;
+  font-size: var(--t-sm);
+  cursor: pointer;
 }
 
-.wf-mm-view {
-  position: absolute;
-  border: 1px solid var(--accent);
-  border-radius: 2px;
-  background: var(--accent-soft);
+.wf-panel-expand:hover,
+.wf-panel-expand:focus-visible {
+  color: var(--ink);
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  outline: none;
 }
 
 .wf-body > .wf-panel {
   border: 0;
-  border-left: 1px solid var(--hairline);
+  border-top: 1px solid var(--hairline);
   border-radius: 0;
   background: var(--bg-elev);
-  display: grid;
-  grid-template-rows: auto 1fr;
   height: 100%;
   max-height: none;
   min-height: 0;
-  position: static;
-  top: auto;
+}
+
+.wf-body.is-collapsed > .wf-panel {
+  border-top: 0;
 }
 
 .wf-tabs {
   display: flex;
   gap: 2px;
-  padding: var(--s-2) var(--s-3) 0;
+  padding: 4px var(--s-3) 0;
   border-bottom: 1px solid var(--hairline);
 }
 
 .wf-tab {
-  padding: 8px 12px;
-  font-size: var(--t-md);
+  padding: 6px 10px;
+  font-size: var(--t-sm);
   color: var(--ink-muted);
   border-bottom: 2px solid transparent;
   font-weight: var(--w-medium);
@@ -772,10 +787,38 @@
 }
 
 .wf-panel-scroll {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
   overflow: auto;
   padding: var(--s-4);
   scrollbar-gutter: stable;
+}
+
+/* Interactive terminal step: denser chrome so the PTY claims leftover space. */
+.wf-panel-scroll:has(> .wf-pane.is-terminal) {
+  padding: var(--s-2) var(--s-3) var(--s-3);
+}
+
+.wf-pane.is-terminal {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
   min-height: 0;
+  height: 100%;
+  gap: var(--s-2);
+}
+
+.wf-pane.is-terminal .wf-details {
+  flex-shrink: 0;
+  margin-bottom: 0;
+}
+
+.wf-pane.is-terminal .term-pane {
+  flex: 1 1 auto;
+  min-height: 0;
+  margin: 0;
 }
 
 .wf-pane-empty {
@@ -808,6 +851,89 @@
   grid-column: 1 / -1;
 }
 
+/* Must override .wf-detail { flex-direction: column }. */
+.wf-details .wf-settings-line {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: var(--s-3);
+  width: 100%;
+}
+
+/* Agent + model + effort on one horizontal line (label inline with control). */
+.wf-settings-core {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: var(--s-3);
+  flex: 0 1 auto;
+  min-width: 0;
+  padding: 4px 8px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-md);
+  background: color-mix(in srgb, var(--surface) 88%, var(--bg));
+}
+
+/* Approve / Rollback: same row as knobs, pinned to the right. */
+.wf-settings-actions {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: var(--s-2);
+  flex: 0 0 auto;
+  margin-left: auto;
+}
+
+.wf-pane.is-terminal .wf-settings-core {
+  padding: 3px 6px;
+}
+
+.wf-pane.is-terminal .wf-setting-field {
+  padding: 3px 7px;
+}
+
+.wf-settings-core .wf-setting-cell {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+  min-width: 0;
+}
+
+.wf-settings-core .wf-setting-cell .k {
+  margin: 0;
+  flex-shrink: 0;
+}
+
+.wf-settings-core .wf-setting-cell .v {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.wf-settings-line .wf-setting,
+.wf-settings-line .wf-setting-field {
+  max-width: 100%;
+}
+
+@media (max-width: 900px) {
+  .wf-details .wf-settings-line {
+    flex-wrap: wrap;
+  }
+  .wf-settings-core {
+    flex: 1 1 auto;
+    flex-wrap: wrap;
+  }
+  .wf-settings-actions {
+    margin-left: 0;
+  }
+}
+
 .wf-details .k {
   font-size: var(--t-xs);
   text-transform: uppercase;
@@ -826,10 +952,6 @@
   font-size: var(--t-xs);
   color: var(--ink-muted);
   margin-top: 2px;
-}
-
-.wf-agent-effective {
-  font-size: var(--t-xs);
 }
 
 /* step-scoped Agent / Effort dropdowns (popover) */
@@ -1050,28 +1172,6 @@
   visibility: visible;
 }
 
-.project-target {
-  align-items: flex-start;
-}
-
-.project-target-path {
-  max-width: 100%;
-  overflow-wrap: anywhere;
-  font-size: var(--t-xs);
-}
-
-.project-target-editor {
-  width: 100%;
-  display: grid;
-  gap: var(--s-2);
-}
-
-.project-target-actions {
-  display: flex;
-  gap: var(--s-2);
-  flex-wrap: wrap;
-}
-
 .wf-desc {
   color: var(--ink-muted);
   line-height: 1.55;
@@ -1122,6 +1222,12 @@
   border-radius: var(--r-md);
   background: var(--surface);
   padding: var(--s-2);
+}
+
+.wf-step-composer-suppressed {
+  margin: 0;
+  font-size: var(--t-xs);
+  line-height: 1.4;
 }
 
 .wf-step-composer textarea {

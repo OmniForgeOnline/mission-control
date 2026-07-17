@@ -280,6 +280,44 @@ body.rail-resizing {
   cursor: col-resize;
 }
 
+/* Chevron pill on the rail edge: collapse to icon-only / expand. */
+.rail-collapse {
+  position: fixed;
+  top: calc(48px + var(--s-3));
+  left: var(--rail-w, 224px);
+  z-index: 7;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--hairline-strong, var(--hairline));
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--ink-muted);
+  cursor: pointer;
+  transform: translateX(-50%);
+  box-shadow: 0 1px 3px rgb(0 0 0 / 18%);
+  transition:
+    color var(--d-fast) var(--ease-out),
+    border-color var(--d-fast) var(--ease-out),
+    background var(--d-fast) var(--ease-out);
+}
+
+.rail-collapse:hover,
+.rail-collapse:focus-visible {
+  color: var(--ink);
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--hairline));
+  background: color-mix(in srgb, var(--accent) 12%, var(--surface));
+  outline: none;
+}
+
+.app-shell.collapsed .rail-collapse {
+  left: 56px;
+}
+
 .rail-section {
   display: flex;
   flex-direction: column;
@@ -564,10 +602,14 @@ body.rail-resizing {
   flex: 1;
 }
 
-/* collapsed rail */
+/* collapsed rail (icon-only) */
 .app-shell.collapsed .rail-link .label,
 .app-shell.collapsed .rail-link .count,
-.app-shell.collapsed .rail-heading {
+.app-shell.collapsed .rail-heading,
+.app-shell.collapsed .rail-project-status,
+.app-shell.collapsed .rail-project-tickets,
+.app-shell.collapsed .rail-project-toggle,
+.app-shell.collapsed .rail-projects-empty {
   display: none;
 }
 
@@ -575,8 +617,45 @@ body.rail-resizing {
   justify-content: center;
 }
 
+.app-shell.collapsed .rail-project-head {
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .app-shell.collapsed .rail-resize-handle {
   display: none;
+}
+
+/* Let hover tips escape the rail when labels are hidden. */
+.app-shell.collapsed .app-rail {
+  overflow: visible;
+}
+
+/* Flyout label: same text as expanded rail (name + optional count). */
+.app-shell.collapsed .rail-link[data-tip]::after {
+  content: attr(data-tip);
+  position: absolute;
+  left: calc(100% + 8px);
+  top: 50%;
+  z-index: 30;
+  transform: translateY(-50%);
+  padding: 5px 9px;
+  border: 1px solid var(--hairline-strong, var(--hairline));
+  border-radius: var(--r-md);
+  background: var(--surface);
+  color: var(--ink);
+  font-size: var(--t-sm);
+  font-weight: var(--w-medium);
+  line-height: 1.3;
+  white-space: nowrap;
+  box-shadow: 0 4px 14px rgb(0 0 0 / 28%);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--d-fast) var(--ease-out);
+}
+
+.app-shell.collapsed .rail-link[data-tip]:hover::after,
+.app-shell.collapsed .rail-link[data-tip]:focus-visible::after {
+  opacity: 1;
 }
 
 /* ---------- main ---------- */

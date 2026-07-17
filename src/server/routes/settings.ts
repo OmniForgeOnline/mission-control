@@ -20,6 +20,7 @@ import { editorSummaries } from "../../core/editors/registry.ts";
 import { listAllRuns } from "../../core/tasks/runs.ts";
 import { listTasks } from "../../core/tasks/tasks.ts";
 import { listInflightTaskIds } from "../../runtime/sessions.ts";
+import { listInteractiveWaits } from "../../terminal/interactive-control.ts";
 import { asyncRoute, param, type ServerOptions } from "./helpers.ts";
 
 export function createSettingsRouter(options: ServerOptions): Router {
@@ -89,6 +90,7 @@ export function createSettingsRouter(options: ServerOptions): Router {
         workflow: await toWorkflowMetadata(options.root, defaultWorkflow),
         stageAgentOverrides: (await loadStageAgentOverrides(options.root)).overrides,
         inflightTaskIds: listInflightTaskIds(),
+        interactiveSessions: listInteractiveWaits(),
         editors: editorSummaries(),
         activityThresholds: settings.activityThresholds,
         intakeSession,
