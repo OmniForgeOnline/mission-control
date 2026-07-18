@@ -6,6 +6,12 @@
   gap: var(--s-2);
 }
 
+.home-attention.is-focused {
+  outline: 1px solid color-mix(in srgb, var(--accent) 35%, var(--hairline));
+  outline-offset: 4px;
+  border-radius: var(--r-lg);
+}
+
 .home-attention-list {
   display: flex;
   flex-direction: column;
@@ -22,20 +28,34 @@
   border-left: 3px solid var(--accent);
   border-radius: var(--r-lg);
   background: var(--surface);
+  box-shadow: var(--elev-1);
   text-align: left;
   cursor: pointer;
   color: inherit;
-  transition: border-color var(--d-fast) var(--ease-out), background var(--d-fast) var(--ease-out);
+  transition: border-color var(--d-fast) var(--ease-out), background var(--d-fast) var(--ease-out),
+    box-shadow var(--d-fast) var(--ease-out), transform var(--d-fast) var(--ease-out);
 }
 
-.home-attention-row[data-tone="closed"] {
+.home-attention-row[data-tone="closed"],
+.home-attention-row[data-tone="blocked"],
+.home-attention-row[data-tone="stalled"] {
   border-left-color: var(--warning, #c98a1d);
   background: color-mix(in srgb, var(--warning, #c98a1d) 6%, var(--surface));
+}
+
+.home-attention-row[data-tone="resumable"] {
+  border-left-color: var(--status-paused, #7aa2ff);
+}
+
+.home-attention-row[data-tone="running"] {
+  border-left-color: var(--status-running, #3db88a);
 }
 
 .home-attention-row:hover {
   border-color: var(--hairline-strong);
   background: var(--surface-2);
+  box-shadow: var(--elev-2);
+  transform: translateY(-1px);
 }
 
 .home-attention-main {
@@ -64,6 +84,10 @@
   color: var(--ink-muted);
 }
 
+.home-clear {
+  margin-top: var(--s-2);
+}
+
 .merge-state {
   display: inline-flex;
   align-items: center;
@@ -72,16 +96,26 @@
   border-radius: var(--r-pill);
   padding: 2px 8px;
   font-size: var(--t-xs);
+  max-width: 100%;
 }
 
-.merge-state-open {
+.merge-state-open,
+.merge-state-awaiting,
+.merge-state-running {
   color: var(--accent);
   border-color: color-mix(in srgb, var(--accent) 35%, var(--hairline));
 }
 
-.merge-state-closed {
+.merge-state-closed,
+.merge-state-blocked,
+.merge-state-stalled {
   color: var(--warning, #c98a1d);
   border-color: color-mix(in srgb, var(--warning, #c98a1d) 35%, var(--hairline));
+}
+
+.merge-state-resumable {
+  color: var(--status-paused, #7aa2ff);
+  border-color: color-mix(in srgb, var(--status-paused, #7aa2ff) 35%, var(--hairline));
 }
 
 .brand-btn {
@@ -92,8 +126,8 @@
   padding: 0;
 }
 
-.brand-btn:hover .brand-mark {
-  filter: brightness(1.08);
+.brand-btn:hover .brand-logo {
+  opacity: 0.92;
 }
 
 .intake-view {
@@ -142,6 +176,7 @@
   border: 1px solid var(--hairline);
   border-radius: var(--r-lg);
   background: var(--surface);
+  box-shadow: var(--elev-2);
 }
 
 .home-setup-subtitle {
@@ -179,18 +214,22 @@
   border: 1px solid var(--hairline);
   border-radius: var(--r-md);
   background: var(--surface-2);
+  box-shadow: var(--elev-1);
   color: inherit;
   text-align: left;
 }
 
 .home-setup-item.is-action {
   cursor: pointer;
-  transition: border-color var(--d-fast) var(--ease-out), background var(--d-fast) var(--ease-out);
+  transition: border-color var(--d-fast) var(--ease-out), background var(--d-fast) var(--ease-out),
+    box-shadow var(--d-fast) var(--ease-out), transform var(--d-fast) var(--ease-out);
 }
 
 .home-setup-item.is-action:hover {
-  border-color: var(--hairline-strong);
+  border-color: color-mix(in srgb, var(--accent) 40%, var(--hairline-strong));
   background: var(--surface-3);
+  box-shadow: var(--elev-2);
+  transform: translateY(-1px);
 }
 
 .home-setup-icon {
@@ -226,6 +265,126 @@
   color: var(--ink-muted);
   font-size: var(--t-xs);
   line-height: 1.45;
+}
+
+.cli-onboard-dialog {
+  border: none;
+  padding: 0;
+  background: transparent;
+  max-width: min(560px, calc(100vw - 32px));
+  width: 100%;
+}
+
+.cli-onboard-dialog::backdrop {
+  background: color-mix(in srgb, var(--ink) 45%, transparent);
+}
+
+.cli-onboard-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-4);
+  padding: var(--s-5);
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  box-shadow: var(--elev-3);
+  color: var(--ink);
+}
+
+.cli-onboard-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--s-3);
+}
+
+.cli-onboard-title {
+  margin: 0;
+  font-size: var(--t-lg);
+  color: var(--ink-strong);
+}
+
+.cli-onboard-sub {
+  margin: 6px 0 0;
+  font-size: var(--t-sm);
+  line-height: 1.45;
+  max-width: 36ch;
+}
+
+.cli-onboard-head-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  flex: none;
+}
+
+.cli-onboard-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  max-height: min(60vh, 420px);
+  overflow: auto;
+}
+
+.cli-onboard-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-3);
+  padding: var(--s-3);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+}
+
+.cli-onboard-row.is-disabled {
+  opacity: 0.72;
+}
+
+.cli-onboard-id {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  min-width: 0;
+}
+
+.cli-onboard-id-text {
+  min-width: 0;
+}
+
+.cli-onboard-name-row {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  min-width: 0;
+}
+
+.cli-onboard-name-row strong {
+  font-size: var(--t-sm);
+  color: var(--ink-strong);
+}
+
+.cli-onboard-cmd {
+  margin-top: 2px;
+  font-size: 10px;
+  color: var(--ink-faint);
+  display: flex;
+  gap: 6px;
+  align-items: baseline;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cli-onboard-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  flex: none;
 }
 
 /* Shared command card — used by project intake (and any future composer).

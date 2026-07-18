@@ -1,9 +1,4 @@
-import {
-  countStepComments,
-  nodeStateLabel,
-  nodeVisualState,
-  stepGateKind
-} from "./state.js";
+import { nodeStateLabel, nodeVisualState } from "./state.js";
 import { resolvedStepAgent } from "@ui/app/state.js";
 import type { HarnessTask, WorkflowSummary } from "@ui/app/types.js";
 
@@ -47,22 +42,12 @@ export function WorkflowNode({
   if (!step) return null;
 
   const state = nodeVisualState(stepId, task, workflow);
-  const gate = stepGateKind(workflow, stepId);
-  // Draft mode (no task run, e.g. the Workflows editor): derive the agent from
-  // this workflow's own config. Run mode: honour task/global overrides.
   const isDraft = !task.workflowRun;
   const agent = isDraft
     ? draftAgent(step.agent, workflow)
     : resolvedStepAgent(task, stepId) ?? (step.agent === "none" ? null : step.agent);
-  const comments = isDraft ? 0 : countStepComments(task, stepId);
 
-  const classes = [
-    "wf-node",
-    `is-${state}`,
-    selected ? "is-selected" : "",
-    gate === "operator" ? "gate-operator" : "",
-    gate === "daemon" ? "gate-daemon" : ""
-  ]
+  const classes = ["wf-node", `is-${state}`, selected ? "is-selected" : ""]
     .filter(Boolean)
     .join(" ");
 
@@ -78,22 +63,17 @@ export function WorkflowNode({
         onSelect(stepId);
       }}
     >
-      <div class="wf-node-head">
-        <span class="wf-node-dot" aria-hidden="true" />
-        <span class="wf-node-name">{stepLabel(stepId)}</span>
-        {isDraft || state === "blocked" ? null : (
-          <span class="wf-node-state">{nodeStateLabel(state)}</span>
-        )}
-      </div>
-      <div class="wf-node-meta">
-        <span class="wf-tag">{step.kind}</span>
-        {agent ? <span class="wf-tag">{agent}</span> : null}
-        {step.approval === "required" ? <span class="wf-tag is-approval">approval</span> : null}
-      </div>
-      <div class="wf-node-foot">
-        {isDraft ? null : <span class={`wf-comments${comments ? " has" : ""}`}>💬 {comments}</span>}
-        <span>{gate === "operator" ? "operator-gated" : gate === "daemon" ? "auto" : "standard"}</span>
-      </div>
+      {agent ? (
+        <span class="wf-node-agent" title="Agent">
+          {agent}
+        </span>
+      ) : (
+        <span class="wf-node-agent is-none" title="No agent for this step">
+          no agent
+        </span>
+      )}
+      <span class="wf-node-state">{nodeStateLabel(state)}</span>
+      <span class="wf-node-name">{stepLabel(stepId)}</span>
     </button>
   );
 }

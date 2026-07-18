@@ -1,6 +1,6 @@
 {
   "$schema": "https://unpkg.com/knip@6/schema.json",
-  "entry": ["src/mcp/gbrain-server.ts"],
+  "entry": ["src/mcp/gbrain-server.ts", "scripts/mobile-overflow-audit.mjs"],
   "project": ["src/**/*.{ts,tsx}", "tests/**/*.ts"],
   "ignoreBinaries": ["where"],
   "ignoreExportsUsedInFile": true,

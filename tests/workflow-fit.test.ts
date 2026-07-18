@@ -2,11 +2,14 @@ import { describe, expect, it } from "vitest";
 
 import {
   CONTAIN_FIT,
+  NARROW_PANEL_FIT,
   PANEL_FIT,
   ZOOM_MAX_SCALE,
   ZOOM_MIN_SCALE,
   clampZoom,
-  computeFitTransform
+  computeFitTransform,
+  panelFitForViewport,
+  zoomToward
 } from "../src/ui/features/tasks/detail/workflow/fit.ts";
 import { LAYOUT, layoutWorkflow } from "../src/ui/features/tasks/detail/workflow/layout.ts";
 
@@ -155,6 +158,36 @@ describe("computeFitTransform", () => {
     expect(clampZoom(0.01)).toBe(ZOOM_MIN_SCALE);
     expect(clampZoom(10)).toBe(ZOOM_MAX_SCALE);
     expect(clampZoom(1)).toBe(1);
+  });
+
+  it("uses a lower panel fit floor on narrow viewports", () => {
+    expect(panelFitForViewport(390)).toEqual(NARROW_PANEL_FIT);
+    expect(panelFitForViewport(800)).toEqual(PANEL_FIT);
+    expect(NARROW_PANEL_FIT.minScale).toBeLessThan(PANEL_FIT.minScale);
+  });
+
+  it("zooms toward a viewport point without drifting the under-cursor plane point", () => {
+    const current = { x: 40, y: 20, scale: 1 };
+    const next = zoomToward(current, 0, 0, 100, 80, 1.5);
+    expect(next.scale).toBe(1.5);
+    // Plane point under (100,80) before: ((100-40)/1, (80-20)/1) = (60, 60)
+    // After: (100 - 60*1.5, 80 - 60*1.5) = (10, -10)
+    expect(next.x).toBeCloseTo(10, 5);
+    expect(next.y).toBeCloseTo(-10, 5);
+  });
+
+  it("fits a wide graph into a phone-width strip using the narrow panel mode", () => {
+    const phone = { width: 334, height: 168 };
+    const t = computeFitTransform(
+      phone.width,
+      phone.height,
+      parallelLayout.bounds,
+      parallelLayout.content,
+      panelFitForViewport(phone.width)
+    );
+    const contentWidth = parallelLayout.content.maxX - parallelLayout.content.minX;
+    expect(t.scale).toBeLessThanOrEqual(NARROW_PANEL_FIT.maxScale);
+    expect(contentWidth * t.scale).toBeLessThanOrEqual(phone.width + 1);
   });
 
   it("falls back safely when the viewport is unmeasured", () => {

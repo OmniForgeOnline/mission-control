@@ -52,7 +52,7 @@ export function WorkflowSplitPane({ canvas, panel }: WorkflowSplitPaneProps) {
   useEffect(() => {
     if (!resizing || collapsed) return;
 
-    function onMouseMove(event: MouseEvent): void {
+    function onPointerMove(event: PointerEvent): void {
       const body = bodyRef.current;
       if (!body) return;
       const next = panelHeightFromPointer(event.clientY, body.getBoundingClientRect());
@@ -60,15 +60,17 @@ export function WorkflowSplitPane({ canvas, panel }: WorkflowSplitPaneProps) {
       setPanelHeight(next);
     }
 
-    function onMouseUp(): void {
+    function onPointerUp(): void {
       setResizing(false);
     }
 
-    window.addEventListener("mousemove", onMouseMove);
-    window.addEventListener("mouseup", onMouseUp);
+    window.addEventListener("pointermove", onPointerMove);
+    window.addEventListener("pointerup", onPointerUp);
+    window.addEventListener("pointercancel", onPointerUp);
     return () => {
-      window.removeEventListener("mousemove", onMouseMove);
-      window.removeEventListener("mouseup", onMouseUp);
+      window.removeEventListener("pointermove", onPointerMove);
+      window.removeEventListener("pointerup", onPointerUp);
+      window.removeEventListener("pointercancel", onPointerUp);
     };
   }, [resizing, collapsed]);
 
@@ -116,9 +118,15 @@ export function WorkflowSplitPane({ canvas, panel }: WorkflowSplitPaneProps) {
           aria-valuemax={MAX_WORKFLOW_PANEL_HEIGHT}
           tabIndex={0}
           style={{ height: `${WORKFLOW_SPLITTER_HEIGHT}px` }}
-          onMouseDown={(event) => {
+          onPointerDown={(event) => {
+            if (event.button !== 0) return;
             if ((event.target as HTMLElement).closest(".wf-panel-collapse")) return;
             event.preventDefault();
+            try {
+              (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
+            } catch {
+              /* capture optional — window listeners still track the drag */
+            }
             setResizing(true);
           }}
           onKeyDown={(event) => {
@@ -149,7 +157,7 @@ export function WorkflowSplitPane({ canvas, panel }: WorkflowSplitPaneProps) {
               event.stopPropagation();
               toggleCollapsed();
             }}
-            onMouseDown={(event) => event.stopPropagation()}
+            onPointerDown={(event) => event.stopPropagation()}
           >
             <Icon name="chevron-up" size={16} />
           </button>

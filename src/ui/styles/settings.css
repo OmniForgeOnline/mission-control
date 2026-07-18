@@ -9,37 +9,259 @@
   line-height: 1.5;
 }
 
-.settings-autosave-note {
-  align-self: flex-end;
-  font-size: var(--t-sm);
-  color: var(--ink-muted);
-  white-space: nowrap;
+.settings-shell-system {
+  align-items: stretch;
+  min-height: 0;
+  flex: 1 1 auto;
 }
 
-.settings-head-control {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--s-2);
+.settings-view {
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 
-.settings-head-control-label {
-  font-size: var(--t-xs);
-  font-weight: var(--w-semi);
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--ink-faint);
+/* Default to stacked catalog shells. Desktop two-column width:max-content
+   lives under min-width:1081px so it cannot override the shared ≤1080 stack. */
+.settings-view > .catalog-shell {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+  align-items: stretch;
+  margin-top: 0;
+  grid-template-columns: 1fr;
 }
 
-.settings-usage-meta {
-  font-size: var(--t-sm);
-  color: var(--ink-muted);
-  white-space: nowrap;
+.settings-view > .catalog-shell.settings-shell-system {
+  flex: 1 1 auto;
+  min-height: 0;
+  margin-top: 0;
 }
 
-.agent-config-foot {
-  margin: var(--s-4) 0 0;
-  font-size: var(--t-sm);
-  line-height: 1.5;
+@media (max-width: 1080px) {
+  .settings-view {
+    height: auto;
+    max-height: none;
+    overflow: visible;
+  }
+
+  .settings-view > .catalog-shell,
+  .settings-embedded-panel > .catalog-shell {
+    grid-template-columns: 1fr;
+    flex: none;
+    overflow: visible;
+    align-items: start;
+    min-height: 0;
+  }
+
+  .settings-view > .catalog-shell > .catalog-rail,
+  .settings-embedded-panel > .catalog-shell > .catalog-rail {
+    width: 100%;
+    max-width: 100%;
+    max-height: min(40vh, 280px);
+    overflow: auto;
+  }
+
+  .settings-view > .catalog-shell > .catalog-rail .catalog-item,
+  .settings-embedded-panel > .catalog-shell > .catalog-rail .catalog-item {
+    width: 100%;
+  }
+
+  .settings-view > .catalog-shell > .catalog-rail .catalog-item-meta,
+  .settings-embedded-panel > .catalog-shell > .catalog-rail .catalog-item-meta {
+    min-width: 0;
+    flex: 1 1 auto;
+  }
+
+  .settings-view > .catalog-shell > .catalog-rail .catalog-item-sub,
+  .settings-embedded-panel > .catalog-shell > .catalog-rail .catalog-item-sub {
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .settings-detail-system,
+  .settings-view .settings-system-inner,
+  .settings-view .catalog-detail:not(.settings-detail-system),
+  .settings-embedded-panel {
+    overflow: visible;
+    height: auto;
+    max-height: none;
+  }
+
+  .settings-view .settings-system-inner,
+  .settings-embedded-panel {
+    flex: none;
+  }
+}
+
+@media (min-width: 1081px) {
+  .settings-view > .catalog-shell {
+    grid-template-columns: max-content minmax(0, 1fr);
+  }
+
+  .settings-view > .catalog-shell > .catalog-rail {
+    width: max-content;
+  }
+
+  .settings-view > .catalog-shell > .catalog-rail .catalog-item {
+    width: auto;
+  }
+
+  .settings-view > .catalog-shell > .catalog-rail .catalog-item-meta {
+    min-width: max-content;
+    flex: 0 0 auto;
+  }
+
+  .settings-view > .catalog-shell > .catalog-rail .catalog-item-name,
+  .settings-view > .catalog-shell > .catalog-rail .catalog-item-sub,
+  .settings-view > .catalog-shell > .catalog-rail .catalog-group-head {
+    white-space: nowrap;
+  }
+
+  .settings-view > .catalog-shell > .catalog-rail .catalog-item-sub {
+    overflow: visible;
+    text-overflow: clip;
+  }
+}
+
+.settings-detail-system {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  max-width: none;
+  width: 100%;
+  /* Mobile-first: content must remain visible when the shell is stacked. */
+  overflow: visible;
+}
+
+/* All Settings detail panes use the full remaining canvas (not the 1080px catalog cap). */
+.settings-view .catalog-detail,
+.settings-view .catalog-detail-inner {
+  max-width: none;
+  width: 100%;
+}
+
+.settings-view .catalog-detail:not(.settings-detail-system) {
+  overflow: auto;
+}
+
+/* Workflow editor embedded in Settings: fill the detail column. */
+.settings-embedded-panel .wf-editor,
+.settings-system-inner .wf-editor {
+  width: 100%;
+  max-width: none;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* Mobile-first system embeds: size to content. Desktop fill rules follow in min-width:1081px.
+   Never declare height:100% / flex:1 1 0 / overflow:hidden after a ≤1080 override — that
+   cascade regresses Connectors/Skills/Workflows to an empty pane on mobile. */
+.settings-view .settings-system-inner {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+  min-height: 0;
+  flex: none;
+  max-width: none;
+  width: 100%;
+  overflow: visible;
+  height: auto;
+}
+
+.settings-embedded-panel {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: none;
+  width: 100%;
+  max-width: none;
+}
+
+.settings-embedded-panel > .catalog-shell {
+  margin-top: 0;
+  flex: none;
+  min-height: 0;
+  align-content: start;
+  align-items: stretch;
+  grid-template-rows: none;
+  width: 100%;
+  overflow: visible;
+  /* Explicit stack default — do not inherit a stale two-column from cascade order. */
+  grid-template-columns: 1fr;
+}
+
+.settings-embedded-panel .catalog-detail,
+.settings-embedded-panel .catalog-detail-inner {
+  max-width: none;
+  width: 100%;
+}
+
+.settings-embedded-panel .catalog-detail {
+  overflow: auto;
+}
+
+@media (min-width: 1081px) {
+  .settings-detail-system {
+    overflow: hidden;
+  }
+
+  .settings-view .settings-system-inner {
+    flex: 1 1 auto;
+    overflow: hidden;
+    height: 100%;
+  }
+
+  .settings-embedded-panel {
+    flex: 1 1 0;
+  }
+
+  .settings-embedded-panel > .catalog-shell {
+    flex: 1 1 0;
+    min-height: 0;
+    align-content: stretch;
+    align-items: stretch;
+    grid-template-columns: max-content minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr);
+    overflow: hidden;
+  }
+}
+
+.settings-embedded-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: var(--s-2);
+  flex: none;
+}
+
+.settings-embedded-toolbar .row,
+.settings-embedded-toolbar .row-actions {
+  flex-wrap: nowrap;
+}
+
+@media (max-width: 720px) {
+  .settings-embedded-toolbar {
+    justify-content: stretch;
+  }
+
+  .settings-embedded-toolbar .row,
+  .settings-embedded-toolbar .row-actions {
+    flex-wrap: wrap;
+    width: 100%;
+    gap: var(--s-2);
+  }
+
+  .settings-embedded-toolbar .btn:not(.btn-icon) {
+    flex: 0 1 auto;
+    max-width: 100%;
+  }
+}
+
+.settings-group + .settings-section {
+  margin-top: var(--s-5);
 }
 
 .settings-group {
@@ -461,92 +683,156 @@
 
 .agent-policy-grid {
   display: grid;
-  gap: var(--s-4);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--s-3);
+  align-items: start;
+}
+
+@media (max-width: 900px) {
+  .agent-policy-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 /* ---------- agent tool cards (tool-card vocabulary) ---------- */
 
 .tool-card {
   border: 1px solid var(--hairline);
-  border-radius: var(--r-xl);
+  border-radius: var(--r-lg);
   background: var(--surface);
-  padding: var(--s-4);
+  box-shadow: var(--elev-1);
+  padding: var(--s-3);
   display: grid;
-  gap: var(--s-4);
+  gap: var(--s-2);
+  min-width: 0;
+}
+
+.tool-card.is-disabled {
+  opacity: 0.7;
 }
 
 .tool-head {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
-  gap: var(--s-3);
+  gap: var(--s-2);
+  min-width: 0;
 }
 
 .tool-id {
   display: flex;
   align-items: center;
-  gap: var(--s-3);
+  gap: var(--s-2);
   min-width: 0;
 }
 
 .tool-swatch {
-  width: 30px;
-  height: 30px;
+  width: 26px;
+  height: 26px;
   flex: none;
-  border-radius: var(--r-lg);
+  border-radius: var(--r-md);
   display: grid;
   place-items: center;
   background: var(--surface-2);
   border: 1px solid var(--hairline);
   font-family: var(--font-mono);
-  font-size: var(--t-sm);
+  font-size: var(--t-xs);
   font-weight: var(--w-semi);
 }
 
 .tool-swatch .wf-agent-logo {
-  width: 18px;
-  height: 18px;
+  width: 15px;
+  height: 15px;
 }
 
 .tool-id-text {
   min-width: 0;
 }
 
+.tool-name-row {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  min-width: 0;
+}
+
 .tool-name {
-  font-size: var(--t-lg);
+  font-size: var(--t-sm);
   font-weight: var(--w-semi);
   color: var(--ink-strong);
   line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tool-presence {
+  flex: none;
+  font-size: 10px;
+  font-weight: var(--w-semi);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 2px 6px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--hairline);
+  color: var(--ink-faint);
+  background: var(--surface-2);
+}
+
+.tool-presence.is-ready {
+  color: var(--ok, #3d9a6a);
+  border-color: color-mix(in srgb, var(--ok, #3d9a6a) 35%, var(--hairline));
+}
+
+.tool-presence.is-missing {
+  color: var(--danger, #c45c5c);
+  border-color: color-mix(in srgb, var(--danger, #c45c5c) 35%, var(--hairline));
 }
 
 .tool-cmd {
-  font-size: var(--t-xs);
-  color: var(--ink-muted);
-  margin-top: 1px;
+  font-size: 10px;
+  color: var(--ink-faint);
+  margin-top: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  display: flex;
+  gap: 6px;
+  align-items: baseline;
+  min-width: 0;
+}
+
+.tool-resolved {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.tool-setup-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
 }
 
 .tool-cmd code {
-  color: var(--ink-muted);
+  color: inherit;
+  font-size: inherit;
 }
 
 .tool-head-right {
   display: flex;
   align-items: center;
-  gap: var(--s-3);
+  gap: var(--s-2);
   flex: none;
 }
 
-.tool-badge {
-  display: inline-flex;
+/* Account-level quota: full-width row under the head (fits 2-col cards). */
+.tool-usage {
+  display: flex;
   align-items: center;
-  gap: 5px;
-  font-size: var(--t-xs);
-  font-weight: var(--w-medium);
-  padding: 3px 9px;
-  border-radius: var(--r-pill);
-  border: 1px solid var(--hairline-strong);
-  background: var(--surface-2);
-  color: var(--ink-muted);
+  gap: var(--s-2);
+  min-width: 0;
 }
 
 .pool-list {
@@ -554,68 +840,56 @@
   margin: 0;
   padding: 0;
   display: grid;
-  gap: var(--s-2);
+  gap: 4px;
 }
 
 .pool-row {
   display: flex;
   align-items: center;
-  gap: var(--s-3);
-  flex-wrap: wrap;
-  padding: var(--s-2) var(--s-3);
-  border-radius: var(--r-md);
+  justify-content: space-between;
+  gap: var(--s-2);
+  padding: 4px 8px;
+  border-radius: var(--r-sm);
   background: var(--surface-2);
   border: 1px solid var(--hairline);
+  min-width: 0;
+}
+
+.pool-row.is-disabled {
+  opacity: 0.55;
+}
+
+.pool-id {
+  min-width: 0;
+  display: grid;
+  gap: 0;
 }
 
 .pool-name {
-  font-size: var(--t-sm);
+  font-size: var(--t-xs);
   font-weight: var(--w-medium);
   color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.pool-tier {
+.pool-model-id {
   font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  padding: 2px 7px;
-  border-radius: var(--r-pill);
-  border: 1px solid var(--hairline-strong);
-  color: var(--ink-muted);
-}
-
-.pool-tier.is-free {
-  color: var(--success);
-  border-color: color-mix(in srgb, var(--success) 35%, var(--hairline));
-}
-
-.pool-q {
-  font-size: var(--t-xs);
   color: var(--ink-faint);
   font-family: var(--font-mono);
-}
-
-.pool-caps {
-  font-size: var(--t-xs);
-  color: var(--ink-faint);
-  font-family: var(--font-mono);
-}
-
-.pool-usage {
-  margin-left: auto;
-  display: flex;
-  align-items: center;
-  gap: var(--s-3);
-  min-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .usage-bar {
   flex: 1;
-  height: 6px;
+  height: 5px;
   border-radius: var(--r-pill);
   background: var(--bg-elev);
   overflow: hidden;
-  min-width: 80px;
+  min-width: 48px;
 }
 
 .usage-fill {
@@ -634,31 +908,291 @@
 }
 
 .usage-text {
-  font-size: var(--t-xs);
+  font-size: 10px;
   color: var(--ink-muted);
   white-space: nowrap;
-  min-width: 120px;
-  text-align: right;
+  flex: none;
+  max-width: 55%;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .pool-empty {
-  font-size: var(--t-sm);
+  font-size: var(--t-xs);
   color: var(--ink-muted);
+  padding: 2px 4px;
 }
 
-.agent-config-extensions-foot {
+.pool-more {
+  justify-self: start;
+  align-self: start;
+}
+
+.model-actions {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
+  gap: var(--s-2);
+}
+
+.model-add-form {
+  display: grid;
+  gap: var(--s-2);
+  width: 100%;
+}
+
+.model-add-actions {
+  display: flex;
+  gap: var(--s-2);
+}
+
+/* CLI install / login terminal modal */
+.cli-setup-dialog {
+  width: min(860px, 96vw);
+  max-height: min(88vh, 820px);
+  margin: auto;
+  padding: 0;
+  border: none;
+  background: transparent;
+}
+
+.cli-setup-panel {
+  display: flex;
+  flex-direction: column;
+  max-height: min(88vh, 820px);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-lg);
+  background: var(--bg-elev);
+  box-shadow: var(--shadow-overlay);
+  overflow: hidden;
+}
+
+@media (max-width: 720px) {
+  .cli-setup-dialog {
+    width: 100vw;
+    max-width: 100vw;
+    max-height: 100dvh;
+    margin: 0;
+    border-radius: 0;
+  }
+
+  .cli-setup-panel {
+    max-height: 100dvh;
+    height: 100dvh;
+    border-radius: 0;
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    box-sizing: border-box;
+  }
+
+  .cli-setup-term {
+    height: auto;
+    flex: 1 1 auto;
+    min-height: 40dvh;
+  }
+
+  .cli-setup-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+}
+
+.cli-setup-head {
+  display: flex;
+  align-items: flex-start;
   justify-content: space-between;
   gap: var(--s-3);
-  margin-top: var(--s-3);
+  padding: var(--s-4) var(--s-4) var(--s-3);
+  border-bottom: 1px solid var(--hairline);
+  flex: none;
 }
 
-.tool-extensions {
+.cli-setup-titles {
+  min-width: 0;
+}
+
+.cli-setup-title {
+  margin: 0;
+  font-size: var(--t-lg);
+  font-weight: var(--w-semi);
+  color: var(--ink-strong);
+}
+
+.cli-setup-sub {
+  margin: 4px 0 0;
+  font-size: var(--t-xs);
+  line-height: 1.4;
+  max-width: 72ch;
+}
+
+.cli-setup-docs {
+  margin: 6px 0 0;
+  font-size: var(--t-xs);
+}
+
+.cli-setup-docs a {
+  color: var(--accent);
+}
+
+.cli-setup-body {
   display: grid;
   gap: var(--s-3);
-  padding-top: var(--s-2);
-  border-top: 1px solid var(--hairline);
+  padding: var(--s-4);
+  min-height: 0;
+}
+
+.cli-setup-error {
+  margin: 0;
+  color: var(--danger, #c45c5c);
+  font-size: var(--t-sm);
+}
+
+.cli-setup-term {
+  height: 40vh;
+  min-height: 220px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-md);
+  overflow: hidden;
+  background: var(--term-bg);
+}
+
+.cli-setup-term .term-pane {
+  height: 100%;
+}
+
+.cli-setup-term .term-host-wrap,
+.cli-setup-term .term-host {
+  height: 100%;
+}
+
+/* Models modal (full pool list — card shows a short preview). */
+.models-dialog {
+  width: min(720px, 94vw);
+  max-height: min(80vh, 720px);
+  margin: auto;
+  padding: 0;
+  border: none;
+  background: transparent;
+}
+
+.models-panel {
+  display: flex;
+  flex-direction: column;
+  max-height: min(80vh, 720px);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-lg);
+  background: var(--bg-elev);
+  box-shadow: var(--shadow-overlay);
+  overflow: hidden;
+}
+
+.models-panel-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--s-3);
+  padding: var(--s-4) var(--s-4) var(--s-3);
+  border-bottom: 1px solid var(--hairline);
+  flex: none;
+}
+
+.models-panel-titles {
+  min-width: 0;
+}
+
+.models-panel-title {
+  margin: 0;
+  font-size: var(--t-lg);
+  font-weight: var(--w-semi);
+  color: var(--ink-strong);
+}
+
+.models-panel-sub {
+  margin: 4px 0 0;
+  font-size: var(--t-xs);
+  line-height: 1.4;
+}
+
+.models-panel-body {
+  display: grid;
+  gap: var(--s-3);
+  padding: var(--s-4);
+  overflow: auto;
+  min-height: 0;
+}
+
+.models-panel-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+  align-items: flex-start;
+}
+
+.models-modal-list {
+  max-height: none;
+}
+
+.models-empty {
+  margin: 0;
+  font-size: var(--t-sm);
+}
+
+/* Extensions modal (tool card opens this — not an in-card accordion). */
+.extensions-dialog {
+  width: min(720px, 94vw);
+  max-height: min(80vh, 720px);
+  margin: auto;
+  padding: 0;
+  border: none;
+  background: transparent;
+}
+
+.extensions-panel {
+  display: flex;
+  flex-direction: column;
+  max-height: min(80vh, 720px);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-lg);
+  background: var(--bg-elev);
+  box-shadow: var(--shadow-overlay);
+  overflow: hidden;
+}
+
+.extensions-panel-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--s-3);
+  padding: var(--s-4) var(--s-4) var(--s-3);
+  border-bottom: 1px solid var(--hairline);
+  flex: none;
+}
+
+.extensions-panel-titles {
+  min-width: 0;
+}
+
+.extensions-panel-title {
+  margin: 0;
+  font-size: var(--t-lg);
+  font-weight: var(--w-semi);
+  color: var(--ink-strong);
+}
+
+.extensions-panel-sub {
+  margin: 4px 0 0;
+  font-size: var(--t-xs);
+  line-height: 1.4;
+}
+
+.extensions-panel-body {
+  display: grid;
+  gap: var(--s-3);
+  padding: var(--s-4);
+  overflow: auto;
+  min-height: 0;
 }
 
 .extension-list {
@@ -666,10 +1200,21 @@
   margin: 0;
   padding: 0;
   display: grid;
-  gap: var(--s-2);
+  gap: 6px;
 }
 
-.extension-row,
+.extension-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) minmax(0, 1.4fr) auto;
+  align-items: center;
+  gap: var(--s-3);
+  padding: 8px 10px;
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+  border: 1px solid var(--hairline);
+  min-width: 0;
+}
+
 .extension-picker-option {
   display: flex;
   align-items: center;
@@ -689,6 +1234,8 @@
   border-radius: var(--r-pill);
   border: 1px solid var(--hairline);
   color: var(--ink-muted);
+  flex: none;
+  white-space: nowrap;
 }
 
 .extension-name,
@@ -696,9 +1243,22 @@
   font-size: var(--t-sm);
   font-weight: var(--w-medium);
   color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
 }
 
-.extension-source,
+.extension-source {
+  font-size: var(--t-xs);
+  color: var(--ink-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+  text-align: right;
+}
+
 .extension-picker-id {
   font-size: var(--t-xs);
   color: var(--ink-muted);
@@ -729,9 +1289,15 @@
 
 .extension-install-row .input {
   flex: 1;
+  min-width: 0;
 }
 
 .extension-install-marketplace {
+  font-size: var(--t-sm);
+}
+
+.extension-empty {
+  margin: 0;
   font-size: var(--t-sm);
 }
 
@@ -847,6 +1413,9 @@
 .projects-table-scroll {
   margin-top: var(--s-4);
   overflow-x: auto;
+  overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
+  max-width: 100%;
 }
 
 .projects-table-scroll .projects-table {

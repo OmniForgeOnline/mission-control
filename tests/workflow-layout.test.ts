@@ -108,7 +108,7 @@ describe("workflow layout (left → right)", () => {
     expect(branchGeom?.branch).toBe(true);
   });
 
-  it("routes branch edges as a curve that bows below the graph", () => {
+  it("routes branch edges as an orthogonal U-path below the graph", () => {
     const layout = layoutWorkflow({
       initial: "implement",
       gitPipeline: { remediationStepId: "implement" },
@@ -127,9 +127,22 @@ describe("workflow layout (left → right)", () => {
     expect(rework.from).toBe("checks");
     expect(rework.to).toBe("implement");
     expect(rework.path.startsWith("M")).toBe(true);
-    expect(rework.path).toContain("C");
+    // Right-angle segments only — no cubic curves.
+    expect(rework.path).toContain("L");
+    expect(rework.path).not.toContain("C");
     expect(rework.bowY).toBeGreaterThan(maxBottom);
-    expect(rework.labelY).toBeGreaterThan(maxBottom * 0.5);
+    expect(rework.labelY).toBe(rework.bowY);
+  });
+
+  it("routes fan edges with orthogonal mid segments (no diagonal spans)", () => {
+    const layout = layoutWorkflow(parallelFixture);
+    const geometry = computeEdgeGeometry(layout.nodes, layout.edges);
+    const fanOut = geometry.find((e) => e.from === "implement" && e.to === "lint");
+    expect(fanOut?.path).toBeTruthy();
+    expect(fanOut!.path).toContain("L");
+    expect(fanOut!.path).not.toContain("C");
+    // Mid elbow: three L segments when source/target y differ.
+    expect((fanOut!.path.match(/ L /g) ?? []).length).toBeGreaterThanOrEqual(2);
   });
 
   it("fans multiple branch edges so they do not stack", () => {

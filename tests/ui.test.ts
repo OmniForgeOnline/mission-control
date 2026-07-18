@@ -430,7 +430,8 @@ describe("ui slice 4 polish and features", () => {
     const tree = await readClientTree();
     expect(tree).toContain("Send to agent");
     expect(tree).toContain("stepChatSubmission");
-    expect(tree).toContain("noteOnly: true");
+    expect(tree).toContain("Revert & resume");
+    expect(tree).not.toContain("Add note");
     expect(tree).not.toContain("taskReplyHost");
   });
 
@@ -481,8 +482,8 @@ describe("ui slice 4 polish and features", () => {
 
   it("auto-applies settings and offers blocked-task agent retry", async () => {
     const tree = await readClientTree();
-    expect(tree).toContain("Changes apply automatically");
     expect(tree).toContain("applyPatch");
+    expect(tree).toContain("silent = true");
     expect(tree).toContain("BlockedRecovery");
     expect(tree).toContain("RepoBindingRecovery");
     expect(tree).toContain("/api/tasks/");
@@ -602,6 +603,8 @@ describe("mission-control client surface", () => {
     const tree = await readClientTree();
     expect(tree).toContain("home-setup-checklist");
     expect(tree).toContain("Install an agent CLI");
+    expect(tree).toContain("Detect installed agent CLIs");
+    expect(tree).toContain("CliOnboardingModal");
     expect(tree).toContain("Add your first project");
     expect(tree).toContain("Configure agents");
     expect(tree).toContain("Connect GitHub or GitLab");
@@ -609,7 +612,6 @@ describe("mission-control client surface", () => {
     expect(tree).toContain('navigate("settings")');
     expect(tree).toContain('navigate("connectors")');
     expect(tree).toContain("Use the + next to Projects");
-    expect(tree).not.toContain("onboarding-modal");
     expect(tree).not.toContain("setup-wizard");
   });
 
@@ -875,10 +877,10 @@ describe("ui slice 3 surfaces", () => {
     expect(tree).not.toContain("Stage {stepNumber} of {totalSteps}");
     expect(tree).toContain("liveness(task)");
     expect(tree).toContain("Advancing automatically");
-    expect(tree).toContain("operator-gated");
+    expect(tree).toContain("isOperatorGatedStep");
     expect(tree).toContain("WorkflowCanvas");
     expect(tree).toContain("bestFuzzyScore");
-    expect(tree).toContain('"home", "tasks"');
+    expect(tree).toContain('"home", "skills", "connectors", "workflows", "maintenance", "settings"');
     expect(tree).toContain("nav-${v}");
     expect(tree).toContain("Press ? for shortcuts");
     expect(tree).not.toContain("type 'g t' to navigate");
@@ -947,7 +949,7 @@ describe("ui workflow step panel merge request", () => {
     });
     const html = renderToString(h(WorkflowStepPanel, { task, workflow, stepId: "review" }));
 
-    expect(html).toContain("Merge request");
+    expect(html).toContain("Open merge request");
     expect(html).toContain(`href="${mrUrl}"`);
     expect(html).toContain("PR #42");
   });
@@ -959,7 +961,7 @@ describe("ui workflow step panel merge request", () => {
 
     const html = renderToString(h(WorkflowStepPanel, { task: reviewTask(), workflow, stepId: "review" }));
 
-    expect(html).not.toContain("Merge request");
+    expect(html).not.toContain("Open merge request");
     expect(html).not.toContain(`href="${mrUrl}"`);
     expect(html).not.toContain("PR #42");
     expect(html).not.toContain("MR #");
@@ -1232,7 +1234,7 @@ describe("ui router and navigation state", () => {
     expect(state.ui.selectedTaskIds.size).toBe(0);
   });
 
-  it("navigateBack returns to the referring view and tasks filter", () => {
+  it("navigateBack returns to home attention when referring view was tasks", () => {
     state.ui.view = "project";
     state.ui.taskId = "proj-x";
     state.ui.projectTab = "runs";
@@ -1245,9 +1247,16 @@ describe("ui router and navigation state", () => {
     state.ui.referringTasksFilter = "blocked";
 
     router.navigateBack();
-    expect(state.ui.view).toBe("tasks");
+    expect(state.ui.view).toBe("home");
     expect(state.ui.tasksFilter).toBe("blocked");
-    expect(window.location.hash).toBe("#/tasks?filter=blocked");
+    expect(window.location.hash).toBe("#/home?filter=blocked");
+  });
+
+  it("buildViewHash encodes home attention filters in the hash", () => {
+    state.ui.tasksFilter = "running";
+    expect(router.buildViewHash("home")).toBe("#/home?filter=running");
+    state.ui.tasksFilter = "all";
+    expect(router.buildViewHash("home")).toBe("#/home");
   });
 });
 
@@ -1297,6 +1306,23 @@ describe("ui slice 1 safety and theme", () => {
     expect(tasks).toContain(".task-row:focus-visible");
     expect(shell).toMatch(/prefers-reduced-motion: reduce[\s\S]*pulse-dot/);
     expect(tasks).toMatch(/prefers-reduced-motion: reduce[\s\S]*progress::after/);
+  });
+
+  it("keeps light-theme borders and secondary ink dark enough to read", async () => {
+    const theme = await readFile(path.join(process.cwd(), "src/ui/theme.css"), "utf8");
+    const canvas = await readFile(
+      path.join(process.cwd(), "src/ui/styles/workflow-canvas.css"),
+      "utf8"
+    );
+    const lightBlock = theme.match(/\[data-theme="light"\]\s*\{[\s\S]*?\n\}/)?.[0] ?? "";
+    expect(lightBlock).toMatch(/--hairline:\s*#e4e7ec/);
+    expect(lightBlock).toMatch(/--hairline-strong:\s*#c7ccd4/);
+    expect(lightBlock).toMatch(/--ink-muted:\s*#545b66/);
+    expect(lightBlock).toMatch(/--ink-faint:\s*#8a919d/);
+    expect(lightBlock).not.toMatch(/--hairline:\s*#e3e8ef/);
+    expect(lightBlock).not.toMatch(/--ink-faint:\s*#8b95a4/);
+    expect(canvas).toContain('[data-theme="light"] .wf-edge-path');
+    expect(canvas).toContain('[data-theme="light"] .wf-node');
   });
 
   it("uses a dialog-based confirm helper instead of window.confirm", async () => {
@@ -1394,12 +1420,137 @@ describe("ui project surfaces", () => {
     expect(tree).toContain("projects-table-scroll");
   });
 
+  it("lays out the workflow editor as graph-on-top and uses the full Settings canvas", async () => {
+    const workflowsCss = await readFile(path.join(process.cwd(), "src/ui/styles/workflows.css"), "utf8");
+    const settingsCss = await readFile(path.join(process.cwd(), "src/ui/styles/settings.css"), "utf8");
+    const responsiveCss = await readFile(path.join(process.cwd(), "src/ui/styles/responsive.css"), "utf8");
+    expect(workflowsCss).toContain("flex-direction: column");
+    expect(workflowsCss).toMatch(/\.wf-editor-split \{[^}]*flex-direction: column/s);
+    expect(workflowsCss).toContain(".wf-editor-panel");
+    expect(workflowsCss).toMatch(/\.wf-editor-panel \{\s*width: 100%/);
+    expect(workflowsCss).toContain(".wf-canvas-viewport");
+    expect(settingsCss).toContain(".settings-view .catalog-detail-inner");
+    expect(settingsCss).toMatch(/\.settings-view \.catalog-detail-inner \{\s*max-width: none/s);
+    // Catalog shell fills the pane; rails scroll locally; detail takes leftover height.
+    expect(responsiveCss).toMatch(/\.catalog-rail \{[^}]*overflow: auto/s);
+    expect(responsiveCss).toContain(".catalog-panel-fill");
+    // Mapping table scrolls in a bounded pane (not a flex-fill that can collapse to 0).
+    expect(responsiveCss).toMatch(/\.connector-map-scroll \{[^}]*max-height:\s*460px/s);
+    // Desktop-only fill: mobile-first base must stay content-sized (no 1fr row trap).
+    expect(responsiveCss).toMatch(
+      /@media \(min-width: 1081px\)\s*\{[\s\S]*\.catalog-shell\s*\{[\s\S]*grid-template-rows:\s*minmax\(0,\s*1fr\)/
+    );
+    expect(responsiveCss).not.toMatch(
+      /^\.catalog-shell \{[^}]*grid-template-rows:\s*auto minmax\(0,\s*1fr\)/m
+    );
+  });
+
+  it("keeps Settings system embeds content-sized on mobile so Connectors stay visible", async () => {
+    const settingsCss = await readFile(path.join(process.cwd(), "src/ui/styles/settings.css"), "utf8");
+    // Base (mobile-first) must not lock embeds to a zero-height flex fill.
+    expect(settingsCss).toMatch(
+      /\.settings-view \.settings-system-inner \{[^}]*height:\s*auto/s
+    );
+    expect(settingsCss).toMatch(
+      /\.settings-view \.settings-system-inner \{[^}]*overflow:\s*visible/s
+    );
+    expect(settingsCss).toMatch(
+      /\.settings-embedded-panel \{[^}]*flex:\s*none/s
+    );
+    expect(settingsCss).toMatch(
+      /\.settings-embedded-panel > \.catalog-shell \{[^}]*overflow:\s*visible/s
+    );
+    expect(settingsCss).toMatch(
+      /\.settings-embedded-panel > \.catalog-shell \{[^}]*grid-template-rows:\s*none/s
+    );
+    // Desktop fill must come after mobile-first base (lastIndex — there may be earlier 1081 blocks).
+    const systemInnerBaseIdx = settingsCss.indexOf(
+      "/* Mobile-first system embeds: size to content."
+    );
+    const desktopFillIdx = settingsCss.lastIndexOf(
+      ".settings-embedded-panel > .catalog-shell {\n    flex: 1 1 0"
+    );
+    expect(systemInnerBaseIdx).toBeGreaterThan(-1);
+    expect(desktopFillIdx).toBeGreaterThan(systemInnerBaseIdx);
+  });
+
+  it("collapses autonomy panel to one column on narrow viewports so Active/Auto are not cropped", async () => {
+    const shellCss = await readFile(path.join(process.cwd(), "src/ui/styles/shell.css"), "utf8");
+    expect(shellCss).toMatch(
+      /@media \(max-width: 960px\)\s*\{[\s\S]*\.autonomy-panel\s*\{[\s\S]*grid-template-columns:\s*minmax\(0,\s*1fr\)/
+    );
+    expect(shellCss).toMatch(
+      /@media \(max-width: 960px\)\s*\{[\s\S]*\.autonomy-panel\s*\{[\s\S]*overflow:\s*visible/
+    );
+  });
+
   it("stacks the shared catalog rail above the detail on laptop-width screens", async () => {
     const responsiveCss = await readFile(path.join(process.cwd(), "src/ui/styles/responsive.css"), "utf8");
-    // Raised from 900px so Settings/Connectors/Skills/Workflows get a full-width
-    // detail pane before the two-column shell squeezes it to ~460px.
+    // Mobile-first: one column by default; desktop two-column only above 1080.
+    expect(responsiveCss).toMatch(
+      /\.catalog-shell \{[^}]*grid-template-columns:\s*1fr/s
+    );
+    expect(responsiveCss).toMatch(
+      /@media \(min-width: 1081px\)\s*\{[\s\S]*\.catalog-shell\s*\{[\s\S]*grid-template-columns:\s*300px/
+    );
     expect(responsiveCss).toContain("@media (max-width: 1080px)");
     expect(responsiveCss).not.toContain("@media (max-width: 900px)");
+    // Unconditional desktop two-column would leave Skills/Workflows squeezed on phone.
+    expect(responsiveCss).not.toMatch(
+      /^\.catalog-shell \{[^}]*grid-template-columns:\s*300px/m
+    );
+  });
+
+  it("stacks Settings section rail above detail despite max-content desktop columns", async () => {
+    const settingsCss = await readFile(path.join(process.cwd(), "src/ui/styles/settings.css"), "utf8");
+    // Desktop-only max-content columns — must not be unconditional or they beat
+    // the shared ≤1080 catalog stack (including nested Skills/Connectors shells).
+    expect(settingsCss).toMatch(
+      /@media \(min-width: 1081px\)\s*\{[\s\S]*\.settings-view > \.catalog-shell\s*\{[\s\S]*grid-template-columns:\s*max-content/
+    );
+    expect(settingsCss).toMatch(
+      /@media \(min-width: 1081px\)\s*\{[\s\S]*\.settings-embedded-panel > \.catalog-shell\s*\{[\s\S]*grid-template-columns:\s*max-content/
+    );
+    expect(settingsCss).toMatch(
+      /@media \(max-width: 1080px\)\s*\{[\s\S]*\.settings-view > \.catalog-shell[\s\S]*grid-template-columns:\s*1fr/
+    );
+    expect(settingsCss).toMatch(
+      /@media \(max-width: 1080px\)\s*\{[\s\S]*\.settings-embedded-panel > \.catalog-shell[\s\S]*grid-template-columns:\s*1fr/
+    );
+    // Nested embeds always stack unless desktop min-width kicks in.
+    expect(settingsCss).toMatch(
+      /\.settings-embedded-panel > \.catalog-shell \{[^}]*grid-template-columns:\s*1fr/s
+    );
+    // Unconditional max-content on either shell would regress phone layout.
+    expect(settingsCss).not.toMatch(
+      /^\.settings-view > \.catalog-shell \{[^}]*grid-template-columns:\s*max-content/m
+    );
+    expect(settingsCss).not.toMatch(
+      /^\.settings-embedded-panel > \.catalog-shell \{[^}]*grid-template-columns:\s*max-content/m
+    );
+  });
+
+  it("stacks Connectors detail and ClickUp map rows on phone widths", async () => {
+    const responsiveCss = await readFile(path.join(process.cwd(), "src/ui/styles/responsive.css"), "utf8");
+    expect(responsiveCss).toMatch(
+      /@media \(max-width: 720px\)\s*\{[\s\S]*\.connector-action-zone\s*\{[\s\S]*flex-direction:\s*column/
+    );
+    expect(responsiveCss).toMatch(
+      /@media \(max-width: 720px\)\s*\{[\s\S]*\.connector-map-table thead[\s\S]*display:\s*none/
+    );
+  });
+
+  it("keeps buttons from clipping wrapped labels on narrow viewports", async () => {
+    const components = await readFile(path.join(process.cwd(), "src/ui/styles/components.css"), "utf8");
+    const responsiveCss = await readFile(path.join(process.cwd(), "src/ui/styles/responsive.css"), "utf8");
+
+    expect(components).toMatch(/\.btn \{[^}]*min-height:\s*32px/s);
+    expect(components).toMatch(/\.btn \{[^}]*height:\s*auto/s);
+    expect(components).toMatch(/\.btn \{[^}]*padding:\s*6px/s);
+    expect(components).toMatch(/@media \(max-width: 720px\)\s*\{[\s\S]*\.row-actions\s*\{[\s\S]*flex-wrap:\s*wrap/);
+    expect(responsiveCss).toMatch(
+      /@media \(max-width: 720px\)\s*\{[\s\S]*\.catalog-section-actions\s*\{[\s\S]*flex-wrap:\s*wrap/
+    );
   });
 
   it("truncates gate-check evidence chips instead of clipping them off the card", async () => {
@@ -1571,6 +1722,138 @@ describe("ui rail resize", () => {
     expect(responsiveCss).toMatch(/\.rail-resize-handle,\s*\n\s*\.rail-collapse\s*\{\s*display: none/);
   });
 
+  it("keeps operator chrome usable on narrow and touch viewports", async () => {
+    const tasksCss = await readFile(path.join(process.cwd(), "src/ui/styles/tasks.css"), "utf8");
+    const shellCss = await readFile(path.join(process.cwd(), "src/ui/styles/shell.css"), "utf8");
+    const overlaysCss = await readFile(path.join(process.cwd(), "src/ui/styles/overlays.css"), "utf8");
+    const responsiveCss = await readFile(path.join(process.cwd(), "src/ui/styles/responsive.css"), "utf8");
+    const layoutSource = await readFile(path.join(process.cwd(), "src/ui/shell/layout.ts"), "utf8");
+
+    // F1: row actions visible without hover on touch / narrow.
+    expect(tasksCss).toContain(".task-row:focus-within .row-actions");
+    expect(tasksCss).toMatch(/@media \(hover: none\), \(max-width: 720px\)/);
+    expect(tasksCss).toMatch(
+      /@media \(hover: none\), \(max-width: 720px\)\s*\{[^}]*\.task-row \.row-actions\s*\{[^}]*opacity:\s*1/s
+    );
+
+    // F4/F5: safe areas + toasts that fit the viewport.
+    expect(shellCss).toContain("env(safe-area-inset-top");
+    expect(shellCss).toContain("env(safe-area-inset-left");
+    expect(overlaysCss).toContain("env(safe-area-inset-bottom");
+    expect(overlaysCss).toContain("env(safe-area-inset-right");
+    expect(overlaysCss).toMatch(/\.toast-stack \{[^}]*max-width:\s*calc\(100vw/s);
+    expect(overlaysCss).toMatch(/\.toast \{[^}]*min-width:\s*0/s);
+    expect(overlaysCss).not.toMatch(/\.toast \{[^}]*min-width:\s*280px/s);
+
+    // F2: compact app bar — icon search, pill labels collapse, structured counts.
+    expect(layoutSource).toContain('class="status-pill-count"');
+    expect(layoutSource).toContain('class="status-pill-label"');
+    expect(layoutSource).toContain('querySelector(".status-pill-count")');
+    expect(shellCss).toMatch(
+      /@media \(max-width: 720px\)\s*\{[\s\S]*\.app-bar \.palette-trigger span[\s\S]*display: none/
+    );
+    expect(shellCss).toMatch(
+      /@media \(max-width: 720px\)\s*\{[\s\S]*\.app-bar \.status-pill-label[\s\S]*display: none/
+    );
+    expect(shellCss).toMatch(
+      /@media \(max-width: 720px\)\s*\{[\s\S]*\.app-bar \.brand-logo[\s\S]*height: 24px/
+    );
+
+    // F3: narrow rail matches collapsed (icon-only projects) + touch tip triggers.
+    expect(responsiveCss).toMatch(
+      /@media \(max-width: 720px\)\s*\{[\s\S]*\.app-shell \.rail-project-tickets/
+    );
+    expect(responsiveCss).toMatch(
+      /@media \(max-width: 720px\)\s*\{[\s\S]*\.app-shell \.rail-project-toggle/
+    );
+    expect(responsiveCss).toContain(".rail-link[data-tip]:focus::after");
+    expect(responsiveCss).toContain(".rail-link[data-tip]:active::after");
+    expect(responsiveCss).toContain("min-height: 40px");
+    expect(shellCss).toContain(".app-shell.collapsed .rail-link[data-tip]:focus::after");
+  });
+
+  it("uses pointer events for workflow pan and panel resize on touch devices", async () => {
+    const canvas = await readFile(
+      path.join(process.cwd(), "src/ui/features/tasks/detail/workflow/canvas.tsx"),
+      "utf8"
+    );
+    const splitPane = await readFile(
+      path.join(process.cwd(), "src/ui/features/tasks/detail/workflow/split-pane.tsx"),
+      "utf8"
+    );
+    const canvasCss = await readFile(
+      path.join(process.cwd(), "src/ui/styles/workflow-canvas.css"),
+      "utf8"
+    );
+
+    expect(canvas).toContain('addEventListener("pointerdown"');
+    expect(canvas).toContain("pointermove");
+    expect(canvas).toContain("setPointerCapture");
+    expect(canvas).toContain("zoomToward");
+    expect(canvas).toContain("panelFitForViewport");
+    expect(canvas).not.toContain("onMouseDown");
+    expect(canvas).not.toContain("mousemove");
+
+    expect(splitPane).toContain("onPointerDown");
+    expect(splitPane).toContain("pointermove");
+    expect(splitPane).toContain("setPointerCapture");
+    expect(splitPane).not.toContain("onMouseDown");
+    expect(splitPane).not.toContain("mousemove");
+
+    expect(canvasCss).toMatch(/\.wf-canvas-wrap \{[^}]*touch-action:\s*none/s);
+    expect(canvasCss).toMatch(/@media \(max-width: 720px\)\s*\{[\s\S]*\.wf-canvas-toolbar[\s\S]*bottom:/);
+  });
+
+  it("stacks project tickets and contains wide-table scroll on narrow viewports", async () => {
+    const projectsCss = await readFile(path.join(process.cwd(), "src/ui/styles/projects.css"), "utf8");
+    const settingsCss = await readFile(path.join(process.cwd(), "src/ui/styles/settings.css"), "utf8");
+    const responsiveCss = await readFile(path.join(process.cwd(), "src/ui/styles/responsive.css"), "utf8");
+    const page = await readFile(path.join(process.cwd(), "src/ui/features/projects/page.tsx"), "utf8");
+    const canvasCss = await readFile(
+      path.join(process.cwd(), "src/ui/styles/workflow-canvas.css"),
+      "utf8"
+    );
+    const shellCss = await readFile(path.join(process.cwd(), "src/ui/styles/shell.css"), "utf8");
+
+    expect(page).toContain("project-ticket-table-scroll");
+    expect(projectsCss).toContain(".project-ticket-table-scroll");
+    expect(projectsCss).toContain("overscroll-behavior-x: contain");
+    expect(projectsCss).toMatch(
+      /@media \(max-width: 640px\)\s*\{[\s\S]*\.project-ticket-table thead[\s\S]*display: none/
+    );
+    expect(projectsCss).toMatch(
+      /@media \(max-width: 640px\)\s*\{[\s\S]*\.project-ticket-row\s*\{[\s\S]*display: grid/
+    );
+
+    expect(settingsCss).toMatch(/\.projects-table-scroll \{[^}]*overscroll-behavior-x: contain/s);
+    expect(responsiveCss).toMatch(/\.connector-map-scroll \{[^}]*overscroll-behavior-x: contain/s);
+
+    expect(canvasCss).toMatch(/@media \(pointer: coarse\), \(max-width: 720px\)/);
+    expect(shellCss).toMatch(/@media \(pointer: coarse\)\s*\{[\s\S]*\.rail-heading-action/);
+  });
+
+  it("adapts terminal, CLI setup, and shortcuts for mobile viewports", async () => {
+    const terminal = await readFile(
+      path.join(process.cwd(), "src/ui/shared/components/terminal-pane.tsx"),
+      "utf8"
+    );
+    const terminalCss = await readFile(path.join(process.cwd(), "src/ui/styles/terminal.css"), "utf8");
+    const settingsCss = await readFile(path.join(process.cwd(), "src/ui/styles/settings.css"), "utf8");
+    const shortcuts = await readFile(path.join(process.cwd(), "src/ui/overlays/shortcuts.ts"), "utf8");
+    const paletteCss = await readFile(path.join(process.cwd(), "src/ui/styles/palette.css"), "utf8");
+
+    expect(terminal).toContain("visualViewport");
+    expect(terminal).toContain("scrollIntoView");
+    expect(terminal).toContain('matchMedia("(max-width: 720px)")');
+    expect(terminalCss).toMatch(/@media \(max-width: 720px\)\s*\{[\s\S]*\.term-host[\s\S]*min-height:\s*120px/);
+
+    expect(settingsCss).toMatch(
+      /@media \(max-width: 720px\)\s*\{[\s\S]*\.cli-setup-dialog[\s\S]*100dvh/
+    );
+    expect(shortcuts).toContain("On touch, use Search and the rail");
+    expect(paletteCss).toMatch(/@media \(max-width: 520px\)\s*\{[\s\S]*\.shortcuts-row/);
+  });
+
   it("wires pointer drag, persistence, and keyboard a11y on the handle", async () => {
     const source = readFileSync(
       path.join(process.cwd(), "src/ui/shell/rail-resize.ts"),
@@ -1621,20 +1904,43 @@ describe("ui rail resize", () => {
 });
 
 describe("ui navigation restructure", () => {
-  it("groups system concerns under System and project-scoped surfaces under project tabs", async () => {
+  it("keeps system destinations out of the rail and under Settings", async () => {
     const layout = await readFile(path.join(process.cwd(), "src/ui/shell/layout.ts"), "utf8");
-    // System section holds skills, connectors, workflows, settings.
-    expect(layout).toContain('<div class="rail-heading">System</div>');
-    expect(layout).toContain('view: "skills"');
-    expect(layout).toContain('view: "connectors"');
-    expect(layout).toContain('view: "workflows"');
+    expect(layout).not.toContain('<div class="rail-heading">System</div>');
+    expect(layout).not.toContain('view: "skills"');
+    expect(layout).not.toContain('view: "connectors"');
+    expect(layout).not.toContain('view: "workflows"');
+    expect(layout).not.toContain('view: "maintenance"');
+    expect(layout).not.toContain('label: "All tasks"');
     expect(layout).toContain('view: "settings"');
+    expect(layout).toContain('view: "home"');
+    expect(layout).toContain("data-collapse-all-projects");
     // Project-scoped resources are no longer top-level rail items.
     expect(layout).not.toContain('view: "runs", label: "Runs"');
     expect(layout).not.toContain('<div class="rail-heading">Mission Control</div>');
     expect(layout).not.toContain('view: "memory", label: "Memory"');
     expect(layout).not.toContain('view: "autonomy", label: "Autonomy"');
     expect(layout).not.toContain('label: "Quality"');
+
+    const settings = await readFile(
+      path.join(process.cwd(), "src/ui/features/settings/page.tsx"),
+      "utf8"
+    );
+    expect(settings).toContain('label: "System"');
+    expect(settings).toContain('id: "connectors"');
+    expect(settings).toContain('id: "skills"');
+    expect(settings).toContain('id: "workflows"');
+    expect(settings).toContain('id: "maintenance"');
+    expect(settings).toContain("ConnectorsPanel");
+    expect(settings).toContain("SkillsPanel");
+    expect(settings).toContain("WorkflowsPanel");
+    expect(settings).toContain("MaintenancePanel");
+    expect(settings).not.toContain('kind: "view"');
+
+    const home = await readFile(path.join(process.cwd(), "src/ui/features/home/page.tsx"), "utf8");
+    expect(home).toContain("Needs attention");
+    expect(home).toContain("attentionSections");
+    expect(home).not.toContain("project-picker");
   });
 
   it("drops standalone memory/quality/autonomy view names and registry entries", async () => {
@@ -1879,7 +2185,7 @@ describe("ui maintenance view", () => {
     vi.unstubAllGlobals();
   });
 
-  it("parses #/maintenance into the maintenance view", async () => {
+  it("parses #/maintenance into Settings → Maintenance", async () => {
     vi.stubGlobal("localStorage", {
       getItem: vi.fn(() => null),
       setItem: vi.fn(),
@@ -1904,20 +2210,29 @@ describe("ui maintenance view", () => {
     const state = await import("../src/ui/app/state.ts");
     window.location.hash = "#/maintenance";
     router.parseHash();
-    expect(state.ui.view).toBe("maintenance");
+    expect(state.ui.view).toBe("settings");
+    expect(state.ui.settingsSection).toBe("maintenance");
     vi.unstubAllGlobals();
   });
 
-  it("adds a Maintenance item under the System rail section", async () => {
+  it("exposes Maintenance under Settings → System and keeps the view registry entry", async () => {
+    const settings = await readFile(
+      path.join(process.cwd(), "src/ui/features/settings/page.tsx"),
+      "utf8"
+    );
+    expect(settings).toContain('id: "maintenance"');
+    expect(settings).toContain('name: "Maintenance"');
+    expect(settings).toContain("MaintenancePanel");
+
     const layout = await readFile(path.join(process.cwd(), "src/ui/shell/layout.ts"), "utf8");
-    expect(layout).toContain('view: "maintenance"');
-    expect(layout).toContain('label: "Maintenance"');
+    expect(layout).not.toContain('view: "maintenance"');
   });
 
   it("registers a maintenance entry in the view registry", async () => {
     const registry = await readFile(path.join(process.cwd(), "src/ui/app/registry.ts"), "utf8");
-    expect(registry).toContain("renderSystemView");
+    expect(registry).toContain("renderSettingsView");
     expect(registry).toContain("maintenance:");
+    expect(registry).toContain('ui.settingsSection = "maintenance"');
   });
 
   it("composes the harness autonomy panel and a maintenance runs list", async () => {
@@ -1926,7 +2241,27 @@ describe("ui maintenance view", () => {
     expect(page).toContain('kind: "harness"');
     expect(page).toContain("RunGroupList");
     expect(page).toContain("isMaintenanceRun");
-    expect(page).toContain("export function renderSystemView");
+    expect(page).toContain("export function MaintenancePanel");
+  });
+
+  it("keeps ClickUp ticket sync on the connector detail, not Maintenance", async () => {
+    const autonomy = await readFile(path.join(process.cwd(), "src/ui/features/autonomy/page.tsx"), "utf8");
+    expect(autonomy).toContain('CONNECTOR_OWNED_HARNESS_JOBS');
+    expect(autonomy).toContain('"clickup-ticket-sync"');
+
+    const clickUpDetail = await readFile(
+      path.join(process.cwd(), "src/ui/features/connectors/connector-view-components.tsx"),
+      "utf8"
+    );
+    expect(clickUpDetail).toContain("ClickUpTicketSyncPanel");
+
+    const syncPanel = await readFile(
+      path.join(process.cwd(), "src/ui/features/connectors/clickup-ticket-sync-panel.tsx"),
+      "utf8"
+    );
+    expect(syncPanel).toContain("Ticket sync");
+    expect(syncPanel).toContain("AutonomyJobRow");
+    expect(syncPanel).toContain("clickup-ticket-sync");
   });
 
   it("exposes a reusable run group list from the runs page", async () => {

@@ -1,8 +1,6 @@
 import { useEffect, useRef, useState } from "preact/hooks";
-import { Terminal } from "@xterm/xterm";
-import { FitAddon } from "@xterm/addon-fit";
-// @ts-expect-error CSS side-effect import (Vite handles this at build time)
-import "@xterm/xterm/css/xterm.css";
+import type { Terminal } from "@xterm/xterm";
+import type { FitAddon } from "@xterm/addon-fit";
 
 import { api } from "@ui/data/api.js";
 import { errorToast } from "@ui/overlays/toast.js";
@@ -26,9 +24,47 @@ interface TerminalPaneProps {
    * Session created by the daemon interactive runner. When absent, the pane
    * shows a waiting state (no free-floating shell/TUI spawn).
    */
-  sessionId?: string;
+  sessionId?: string | undefined;
   /** True while this workflow step is the active turn. */
-  active?: boolean;
+  active?: boolean | undefined;
+  /**
+   * Once the WS is live, type this into the interactive shell once
+   * (Settings Install / Login bootstrap). Trailing newline is added.
+   */
+  bootstrapCommand?: string | undefined;
+}
+
+type XtermBundle = {
+  Terminal: typeof Terminal;
+  FitAddon: typeof FitAddon;
+};
+
+/** Load xterm only when an interactive session attaches — keeps the main bundle lean. */
+let xtermBundle: Promise<XtermBundle> | null = null;
+
+/** Ensure xterm CSS is in the document (lazy, once). Vite rewrites the URL at build time. */
+function ensureXtermCss(): void {
+  const id = "xterm-stylesheet";
+  if (document.getElementById(id)) return;
+  const link = document.createElement("link");
+  link.id = id;
+  link.rel = "stylesheet";
+  link.href = new URL("../../styles/xterm.css", import.meta.url).href;
+  document.head.appendChild(link);
+}
+
+function loadXterm(): Promise<XtermBundle> {
+  if (!xtermBundle) {
+    xtermBundle = (async () => {
+      ensureXtermCss();
+      const [xterm, fit] = await Promise.all([
+        import("@xterm/xterm"),
+        import("@xterm/addon-fit")
+      ]);
+      return { Terminal: xterm.Terminal, FitAddon: fit.FitAddon };
+    })();
+  }
+  return xtermBundle;
 }
 
 function wsUrl(sessionId: string): string {
@@ -40,12 +76,15 @@ function wsUrl(sessionId: string): string {
  * Operator surface for daemon-owned interactive agent turns. Attaches to the
  * existing PTY session; never spawns a second unrelated shell/TUI.
  */
-export function TerminalPane({ sessionId, active = false }: TerminalPaneProps) {
+export function TerminalPane({ sessionId, active = false, bootstrapCommand }: TerminalPaneProps) {
   const hostRef = useRef<HTMLDivElement>(null);
   const termRef = useRef<Terminal | null>(null);
   const fitRef = useRef<FitAddon | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const sessionRef = useRef<string | null>(null);
+  const bootstrappedRef = useRef<string | null>(null);
+  const bootstrapRef = useRef(bootstrapCommand);
+  bootstrapRef.current = bootstrapCommand;
   const [session, setSession] = useState<TerminalSessionInfo | null>(null);
   const [status, setStatus] = useState<"waiting" | "connecting" | "live" | "exited" | "error">("waiting");
 
@@ -72,22 +111,26 @@ export function TerminalPane({ sessionId, active = false }: TerminalPaneProps) {
     return () => disposeTerm();
   }, []);
 
-  function ensureTerm(): Terminal {
+  async function ensureTerm(): Promise<Terminal> {
+    if (termRef.current) return termRef.current;
+    const { Terminal: Term, FitAddon: Fit } = await loadXterm();
     if (termRef.current) return termRef.current;
     if (!hostRef.current) throw new Error("Terminal host not mounted");
-    const term = new Terminal({
+    const termBg =
+      getComputedStyle(document.documentElement).getPropertyValue("--term-bg").trim() || "#0a0b0e";
+    const term = new Term({
       cursorBlink: true,
-      fontSize: 13,
+      fontSize: window.matchMedia("(max-width: 720px)").matches ? 12 : 13,
       fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
       theme: {
-        background: "#0d1117",
+        background: termBg,
         foreground: "#e6edf3",
         cursor: "#e6edf3",
         selectionBackground: "#264f78"
       },
       allowProposedApi: true
     });
-    const fit = new FitAddon();
+    const fit = new Fit();
     term.loadAddon(fit);
     term.open(hostRef.current);
     fit.fit();
@@ -99,14 +142,25 @@ export function TerminalPane({ sessionId, active = false }: TerminalPaneProps) {
         ws.send(JSON.stringify({ type: "input", data }));
       }
     });
+    // Soft keyboard: keep the host in view when the PTY textarea focuses.
+    term.textarea?.addEventListener("focus", () => {
+      hostRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    });
     return term;
   }
 
-  function attach(id: string): void {
+  async function attach(id: string): Promise<void> {
     disposeSocket();
-    const term = ensureTerm();
-    const fit = fitRef.current;
     setStatus("connecting");
+    let term: Terminal;
+    try {
+      term = await ensureTerm();
+    } catch (err) {
+      setStatus("error");
+      errorToast(err instanceof Error ? err.message : "Failed to load terminal.");
+      return;
+    }
+    const fit = fitRef.current;
 
     const ws = new WebSocket(wsUrl(id));
     wsRef.current = ws;
@@ -120,6 +174,16 @@ export function TerminalPane({ sessionId, active = false }: TerminalPaneProps) {
         if (dims) {
           ws.send(JSON.stringify({ type: "resize", cols: dims.cols, rows: dims.rows }));
         }
+      }
+      const boot = bootstrapRef.current?.trim();
+      if (boot && bootstrappedRef.current !== id) {
+        bootstrappedRef.current = id;
+        // Let the login shell paint its prompt before injecting the command.
+        window.setTimeout(() => {
+          if (wsRef.current === ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ type: "input", data: `${boot}\n` }));
+          }
+        }, 250);
       }
     };
 
@@ -169,7 +233,7 @@ export function TerminalPane({ sessionId, active = false }: TerminalPaneProps) {
         if (cancelled || !info) return;
         setSession(info);
         requestAnimationFrame(() => {
-          if (!cancelled) attach(info.id);
+          if (!cancelled) void attach(info.id);
         });
       } catch (err) {
         if (!cancelled) {
@@ -186,7 +250,8 @@ export function TerminalPane({ sessionId, active = false }: TerminalPaneProps) {
   useEffect(() => {
     const host = hostRef.current;
     if (!host) return;
-    const ro = new ResizeObserver(() => {
+
+    function refit(): void {
       const fit = fitRef.current;
       const term = termRef.current;
       const ws = wsRef.current;
@@ -196,9 +261,21 @@ export function TerminalPane({ sessionId, active = false }: TerminalPaneProps) {
       if (dims && ws && ws.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify({ type: "resize", cols: dims.cols, rows: dims.rows }));
       }
-    });
+    }
+
+    const ro = new ResizeObserver(() => refit());
     ro.observe(host);
-    return () => ro.disconnect();
+
+    // iOS/Android soft keyboard changes visualViewport without always resizing the host.
+    const vv = window.visualViewport;
+    vv?.addEventListener("resize", refit);
+    vv?.addEventListener("scroll", refit);
+
+    return () => {
+      ro.disconnect();
+      vv?.removeEventListener("resize", refit);
+      vv?.removeEventListener("scroll", refit);
+    };
   }, [session?.id, sessionId]);
 
   const statusLabel =

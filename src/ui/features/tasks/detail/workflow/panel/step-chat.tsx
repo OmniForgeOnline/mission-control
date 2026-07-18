@@ -4,8 +4,7 @@ import { onEnterSubmit } from "@ui/shell/dom.js";
 import { requestRefresh } from "@ui/data/refresh.js";
 import { getActiveStepIds, taskIsRunning } from "@ui/app/task-status.js";
 import { resolvedStepAgent } from "@ui/app/state.js";
-import { confirm } from "@ui/overlays/confirm.js";
-import { toast, errorToast } from "@ui/overlays/toast.js";
+import { errorToast } from "@ui/overlays/toast.js";
 import { TaskMessagesThread } from "../../thread.js";
 import { messagesForStep } from "../step-messages.js";
 import { AttachmentInput } from "@ui/shared/components/attachments.js";
@@ -16,7 +15,6 @@ interface StepChatSubmission {
     author: "operator";
     body: string;
     stepId: string;
-    noteOnly?: true;
   };
   runAfterPost: boolean;
 }
@@ -36,32 +34,28 @@ export function stepChatSubmission(
     requestBody: {
       author: "operator",
       body,
-      stepId,
-      ...(isActive ? {} : { noteOnly: true })
+      stepId
     }
   };
 }
 
 export function StepChat({
   task,
-  stepId,
-  canRevert
+  stepId
 }: {
   task: HarnessTask;
   stepId: string;
-  canRevert: boolean;
 }) {
   const [draft, setDraft] = useState("");
   const [attachments, setAttachments] = useState<HarnessAttachment[]>([]);
   const [uploading, setUploading] = useState(false);
   const messages = messagesForStep(task.messages ?? [], stepId);
   const isRunning = taskIsRunning(task);
-  const submission = stepChatSubmission(task, stepId, draft.trim());
-  const isActive = submission.runAfterPost;
+  const isActive = getActiveStepIds(task).includes(stepId);
 
   async function postMessage(): Promise<void> {
     const text = draft.trim();
-    if (!text || uploading) return;
+    if (!text || uploading || !isActive) return;
     const requestBody = {
       ...stepChatSubmission(task, stepId, text).requestBody,
       ...(attachments.length ? { attachmentIds: attachments.map((attachment) => attachment.id) } : {})
@@ -81,48 +75,9 @@ export function StepChat({
     }
   }
 
-  async function postRevert(): Promise<void> {
-    const text = draft.trim();
-    if (!text || isRunning || uploading) return;
-    const ok = await confirm({
-      title: `Revert to ${stepLabel(stepId)} and resume?`,
-      message: "Downstream progress and artifacts are discarded, and this message restarts the step.",
-      confirmLabel: "Revert & resume",
-      tone: "danger"
-    });
-    if (!ok) return;
-    setDraft("");
-    try {
-      await api(`/api/tasks/${task.id}/revert-step`, {
-        method: "POST",
-        body: JSON.stringify({
-          stepId,
-          message: text,
-          run: true,
-          ...(attachments.length ? { attachmentIds: attachments.map((attachment) => attachment.id) } : {})
-        })
-      });
-      // Drop attachments only once the revert succeeds, matching postMessage:
-      // clearing earlier orphans uploaded blobs on a transient failure.
-      setAttachments([]);
-      toast(`Reverted to ${stepLabel(stepId)}`, { tone: "success" });
-      requestRefresh();
-    } catch (err) {
-      errorToast((err as Error).message);
-    }
-  }
-
-  // Plain Enter submits; for a revert-capable completed step the primary action
-  // is revert-and-resume, otherwise it sends the scoped message or note.
   const enterSubmit = onEnterSubmit(() => {
-    void (canRevert && !isActive ? postRevert() : postMessage());
+    void postMessage();
   });
-
-  const hint = isActive
-    ? " · ↵ send to agent · ⇧↵ newline"
-    : canRevert
-      ? " · ↵ revert & resume · ⇧↵ newline"
-      : " · ↵ note only · ⇧↵ newline";
 
   return (
     <div class="wf-step-discuss">
@@ -145,70 +100,42 @@ export function StepChat({
         ) : null}
       </div>
 
-      <form
-        class="wf-step-composer"
-        onSubmit={(event) => {
-          event.preventDefault();
-          void postMessage();
-        }}
-      >
-        <textarea
-          rows={3}
-          placeholder={`Message about ${stepLabel(stepId)}…`}
-          value={draft}
-          onInput={(event) => {
-            setDraft((event.currentTarget as HTMLTextAreaElement).value);
+      {isActive ? (
+        <form
+          class="wf-step-composer"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void postMessage();
           }}
-          onKeyDown={enterSubmit}
-        />
-        <AttachmentInput
-          value={attachments}
-          onChange={setAttachments}
-          source="workflow"
-          onUploadingChange={setUploading}
-        />
-        <div class="wf-step-composer-foot">
-          <span class="hint">
-            Scoped to <b>{stepLabel(stepId)}</b>
-            {hint}
-          </span>
-          <div class="wf-step-composer-actions">
-            {isActive ? (
+        >
+          <textarea
+            rows={3}
+            placeholder={`Message about ${stepLabel(stepId)}…`}
+            value={draft}
+            onInput={(event) => {
+              setDraft((event.currentTarget as HTMLTextAreaElement).value);
+            }}
+            onKeyDown={enterSubmit}
+          />
+          <AttachmentInput
+            value={attachments}
+            onChange={setAttachments}
+            source="workflow"
+            onUploadingChange={setUploading}
+          />
+          <div class="wf-step-composer-foot">
+            <span class="hint">
+              Scoped to <b>{stepLabel(stepId)}</b>
+              {" · ↵ send to agent · ⇧↵ newline"}
+            </span>
+            <div class="wf-step-composer-actions">
               <button class="btn btn-sm btn-primary" type="submit" disabled={uploading}>
                 Send to agent
               </button>
-            ) : canRevert ? (
-              <>
-                <button
-                  class="btn btn-sm btn-danger"
-                  type="button"
-                  disabled={isRunning || uploading}
-                  onClick={() => void postRevert()}
-                >
-                  Revert & resume
-                </button>
-                <button
-                  class="btn btn-sm"
-                  type="button"
-                  disabled={uploading}
-                  onClick={() => void postMessage()}
-                >
-                  Add note
-                </button>
-              </>
-            ) : (
-              <button
-                class="btn btn-sm btn-primary"
-                type="button"
-                disabled={uploading}
-                onClick={() => void postMessage()}
-              >
-                Send
-              </button>
-            )}
+            </div>
           </div>
-        </div>
-      </form>
+        </form>
+      ) : null}
     </div>
   );
 }

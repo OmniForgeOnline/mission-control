@@ -8,6 +8,7 @@ import type { ComponentChildren } from "preact";
 import { withPending } from "@ui/shell/dom.js";
 import { icon } from "@ui/shell/icons.js";
 import { ClickUpListControl } from "./clickup-list-control.js";
+import { ClickUpTicketSyncPanel } from "./clickup-ticket-sync-panel.js";
 import { ConnectPanel } from "./connector-connect-panel.js";
 import { ConnectorLogo } from "./connector-logo.js";
 
@@ -253,7 +254,7 @@ function AccountPanel({ provider, connection }: { provider: ConnectorProviderSta
     <>
       <div class="catalog-section-label">Account</div>
       <section class="catalog-panel">
-        <div class="catalog-panel-body">
+        <div class="catalog-panel-body catalog-panel-body-compact">
           <div class="catalog-facts">
             <Fact label={isClickUp ? "Workspace" : "Account"}>
               <span class={isClickUp ? "" : "catalog-fact-mono"}>{connection.accountLabel ?? "-"}</span>
@@ -355,6 +356,7 @@ function ClickUpDetail({
   return (
     <>
       <AccountPanel provider={provider} connection={connection} />
+      <ClickUpTicketSyncPanel />
       <div class="catalog-section-label">
         List → project mapping
         <div class="catalog-section-actions">
@@ -384,7 +386,7 @@ function ClickUpDetail({
           </button>
         </div>
       </div>
-      <section class="catalog-panel">
+      <section class="catalog-panel catalog-panel-fill">
         <ClickUpListControl connection={connection} resources={resources} projects={projects} onChange={onListChange} />
       </section>
     </>

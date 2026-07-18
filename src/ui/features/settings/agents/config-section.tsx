@@ -1,7 +1,6 @@
-import { useState } from "preact/hooks";
+import { useEffect, useState } from "preact/hooks";
 import { api } from "@ui/data/api.js";
 import { ui } from "@ui/app/state.js";
-import { relativeTime } from "@ui/app/state.js";
 import { toast } from "@ui/overlays/toast.js";
 import { confirm } from "@ui/overlays/confirm.js";
 import { agentVisual } from "@ui/features/tasks/detail/workflow/panel/step-setting-visual.js";
@@ -9,6 +8,12 @@ import { AgentLogo, isKnownAgentLogo } from "@ui/features/tasks/detail/workflow/
 import type { AgentConfigBundle, AgentToolConfig, ModelPoolConfig } from "../../../../core/agents/config/types.ts";
 import type { ToolExtension } from "../../../../core/agents/extensions/types.ts";
 import type { UsageSnapshot, UsageSnapshots } from "../../../../core/agents/config/usage.ts";
+import { AgentCliSetupModal } from "./cli-setup-modal.js";
+import { ExtensionsModal } from "./extensions-modal.js";
+import { INLINE_MODEL_PREVIEW, sortPoolsForDisplay } from "./model-list.js";
+import { PoolRow } from "./model-pools.js";
+import { ModelsModal } from "./models-modal.js";
+import { toolSetupActions, type ToolRuntimePresence, type ToolSetupMode } from "./tool-setup.js";
 
 function refresh(): void {
   document.dispatchEvent(new CustomEvent("harness:refresh"));
@@ -38,22 +43,46 @@ function resetCountdown(resetsAt?: number): string {
   return `resets in ${m}m`;
 }
 
-/** Live usage text for a pool: provider percent + reset when available, else honest fallback. */
-function poolUsageText(pool: ModelPoolConfig, snap?: UsageSnapshot): string {
+/**
+ * Resolve the account-level usage snapshot for a tool.
+ * Prefer a tool-scoped snap; fall back to any pool-scoped snap (legacy / runtime).
+ */
+function toolUsageSnapshot(
+  toolId: string,
+  pools: ModelPoolConfig[],
+  snapshots: Map<string, UsageSnapshot>
+): UsageSnapshot | undefined {
+  const toolSnap = snapshots.get(snapshotKey(toolId));
+  if (toolSnap) return toolSnap;
+  for (const pool of pools) {
+    const poolSnap = snapshots.get(snapshotKey(toolId, pool.id));
+    if (poolSnap) return poolSnap;
+  }
+  return undefined;
+}
+
+/** Whether this tool has any live usage source (account quota can be shown). */
+function toolHasLiveUsage(tool: AgentToolConfig, pools: ModelPoolConfig[]): boolean {
+  if (tool.usage.kind === "unavailable") return false;
+  return pools.some((pool) => pool.usageSource !== "none");
+}
+
+/** Live usage text for a tool account: provider percent + reset when available. */
+function toolUsageText(tool: AgentToolConfig, snap?: UsageSnapshot): string {
   if (snap?.error) return `usage error: ${snap.error}`;
   if (snap?.usedPercent !== undefined) {
     const window = snap.windowLabel ? ` ${snap.windowLabel}` : "";
     const reset = resetCountdown(snap.resetsAt);
     return `${Math.round(snap.usedPercent)}% used${window}${reset ? ` · ${reset}` : ""}`;
   }
-  if (pool.usageSource === "none" || pool.usage.kind === "unavailable") return "usage unavailable";
+  if (tool.usage.kind === "unavailable") return "usage unavailable";
   return "no usage yet — refresh";
 }
 
-function poolUsageTone(pool: ModelPoolConfig, snap?: UsageSnapshot): "available" | "nearing" | "exhausted" | "unknown" {
+function toolUsageTone(tool: AgentToolConfig, snap?: UsageSnapshot): "available" | "nearing" | "exhausted" | "unknown" {
   if (snap?.usedPercent === undefined) return "unknown";
   if (snap.usedPercent >= 100) return "exhausted";
-  if (snap.usedPercent >= (pool.usage.softThresholdPercent ?? 80)) return "nearing";
+  if (snap.usedPercent >= (tool.usage.softThresholdPercent ?? 80)) return "nearing";
   return "available";
 }
 
@@ -65,243 +94,30 @@ function extensionsForTool(extensions: ToolExtension[] | undefined, toolId: stri
   return (extensions ?? []).filter((entry) => entry.toolId === toolId);
 }
 
-function InstallMarketplaceForm({ toolId, adapter }: { toolId: string; adapter: string }) {
-  const [source, setSource] = useState("");
-  const [marketplaceSource, setMarketplaceSource] = useState("");
-  const [busy, setBusy] = useState(false);
-
-  if (adapter !== "claude" && adapter !== "codex") return null;
-
-  async function install(): Promise<void> {
-    const trimmed = source.trim();
-    if (!trimmed) {
-      toast("Enter plugin@marketplace to install.", { tone: "error" });
-      return;
-    }
-    const ok = await confirm({
-      title: "Install marketplace plugin?",
-      message: `Install "${trimmed}" into your global ${toolId} user config? Mission Control still scopes enablement per launch/workflow step.`,
-      confirmLabel: "Install",
-      tone: "danger"
-    });
-    if (!ok) return;
-
-    setBusy(true);
-    try {
-      await api("/api/agent-config/extensions/install", {
-        method: "POST",
-        body: JSON.stringify({
-          toolId,
-          source: trimmed,
-          ...(marketplaceSource.trim() ? { marketplaceSource: marketplaceSource.trim() } : {}),
-          confirmed: true
-        })
-      });
-      toast("Plugin installed and registry updated.", { tone: "success" });
-      setSource("");
-      setMarketplaceSource("");
-      refresh();
-    } catch (err) {
-      toast(err instanceof Error ? err.message : "Install failed.", { tone: "error" });
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <div class="extension-install-form">
-      <div class="extension-install-label">Install from marketplace</div>
-      <div class="extension-install-row">
-        <input
-          class="input"
-          type="text"
-          placeholder="plugin@marketplace"
-          value={source}
-          disabled={busy}
-          onInput={(e) => setSource((e.currentTarget as HTMLInputElement).value)}
-        />
-        <button class="btn btn-sm" type="button" disabled={busy} onClick={() => void install()}>
-          {busy ? "Installing…" : "Install"}
-        </button>
-      </div>
-      <input
-        class="input extension-install-marketplace"
-        type="text"
-        placeholder="Optional marketplace source (owner/repo) if not registered yet"
-        value={marketplaceSource}
-        disabled={busy}
-        onInput={(e) => setMarketplaceSource((e.currentTarget as HTMLInputElement).value)}
-      />
-    </div>
-  );
-}
-
-function ExtensionRow({ extension }: { extension: ToolExtension }) {
-  const [busy, setBusy] = useState(false);
-
-  async function toggle(): Promise<void> {
-    setBusy(true);
-    try {
-      await api("/api/agent-config/extensions", {
-        method: "PUT",
-        body: JSON.stringify({ ...extension, defaultEnabled: !extension.defaultEnabled })
-      });
-      refresh();
-    } catch (err) {
-      toast(err instanceof Error ? err.message : "Failed to update extension.", { tone: "error" });
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <li class="extension-row">
-      <span class={`extension-kind is-${extension.kind}`}>{extension.kind}</span>
-      <span class="extension-name">{extension.displayName}</span>
-      <code class="extension-source">{extension.source}</code>
-      <label class="settings-switch" title={extension.defaultEnabled ? "Enabled by default" : "Opt-in per step"}>
-        <input type="checkbox" checked={extension.defaultEnabled} disabled={busy} onChange={() => void toggle()} />
-        <span class="settings-switch-track" />
-      </label>
-    </li>
-  );
-}
-
-/** Add a model entry (pool) to a tool. model id becomes `--model <id>`; the
- * optional env JSON covers custom providers (e.g. z.ai on claude: base URL + token). */
-function AddModelForm({ toolId }: { toolId: string }) {
-  const [open, setOpen] = useState(false);
-  const [displayName, setDisplayName] = useState("");
-  const [modelId, setModelId] = useState("");
-  const [tier, setTier] = useState<"paid" | "free">("paid");
-  const [modelEnvRaw, setModelEnvRaw] = useState("");
-  const [busy, setBusy] = useState(false);
-
-  async function add(): Promise<void> {
-    const name = displayName.trim();
-    const id = modelId.trim();
-    if (!name || !id) {
-      toast("Display name and model id are required.", { tone: "error" });
-      return;
-    }
-    let modelEnv: Record<string, string> = {};
-    if (modelEnvRaw.trim()) {
-      try {
-        const parsed = JSON.parse(modelEnvRaw);
-        if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("not an object");
-        modelEnv = parsed as Record<string, string>;
-      } catch {
-        toast('Model env must be a JSON object, e.g. {"ANTHROPIC_BASE_URL":"https://...","ANTHROPIC_AUTH_TOKEN":"..."}', { tone: "error" });
-        return;
-      }
-    }
-    setBusy(true);
-    try {
-      // Pool ids must be alphanumeric (._-). Model ids can contain other chars
-      // (e.g. the [1m] context suffix), so slugify the id while preserving the
-      // exact model id verbatim in --model.
-      const slug = id.replace(/[^a-zA-Z0-9._-]+/g, "-").replace(/^-+|-+$/g, "") || id;
-      await api("/api/agent-config/pools", {
-        method: "PUT",
-        body: JSON.stringify({
-          id: `${toolId}-${slug}`,
-          toolId,
-          displayName: name,
-          modelArgs: ["--model", id],
-          modelEnv,
-          capabilities: ["author", "reviewer", "code", "plan", "review"],
-          qualityWeight: 50,
-          tier,
-          usage: { kind: "usage-only" },
-          usageSource: "none",
-          enabled: true,
-          builtin: false
-        })
-      });
-      toast(`Added model "${name}".`, { tone: "success" });
-      setDisplayName("");
-      setModelId("");
-      setTier("paid");
-      setModelEnvRaw("");
-      setOpen(false);
-      refresh();
-    } catch (err) {
-      toast(err instanceof Error ? err.message : "Failed to add model.", { tone: "error" });
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  if (!open) {
-    return (
-      <button class="btn btn-sm btn-ghost" type="button" onClick={() => setOpen(true)}>
-        + Add model
-      </button>
-    );
-  }
-  return (
-    <div class="model-add-form">
-      <input
-        class="input"
-        type="text"
-        placeholder="Display name (e.g. GLM 5.2)"
-        value={displayName}
-        disabled={busy}
-        onInput={(e) => setDisplayName((e.currentTarget as HTMLInputElement).value)}
-      />
-      <input
-        class="input"
-        type="text"
-        placeholder="Model id (e.g. glm-5.2) — passed to --model"
-        value={modelId}
-        disabled={busy}
-        onInput={(e) => setModelId((e.currentTarget as HTMLInputElement).value)}
-      />
-      <select
-        class="select"
-        value={tier}
-        disabled={busy}
-        onChange={(e) => setTier((e.currentTarget as HTMLSelectElement).value as "paid" | "free")}
-      >
-        <option value="paid">paid</option>
-        <option value="free">free</option>
-      </select>
-      <input
-        class="input model-add-env"
-        type="text"
-        placeholder='Optional env JSON: {"ANTHROPIC_BASE_URL":"https://...","ANTHROPIC_AUTH_TOKEN":"..."}'
-        value={modelEnvRaw}
-        disabled={busy}
-        onInput={(e) => setModelEnvRaw((e.currentTarget as HTMLInputElement).value)}
-      />
-      <div class="model-add-actions">
-        <button class="btn btn-sm btn-primary" type="button" disabled={busy} onClick={() => void add()}>
-          {busy ? "Adding…" : "Add"}
-        </button>
-        <button class="btn btn-sm" type="button" disabled={busy} onClick={() => setOpen(false)}>
-          Cancel
-        </button>
-      </div>
-    </div>
-  );
-}
-
 function ToolRow({
   tool,
   config,
   snapshots,
-  extensions
+  extensions,
+  presence,
+  onRescan,
+  rescanning
 }: {
   tool: AgentToolConfig;
   config: AgentConfigBundle;
   snapshots: Map<string, UsageSnapshot>;
   extensions: ToolExtension[];
+  presence: ToolRuntimePresence | undefined;
+  onRescan: (toolId: string, opts?: { silent?: boolean }) => Promise<void>;
+  rescanning: boolean;
 }) {
   const [busy, setBusy] = useState(false);
   const [extensionsOpen, setExtensionsOpen] = useState(false);
-  const [discovering, setDiscovering] = useState(false);
+  const [modelsOpen, setModelsOpen] = useState(false);
+  const [setupMode, setSetupMode] = useState<ToolSetupMode | null>(null);
   const toolExtensions = extensionsForTool(extensions, tool.id);
   const supportsExtensions = tool.adapter === "claude" || tool.adapter === "codex" || tool.id === "kiro" || tool.id === "cursor";
+  const setup = toolSetupActions(tool, presence);
 
   async function toggle(): Promise<void> {
     setBusy(true);
@@ -334,147 +150,132 @@ function ToolRow({
     }
   }
 
-  async function removePool(poolId: string, name: string): Promise<void> {
-    const ok = await confirm({
-      title: `Remove model "${name}"?`,
-      message: "It will no longer be selectable for this tool. You can re-add it anytime.",
-      confirmLabel: "Remove",
-      tone: "danger"
-    });
-    if (!ok) return;
-    try {
-      await api(`/api/agent-config/pools/${encodeURIComponent(poolId)}`, { method: "DELETE" });
-      refresh();
-    } catch (err) {
-      toast(err instanceof Error ? err.message : "Failed to remove model.", { tone: "error" });
-    }
-  }
-
-  async function discoverModels(): Promise<void> {
-    setDiscovering(true);
-    try {
-      const result = await api<{ discovered?: number }>("/api/agent-config/models/discover", {
-        method: "POST",
-        body: JSON.stringify({ toolId: tool.id })
-      });
-      const count = result?.discovered ?? 0;
-      toast(
-        count > 0 ? `Discovered ${count} models for ${tool.displayName}.` : "No models discovered. Is the tool installed and logged in?",
-        { tone: count > 0 ? "success" : "error" }
-      );
-      refresh();
-    } catch (err) {
-      toast(err instanceof Error ? err.message : "Model discovery failed.", { tone: "error" });
-    } finally {
-      setDiscovering(false);
-    }
-  }
-
   const knownLogo = isKnownAgentLogo(tool.id);
   const visual = agentVisual(tool.id, tool.displayName);
-  const pools = poolsForTool(config, tool.id);
+  const pools = sortPoolsForDisplay(poolsForTool(config, tool.id));
+  const previewPools = pools.slice(0, INLINE_MODEL_PREVIEW);
+  const hiddenPoolCount = Math.max(0, pools.length - previewPools.length);
+  const showUsage = toolHasLiveUsage(tool, pools);
+  const snap = showUsage ? toolUsageSnapshot(tool.id, pools, snapshots) : undefined;
+  const tone = showUsage ? toolUsageTone(tool, snap) : "unknown";
+  const pct = snap?.usedPercent !== undefined ? Math.min(100, Math.max(0, Math.round(snap.usedPercent))) : 0;
 
   return (
-    <article class="tool-card" data-tool={tool.id}>
+    <article class={`tool-card${tool.enabled ? "" : " is-disabled"}`} data-tool={tool.id}>
       <div class="tool-head">
         <div class="tool-id">
           <span class="tool-swatch" style={knownLogo ? undefined : `color:${visual.color}`}>
             {isKnownAgentLogo(tool.id) ? <AgentLogo id={tool.id} title={tool.displayName} /> : visual.initial}
           </span>
           <div class="tool-id-text">
-            <div class="tool-name">{tool.displayName}</div>
+            <div class="tool-name-row">
+              <div class="tool-name">{tool.displayName}</div>
+              {setup.available === true ? (
+                <span class="tool-presence is-ready">Ready</span>
+              ) : setup.available === false ? (
+                <span class="tool-presence is-missing">Not installed</span>
+              ) : (
+                <span class="tool-presence is-unknown">Checking…</span>
+              )}
+            </div>
             <div class="tool-cmd">
-              <code>{tool.command}</code> · adapter {tool.adapter}
+              <code>{tool.command}</code>
+              {presence?.command && presence.command !== tool.command ? (
+                <span class="tool-resolved muted" title={presence.command}>
+                  → {presence.command}
+                </span>
+              ) : null}
             </div>
           </div>
         </div>
         <div class="tool-head-right">
+          {!tool.builtin ? (
+            <button class="btn btn-sm btn-danger" type="button" onClick={() => void remove()}>
+              Delete
+            </button>
+          ) : null}
           <label class="settings-switch" title={tool.enabled ? "Enabled" : "Disabled"}>
             <input type="checkbox" checked={tool.enabled} disabled={busy} onChange={() => void toggle()} />
             <span class="settings-switch-track" />
           </label>
-          {tool.builtin ? (
-            <span class="tool-badge">built-in</span>
-          ) : (
-            <button class="btn btn-sm btn-danger" type="button" onClick={() => void remove()}>
-              Delete
-            </button>
-          )}
         </div>
       </div>
+      <div class="tool-setup-actions">
+        {setup.showInstall ? (
+          <button class="btn btn-sm btn-primary" type="button" onClick={() => setSetupMode("install")}>
+            Install
+          </button>
+        ) : null}
+        {setup.showLogin ? (
+          <button class="btn btn-sm" type="button" onClick={() => setSetupMode("login")}>
+            Login
+          </button>
+        ) : null}
+        <button
+          class="btn btn-sm btn-ghost"
+          type="button"
+          disabled={rescanning}
+          onClick={() => void onRescan(tool.id)}
+        >
+          {rescanning ? "Scanning…" : "Rescan"}
+        </button>
+      </div>
+      {showUsage ? (
+        <div class="tool-usage" title="Account quota for this tool (shared across models)">
+          <span class="usage-bar">
+            <span class={`usage-fill is-${tone}`} style={`width:${pct}%`} />
+          </span>
+          <span class="usage-text">{toolUsageText(tool, snap)}</span>
+        </div>
+      ) : null}
       <ul class="pool-list">
-        {pools.map((pool) => {
-          const snap = snapshots.get(snapshotKey(pool.toolId, pool.id));
-          const tone = poolUsageTone(pool, snap);
-          const pct = snap?.usedPercent !== undefined ? Math.min(100, Math.max(0, Math.round(snap.usedPercent))) : 0;
-          return (
-            <li key={pool.id} class="pool-row">
-              <span class="pool-name">{pool.displayName}</span>
-              <span class={`pool-tier${pool.tier === "free" ? " is-free" : ""}`}>{pool.tier}</span>
-              <span class="pool-q">q{pool.qualityWeight}</span>
-              {pool.capabilities.length ? (
-                <span class="pool-caps">[{pool.capabilities.join(", ")}]</span>
-              ) : null}
-              <span class="pool-usage">
-                <span class="usage-bar">
-                  <span class={`usage-fill is-${tone}`} style={`width:${pct}%`} />
-                </span>
-                <span class="usage-text">{poolUsageText(pool, snap)}</span>
-              </span>
-              <button
-                class="btn btn-sm btn-ghost pool-remove"
-                type="button"
-                title="Remove model"
-                onClick={() => void removePool(pool.id, pool.displayName)}
-              >
-                ✕
-              </button>
-            </li>
-          );
-        })}
+        {previewPools.map((pool) => (
+          <PoolRow key={pool.id} pool={pool} />
+        ))}
         {pools.length === 0 ? <li class="pool-empty muted">No models yet.</li> : null}
       </ul>
+      {hiddenPoolCount > 0 ? (
+        <button class="btn btn-sm btn-ghost pool-more" type="button" onClick={() => setModelsOpen(true)}>
+          +{hiddenPoolCount} more — view all {pools.length} models
+        </button>
+      ) : null}
       <div class="model-actions">
-        <AddModelForm toolId={tool.id} />
-        {tool.id === "codex" ? (
+        <button class="btn btn-sm btn-ghost" type="button" onClick={() => setModelsOpen(true)}>
+          Models ({pools.length})
+        </button>
+        {supportsExtensions ? (
           <button
             class="btn btn-sm btn-ghost"
             type="button"
-            disabled={discovering}
-            onClick={() => void discoverModels()}
+            onClick={() => setExtensionsOpen(true)}
           >
-            {discovering ? "Discovering…" : "Discover models"}
+            Extensions ({toolExtensions.length})
           </button>
         ) : null}
       </div>
+      <ModelsModal tool={tool} pools={pools} open={modelsOpen} onClose={() => setModelsOpen(false)} />
       {supportsExtensions ? (
-        <div class="tool-extensions">
-          <button
-            class="btn btn-sm btn-ghost extension-toggle"
-            type="button"
-            onClick={() => setExtensionsOpen((open) => !open)}
-          >
-            Extensions ({toolExtensions.length}) {extensionsOpen ? "▾" : "▸"}
-          </button>
-          {extensionsOpen ? (
-            <>
-              <InstallMarketplaceForm toolId={tool.id} adapter={tool.adapter} />
-              {toolExtensions.length ? (
-                <ul class="extension-list">
-                  {toolExtensions.map((extension) => (
-                    <ExtensionRow key={extension.id} extension={extension} />
-                  ))}
-                </ul>
-              ) : (
-                <p class="extension-empty muted">No extensions discovered yet — install above or refresh extensions below.</p>
-              )}
-            </>
-          ) : null}
-        </div>
+        <ExtensionsModal
+          tool={tool}
+          extensions={toolExtensions}
+          open={extensionsOpen}
+          onClose={() => setExtensionsOpen(false)}
+        />
+      ) : null}
+      {setupMode ? (
+        <AgentCliSetupModal
+          tool={tool}
+          mode={setupMode}
+          open
+          onClose={() => setSetupMode(null)}
+          onProbed={(id) => void onRescan(id, { silent: true })}
+        />
       ) : null}
     </article>
   );
 }
+
+type RuntimeDiagnosticsMap = Record<string, ToolRuntimePresence>;
 
 export function AgentConfigSection() {
   const config = ui.data?.agentConfig;
@@ -482,6 +283,28 @@ export function AgentConfigSection() {
   const registry = ui.data?.agentExtensions;
   const [refreshing, setRefreshing] = useState(false);
   const [discovering, setDiscovering] = useState(false);
+  const [diagnostics, setDiagnostics] = useState<RuntimeDiagnosticsMap>({});
+  const [rescanningId, setRescanningId] = useState<string | "all" | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const result = await api<{ runtimeDiagnostics?: RuntimeDiagnosticsMap }>("/api/agent-config/probe", {
+          method: "POST",
+          body: JSON.stringify({})
+        });
+        if (!cancelled && result?.runtimeDiagnostics) {
+          setDiagnostics(result.runtimeDiagnostics);
+        }
+      } catch {
+        /* presence is best-effort on first paint */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [config?.tools.map((tool) => tool.id).join(",")]);
 
   if (!config) return null;
 
@@ -489,7 +312,7 @@ export function AgentConfigSection() {
     setRefreshing(true);
     try {
       await api("/api/agent-config/usage/refresh", { method: "POST" });
-      toast("Usage refreshed for provider-backed pools.", { tone: "success" });
+      toast("Usage refreshed for provider-backed tools.", { tone: "success" });
       refresh();
     } catch {
       toast("Failed to refresh usage.", { tone: "error" });
@@ -511,22 +334,50 @@ export function AgentConfigSection() {
     }
   }
 
+  async function rescan(toolId?: string, opts?: { silent?: boolean }): Promise<void> {
+    setRescanningId(toolId ?? "all");
+    try {
+      const result = await api<{ runtimeDiagnostics?: RuntimeDiagnosticsMap }>("/api/agent-config/probe", {
+        method: "POST",
+        body: JSON.stringify(toolId ? { toolId } : {})
+      });
+      if (result?.runtimeDiagnostics) {
+        setDiagnostics((prev) =>
+          toolId ? { ...prev, ...result.runtimeDiagnostics } : { ...result.runtimeDiagnostics }
+        );
+      }
+      if (!opts?.silent) {
+        toast(toolId ? `Rescanned ${toolId}.` : "Rescanned all agent CLIs.", { tone: "success" });
+      }
+    } catch (err) {
+      if (!opts?.silent) {
+        toast(err instanceof Error ? err.message : "Rescan failed.", { tone: "error" });
+      }
+    } finally {
+      setRescanningId(null);
+    }
+  }
+
   const snapshots = indexSnapshots(usage);
-  const usageMeta = usage?.snapshots.length
-    ? `Usage updated ${relativeTime(usage.refreshedAt)}`
-    : "No usage recorded yet";
-  const extensionMeta = registry?.lastDiscoveredAt
-    ? `Extensions discovered ${relativeTime(registry.lastDiscoveredAt)}`
-    : "Extensions not discovered yet";
 
   return (
     <section class="settings-section" data-settings-panel="agent-config">
       <div class="catalog-section-label">
         Tools &amp; models
         <div class="catalog-section-actions">
-          <span class="settings-usage-meta">{usageMeta}</span>
+          <button
+            class="btn btn-sm"
+            type="button"
+            disabled={rescanningId !== null}
+            onClick={() => void rescan()}
+          >
+            {rescanningId === "all" ? "Scanning…" : "Rescan CLIs"}
+          </button>
           <button class="btn btn-sm" type="button" disabled={refreshing} onClick={() => void refreshUsage()}>
             {refreshing ? "Refreshing…" : "Refresh usage"}
+          </button>
+          <button class="btn btn-sm" type="button" disabled={discovering} onClick={() => void discoverExtensions()}>
+            {discovering ? "Discovering…" : "Refresh extensions"}
           </button>
         </div>
       </div>
@@ -539,21 +390,12 @@ export function AgentConfigSection() {
             config={config}
             snapshots={snapshots}
             extensions={registry?.extensions ?? []}
+            presence={diagnostics[tool.id]}
+            onRescan={rescan}
+            rescanning={rescanningId === tool.id || rescanningId === "all"}
           />
         ))}
       </div>
-
-      <div class="agent-config-extensions-foot">
-        <span class="settings-usage-meta">{extensionMeta}</span>
-        <button class="btn btn-sm" type="button" disabled={discovering} onClick={() => void discoverExtensions()}>
-          {discovering ? "Discovering…" : "Refresh extensions"}
-        </button>
-      </div>
-
-      <p class="agent-config-foot muted">
-        Configured in <code>data/state/agent-config.json</code> — add new CLIs with the{" "}
-        <strong>add-agent-cli</strong> skill. Extension defaults apply per MC-managed launch (worktree-scoped).
-      </p>
     </section>
   );
 }

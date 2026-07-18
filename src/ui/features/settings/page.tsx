@@ -6,16 +6,26 @@ import { api } from "@ui/data/api.js";
 import { $ } from "@ui/shell/dom.js";
 import { icon } from "@ui/shell/icons.js";
 import { type VersionStatus } from "@ui/shell/update-pill.js";
-import { setTheme, ui, relativeTime } from "@ui/app/state.js";
+import { setTheme, ui, relativeTime, type SettingsSection } from "@ui/app/state.js";
+import { navigate } from "@ui/app/router.js";
 import { toast } from "@ui/overlays/toast.js";
 import { confirm } from "@ui/overlays/confirm.js";
-import { DefaultAgentControl } from "./agents/section.js";
+import { DefaultAgentSelect } from "./agents/section.js";
 import { AgentConfigSection } from "./agents/config-section.js";
+import { ConnectorsPanel } from "@ui/features/connectors/page.js";
+import { SkillsPanel } from "@ui/features/skills/page.js";
+import { WorkflowsPanel } from "@ui/features/workflows/page.js";
+import { MaintenancePanel } from "@ui/features/system/page.js";
 import type { ProjectSummary } from "@ui/app/types.js";
 
 const THEME_OPTIONS = ["dark", "light"] as const;
 
-type SettingsSection = "agents" | "monitoring" | "projects" | "workspace" | "appearance" | "about";
+const SYSTEM_SECTIONS = new Set<SettingsSection>([
+  "connectors",
+  "skills",
+  "workflows",
+  "maintenance"
+]);
 
 const SECTION_GROUPS: Array<{
   label: string;
@@ -36,6 +46,15 @@ const SECTION_GROUPS: Array<{
     ]
   },
   {
+    label: "System",
+    items: [
+      { id: "connectors", icon: "external-link", name: "Connectors", sub: "GitHub, ClickUp, and more" },
+      { id: "skills", icon: "sparkles", name: "Skills", sub: "Agent skill catalog" },
+      { id: "workflows", icon: "workflow", name: "Workflows", sub: "Workflow definitions" },
+      { id: "maintenance", icon: "activity", name: "Maintenance", sub: "Daemon jobs & shutdown" }
+    ]
+  },
+  {
     label: "Application",
     items: [
       { id: "appearance", icon: "sun", name: "Appearance", sub: "Theme" },
@@ -43,39 +62,6 @@ const SECTION_GROUPS: Array<{
     ]
   }
 ];
-
-const SECTION_HEADS: Record<SettingsSection, { icon: string; title: string; desc: string }> = {
-  agents: {
-    icon: "bot",
-    title: "Agents",
-    desc: "Tools and model pools for automated turns. Routing favors quality, then quota and cost."
-  },
-  monitoring: {
-    icon: "clock",
-    title: "Monitoring",
-    desc: "When to surface stall and long-running warnings on active tasks."
-  },
-  projects: {
-    icon: "inbox",
-    title: "Projects",
-    desc: "Onboarded git repos receive Mission Control autonomy: quality grading, tech debt sweeps, and error triage. Add one from the + next to Projects in the sidebar."
-  },
-  workspace: {
-    icon: "folder",
-    title: "Workspace",
-    desc: "Paths used for target suggestions and memory indexing outside Mission Control."
-  },
-  appearance: {
-    icon: "sun",
-    title: "Appearance",
-    desc: "Visual preferences for Mission Control."
-  },
-  about: {
-    icon: "settings",
-    title: "About",
-    desc: "Read-only environment details for this Mission Control instance."
-  }
-};
 
 const DEFAULT_SETTINGS: HarnessSettings = {
   defaultAgent: "grok",
@@ -94,22 +80,6 @@ function msFromMinutes(minutes: number): number {
 
 function Icon({ name, size = 16 }: { name: string; size?: number }) {
   return <span dangerouslySetInnerHTML={{ __html: icon(name, size) }} />;
-}
-
-function IdHead({ section, actions }: { section: SettingsSection; actions?: ComponentChildren }) {
-  const head = SECTION_HEADS[section];
-  return (
-    <div class="catalog-id-head">
-      <div class="catalog-id-logo">
-        <Icon name={head.icon} size={26} />
-      </div>
-      <div class="catalog-id-text">
-        <div class="catalog-id-title">{head.title}</div>
-        <div class="catalog-id-account settings-id-desc">{head.desc}</div>
-      </div>
-      {actions ? <div class="catalog-id-actions">{actions}</div> : null}
-    </div>
-  );
 }
 
 function SettingsRow({
@@ -258,9 +228,14 @@ function ProjectsSection(): VNode {
 
 function SettingsView() {
   const settings = ui.data?.settings ?? DEFAULT_SETTINGS;
-  const [activeSection, setActiveSection] = useState<SettingsSection>("agents");
+  const [activeSection, setActiveSection] = useState<SettingsSection>(ui.settingsSection);
   const [theme, setThemeValue] = useState<HarnessSettings["theme"]>(settings.theme);
   const [version, setVersion] = useState<VersionStatus | null>(null);
+  const systemSection = SYSTEM_SECTIONS.has(activeSection);
+
+  useEffect(() => {
+    setActiveSection(ui.settingsSection);
+  }, [ui.settingsSection]);
 
   useEffect(() => {
     setThemeValue(settings.theme);
@@ -282,6 +257,11 @@ function SettingsView() {
       cancelled = true;
     };
   }, [activeSection]);
+
+  function selectSection(section: SettingsSection): void {
+    setActiveSection(section);
+    navigate("settings", null, { settingsSection: section });
+  }
 
   async function applyPatch(patch: Partial<HarnessSettings>, silent = true): Promise<void> {
     const updated = await api<HarnessSettings>("/api/settings", {
@@ -329,17 +309,7 @@ function SettingsView() {
 
   return (
     <div class="view catalog-view settings-view">
-      <div class="view-header catalog-view-header">
-        <div>
-          <h1 class="view-title">Settings</h1>
-          <p class="view-subtitle">
-            Agents, monitoring, workspace, and appearance for this Mission Control instance.
-          </p>
-        </div>
-        <div class="settings-autosave-note muted">Changes apply automatically</div>
-      </div>
-
-      <div class="catalog-shell">
+      <div class={`catalog-shell${systemSection ? " settings-shell-system" : ""}`}>
         <aside class="catalog-rail" aria-label="Settings sections">
           {SECTION_GROUPS.map((group) => (
             <div class="catalog-group" key={group.label}>
@@ -350,7 +320,7 @@ function SettingsView() {
                   type="button"
                   class={`catalog-item${activeSection === item.id ? " is-selected" : ""}`}
                   data-settings-section={item.id}
-                  onClick={() => setActiveSection(item.id)}
+                  onClick={() => selectSection(item.id)}
                 >
                   <span class="catalog-item-logo">
                     <Icon name={item.icon} size={18} />
@@ -365,18 +335,30 @@ function SettingsView() {
           ))}
         </aside>
 
-        <main class="catalog-detail">
+        <main class={`catalog-detail${systemSection ? " settings-detail-system" : ""}`}>
+          {systemSection ? (
+            <div class="catalog-detail-inner settings-system-inner">
+              {activeSection === "connectors" ? <ConnectorsPanel /> : null}
+              {activeSection === "skills" ? <SkillsPanel /> : null}
+              {activeSection === "workflows" ? <WorkflowsPanel /> : null}
+              {activeSection === "maintenance" ? <MaintenancePanel /> : null}
+            </div>
+          ) : (
           <div class="catalog-detail-inner">
-            <IdHead
-              section={activeSection}
-              actions={
-                activeSection === "agents" ? (
-                  <DefaultAgentControl settings={settings} applyPatch={applyPatch} />
-                ) : undefined
-              }
-            />
             <form onSubmit={(e) => e.preventDefault()}>
-              {activeSection === "agents" && <AgentConfigSection />}
+              {activeSection === "agents" && (
+                <>
+                  <div class="settings-group">
+                    <SettingsRow
+                      label="Default agent"
+                      description="Used for every automated step unless a per-stage override is set."
+                    >
+                      <DefaultAgentSelect settings={settings} applyPatch={applyPatch} />
+                    </SettingsRow>
+                  </div>
+                  <AgentConfigSection />
+                </>
+              )}
 
               {activeSection === "projects" && <ProjectsSection />}
 
@@ -512,6 +494,7 @@ function SettingsView() {
               )}
             </form>
           </div>
+          )}
         </main>
       </div>
     </div>

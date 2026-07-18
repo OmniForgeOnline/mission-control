@@ -19,6 +19,8 @@ export interface EdgeGeometry {
   length: number;
   angleDeg: number;
   branch: boolean;
+  /** Orthogonal SVG path (right-angle routing). */
+  path: string;
 }
 
 function nodeRect(node: LayoutNode): NodeRect {
@@ -61,6 +63,46 @@ function anchorPoints(
   };
 }
 
+function round(value: number): number {
+  return Math.round(value * 100) / 100;
+}
+
+/**
+ * Forward edge as a right-angle path: horizontal → vertical → horizontal.
+ * Collinear ports collapse to a single straight segment.
+ */
+export function orthogonalForwardPath(x1: number, y1: number, x2: number, y2: number): string {
+  if (Math.abs(y1 - y2) < 0.5) {
+    return `M ${round(x1)} ${round(y1)} L ${round(x2)} ${round(y2)}`;
+  }
+  const midX = round((x1 + x2) / 2);
+  return (
+    `M ${round(x1)} ${round(y1)} ` +
+    `L ${midX} ${round(y1)} ` +
+    `L ${midX} ${round(y2)} ` +
+    `L ${round(x2)} ${round(y2)}`
+  );
+}
+
+/**
+ * Rework back-edge as a U-shaped orthogonal path that drops below the graph,
+ * runs horizontally, then rises into the target. Sharp corners only (no curves).
+ */
+export function orthogonalBranchPath(
+  sx: number,
+  sy: number,
+  ex: number,
+  ey: number,
+  bowY: number
+): string {
+  return (
+    `M ${round(sx)} ${round(sy)} ` +
+    `L ${round(sx)} ${round(bowY)} ` +
+    `L ${round(ex)} ${round(bowY)} ` +
+    `L ${round(ex)} ${round(ey)}`
+  );
+}
+
 export function computeEdgeGeometry(
   nodes: LayoutNode[],
   edges: LayoutEdge[]
@@ -78,6 +120,7 @@ export function computeEdgeGeometry(
       const dy = y2 - y1;
       const length = Math.hypot(dx, dy);
       const angleDeg = (Math.atan2(dy, dx) * 180) / Math.PI;
+      const branch = edge.kind === "branch";
 
       return {
         from: edge.from,
@@ -89,7 +132,8 @@ export function computeEdgeGeometry(
         y2,
         length,
         angleDeg,
-        branch: edge.kind === "branch"
+        branch,
+        path: branch ? "" : orthogonalForwardPath(x1, y1, x2, y2)
       };
     })
     .filter((edge): edge is EdgeGeometry => edge !== null);
@@ -104,15 +148,11 @@ export interface BranchEdgeGeometry {
   labelY: number;
 }
 
-function round(value: number): number {
-  return Math.round(value * 100) / 100;
-}
-
 /**
  * Branch (remediation / rework) edges loop backward to an earlier step on the
- * left→right spine. Straight lines would run over intermediate nodes, so each
- * back-edge exits the bottom, bows below the whole graph, and re-enters the
- * bottom of the target. Multiple back-edges are staggered.
+ * left→right spine. Straight diagonals would cut intermediate nodes, so each
+ * back-edge exits the bottom, runs under the graph on orthogonal segments,
+ * and re-enters the bottom of the target. Multiple back-edges are staggered.
  */
 export function computeBranchEdgeGeometry(
   nodes: LayoutNode[],
@@ -133,16 +173,17 @@ export function computeBranchEdgeGeometry(
 
       const sx = from.left + from.width / 2;
       const sy = from.top + from.height;
-      const fan = (index - (branches.length - 1) / 2) * 16;
+      // Slight horizontal stagger so multi-rework targets stay distinct without a wide fan.
+      const fan = (index - (branches.length - 1) / 2) * 10;
       const ex = to.left + to.width / 2 + fan;
       const ey = to.top + to.height;
-      const bowY = maxBottom + 48 + index * 28;
+      // Keep U-paths close under the spine; stack multiple reworks tightly.
+      const bowY = maxBottom + 20 + index * 16;
 
-      const path =
-        `M ${round(sx)} ${round(sy)} ` +
-        `C ${round(sx)} ${round(bowY)}, ${round(ex)} ${round(bowY)}, ${round(ex)} ${round(ey)}`;
+      const path = orthogonalBranchPath(sx, sy, ex, ey, bowY);
       const labelX = round((sx + ex) / 2);
-      const labelY = round(sy + (bowY - sy) * 0.72);
+      // Sit the label on the horizontal run under the graph.
+      const labelY = round(bowY);
 
       return { from: edge.from, to: edge.to, path, bowY: round(bowY), labelX, labelY };
     })

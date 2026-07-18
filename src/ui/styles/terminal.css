@@ -66,8 +66,18 @@
   height: auto;
   border-radius: var(--r-md);
   overflow: hidden;
-  background: #0d1117;
+  background: var(--term-bg);
   border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+@media (max-width: 720px) {
+  .term-host {
+    min-height: 120px;
+  }
+
+  .term-host.is-empty {
+    min-height: 96px;
+  }
 }
 
 .term-host.is-empty {

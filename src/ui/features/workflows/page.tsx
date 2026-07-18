@@ -1,11 +1,9 @@
 import { useEffect, useMemo, useState } from "preact/hooks";
-import { render } from "preact";
 import type { ComponentChildren } from "preact";
 
 import type { WorkflowDefinition } from "../../../core/workflows/types.ts";
 import { groupWorkflowsByCategory } from "../../../core/catalog/workflow-categories.ts";
 import { api } from "@ui/data/api.js";
-import { $ } from "@ui/shell/dom.js";
 import { icon } from "@ui/shell/icons.js";
 import { ui } from "@ui/app/state.js";
 import type { HarnessTask, WorkflowSummary } from "@ui/app/types.js";
@@ -77,7 +75,15 @@ function Fact({ label, children }: { label: string; children: ComponentChildren 
   );
 }
 
-function WorkflowDetail({ summary, onEdit }: { summary: WorkflowSummary; onEdit: () => void }) {
+function WorkflowDetail({
+  summary,
+  onEdit,
+  showEdit = true
+}: {
+  summary: WorkflowSummary;
+  onEdit: () => void;
+  showEdit?: boolean;
+}) {
   const [selectedStepId, setSelectedStepId] = useState<string | null>(null);
   return (
     <div class="catalog-detail-inner">
@@ -94,16 +100,18 @@ function WorkflowDetail({ summary, onEdit }: { summary: WorkflowSummary; onEdit:
             <code>{summary.id}</code> · author {summary.defaults.author} · reviewer {summary.defaults.reviewer}
           </p>
         </div>
-        <div class="catalog-id-actions">
-          <button class="btn btn-primary" type="button" onClick={onEdit}>
-            <Icon name="edit" size={14} />
-            <span>Edit workflow</span>
-          </button>
-        </div>
+        {showEdit ? (
+          <div class="catalog-id-actions">
+            <button class="btn btn-primary" type="button" onClick={onEdit}>
+              <Icon name="edit" size={14} />
+              <span>Edit workflow</span>
+            </button>
+          </div>
+        ) : null}
       </header>
 
-      <div class="wf-detail-split">
-        <div class="wf-detail-canvas">
+      <div class="wf-detail-stack">
+        <div class="wf-detail-canvas wf-canvas-viewport">
           <WorkflowCanvas
             task={PREVIEW_TASK}
             workflow={summary}
@@ -112,68 +120,72 @@ function WorkflowDetail({ summary, onEdit }: { summary: WorkflowSummary; onEdit:
           />
         </div>
 
-        <div class="wf-detail-side">
-          <div class="catalog-section-label">Configuration</div>
-          <section class="catalog-panel">
-            <div class="catalog-panel-body">
-              <div class="catalog-facts">
-                <Fact label="Start step">
-                  <span class="wf-stage-name">{summary.initial}</span>
-                </Fact>
-                <Fact label="Steps">{summary.stepIds.length}</Fact>
-                <Fact label="Author">{summary.defaults.author}</Fact>
-                <Fact label="Reviewer">{summary.defaults.reviewer}</Fact>
-                <Fact label="Default effort">{summary.defaults.effort ?? "—"}</Fact>
+        <div class="wf-detail-panels">
+          <div class="wf-detail-panel">
+            <div class="catalog-section-label">Configuration</div>
+            <section class="catalog-panel">
+              <div class="catalog-panel-body">
+                <div class="catalog-facts">
+                  <Fact label="Start step">
+                    <span class="wf-stage-name">{summary.initial}</span>
+                  </Fact>
+                  <Fact label="Steps">{summary.stepIds.length}</Fact>
+                  <Fact label="Author">{summary.defaults.author}</Fact>
+                  <Fact label="Reviewer">{summary.defaults.reviewer}</Fact>
+                  <Fact label="Default effort">{summary.defaults.effort ?? "—"}</Fact>
+                </div>
               </div>
-            </div>
-          </section>
+            </section>
+          </div>
 
-          <div class="catalog-section-label">Stages</div>
-          <section class="catalog-panel">
-            <table class="wf-stage-table">
-              <colgroup>
-                <col class="col-stage" />
-                <col class="col-kind" />
-                <col class="col-agent" />
-                <col class="col-approval" />
-              </colgroup>
-              <thead>
-                <tr>
-                  <th>Stage</th>
-                  <th>Kind</th>
-                  <th>Agent</th>
-                  <th>Approval</th>
-                </tr>
-              </thead>
-              <tbody>
-                {summary.stepIds.map((id) => {
-                  const step = summary.steps[id];
-                  if (!step) return null;
-                  const agent = resolveStageAgent(summary, step.agent);
-                  return (
-                    <tr
-                      key={id}
-                      class={selectedStepId === id ? "is-selected" : undefined}
-                    >
-                      <td>
-                        <span class="wf-stage-name">{id}</span>
-                      </td>
-                      <td>{kindLabel(step.kind)}</td>
-                      <td class={agent === "—" ? "wf-stage-muted" : undefined}>{agent}</td>
-                      <td class={step.approval === "none" ? "wf-stage-muted" : undefined}>{step.approval}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </section>
+          <div class="wf-detail-panel">
+            <div class="catalog-section-label">Stages</div>
+            <section class="catalog-panel">
+              <table class="wf-stage-table">
+                <colgroup>
+                  <col class="col-stage" />
+                  <col class="col-kind" />
+                  <col class="col-agent" />
+                  <col class="col-approval" />
+                </colgroup>
+                <thead>
+                  <tr>
+                    <th>Stage</th>
+                    <th>Kind</th>
+                    <th>Agent</th>
+                    <th>Approval</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {summary.stepIds.map((id) => {
+                    const step = summary.steps[id];
+                    if (!step) return null;
+                    const agent = resolveStageAgent(summary, step.agent);
+                    return (
+                      <tr
+                        key={id}
+                        class={selectedStepId === id ? "is-selected" : undefined}
+                      >
+                        <td>
+                          <span class="wf-stage-name">{id}</span>
+                        </td>
+                        <td>{kindLabel(step.kind)}</td>
+                        <td class={agent === "—" ? "wf-stage-muted" : undefined}>{agent}</td>
+                        <td class={step.approval === "none" ? "wf-stage-muted" : undefined}>{step.approval}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </section>
+          </div>
         </div>
       </div>
     </div>
   );
 }
 
-function WorkflowsView() {
+function WorkflowsView({ embedded = false }: { embedded?: boolean }) {
   const summaries = (ui.data?.workflows ?? []) as WorkflowSummary[];
   const [editing, setEditing] = useState<{ def: WorkflowDefinition; isNew: boolean } | null>(null);
   const [syncing, setSyncing] = useState(false);
@@ -257,25 +269,54 @@ function WorkflowsView() {
   }
 
   return (
-    <div class="view catalog-view">
-      <div class="view-header catalog-view-header">
-        <div>
-          <h1 class="view-title">Workflows</h1>
-          <p class="view-subtitle">
-            Browse pipelines and edit them visually. Changes persist to <code>workflows/&#42;.yml</code>.
-          </p>
+    <div class={embedded ? "settings-embedded-panel catalog-view" : "view catalog-view"}>
+      {embedded ? (
+        <div class="settings-embedded-toolbar">
+          <div class="row row-actions">
+            <button class="btn" type="button" disabled={syncing} onClick={() => void sync()}>
+              <span dangerouslySetInnerHTML={{ __html: icon("refresh", 14) }} />
+              <span>{syncing ? "Syncing…" : "Sync workflows"}</span>
+            </button>
+            <button
+              class="btn btn-primary"
+              type="button"
+              onClick={() => setEditing({ def: emptyWorkflow(), isNew: true })}
+            >
+              <span dangerouslySetInnerHTML={{ __html: icon("plus", 14) }} />
+              <span>New workflow</span>
+            </button>
+            {selected ? (
+              <button class="btn btn-primary" type="button" onClick={() => void openEditor(selected.id)}>
+                <span dangerouslySetInnerHTML={{ __html: icon("edit", 14) }} />
+                <span>Edit workflow</span>
+              </button>
+            ) : null}
+          </div>
         </div>
-        <div class="row">
-          <button class="btn" type="button" disabled={syncing} onClick={() => void sync()}>
-            <span dangerouslySetInnerHTML={{ __html: icon("refresh", 14) }} />
-            <span>{syncing ? "Syncing…" : "Sync workflows"}</span>
-          </button>
-          <button class="btn btn-primary" type="button" onClick={() => setEditing({ def: emptyWorkflow(), isNew: true })}>
-            <span dangerouslySetInnerHTML={{ __html: icon("plus", 14) }} />
-            <span>New workflow</span>
-          </button>
+      ) : (
+        <div class="view-header catalog-view-header">
+          <div>
+            <h1 class="view-title">Workflows</h1>
+            <p class="view-subtitle">
+              Browse pipelines and edit them visually. Changes persist to <code>workflows/&#42;.yml</code>.
+            </p>
+          </div>
+          <div class="row row-actions">
+            <button class="btn" type="button" disabled={syncing} onClick={() => void sync()}>
+              <span dangerouslySetInnerHTML={{ __html: icon("refresh", 14) }} />
+              <span>{syncing ? "Syncing…" : "Sync workflows"}</span>
+            </button>
+            <button
+              class="btn btn-primary"
+              type="button"
+              onClick={() => setEditing({ def: emptyWorkflow(), isNew: true })}
+            >
+              <span dangerouslySetInnerHTML={{ __html: icon("plus", 14) }} />
+              <span>New workflow</span>
+            </button>
+          </div>
         </div>
-      </div>
+      )}
 
       <div class="catalog-shell">
         <aside class="catalog-rail">
@@ -327,7 +368,11 @@ function WorkflowsView() {
 
         <main class="catalog-detail">
           {selected ? (
-            <WorkflowDetail summary={selected} onEdit={() => void openEditor(selected.id)} />
+            <WorkflowDetail
+              summary={selected}
+              onEdit={() => void openEditor(selected.id)}
+              showEdit={!embedded}
+            />
           ) : (
             <p class="catalog-empty">Select a workflow to preview it.</p>
           )}
@@ -337,8 +382,6 @@ function WorkflowsView() {
   );
 }
 
-export function renderWorkflowsView(): void {
-  const root = $("#viewContent");
-  if (!root) return;
-  render(<WorkflowsView />, root);
+export function WorkflowsPanel() {
+  return <WorkflowsView embedded />;
 }

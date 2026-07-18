@@ -20,6 +20,7 @@
 
   /* type */
   --font-ui: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-display: "Space Grotesk", "Inter", system-ui, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
   --t-xs: 11px;
   --t-sm: 12px;
@@ -59,23 +60,33 @@
 :root,
 [data-theme="dark"] {
   color-scheme: dark;
-  --bg: #050712;
-  --bg-elev: #0b1020;
-  --surface: #121723;
-  --surface-2: #1a2130;
-  --surface-3: #1d2430;
-  --hairline: #243044;
-  --hairline-strong: #2f3c52;
-  --ink: #e6eaf2;
-  --ink-strong: #f6f8fc;
-  --ink-muted: #959cb1;
-  --ink-faint: #5f6a82;
+  /* Graphite: cool graphite surfaces, one restrained teal accent. */
+  --bg: #0d0e11;
+  --bg-elev: #121317;
+  --surface: #16181d;
+  --surface-2: #1c1f26;
+  --surface-3: #232730;
+  --hairline: #262a32;
+  --hairline-strong: #363b46;
+  --ink: #dfe3ec;
+  --ink-strong: #f4f6fa;
+  --ink-muted: #99a1b0;
+  --ink-faint: #626a79;
 
-  --accent: #4a6cf7;
-  --accent-hover: #6a85ff;
-  --accent-ink: #ffffff;
-  --accent-glow: rgba(74, 108, 247, 0.24);
-  --accent-soft: rgba(74, 108, 247, 0.15);
+  --accent: #2dd4bf;
+  --accent-hover: #5ee3d2;
+  --accent-ink: #04211d;
+  --accent-glow: rgba(45, 212, 191, 0.24);
+  --accent-soft: rgba(45, 212, 191, 0.13);
+
+  /* graphite canvas / terminal texture (transposed from theme lab · dir A) */
+  --edge: #3a4049;
+  --grid-dot: rgba(255, 255, 255, 0.04);
+  --term-bg: #0a0b0e;
+
+  /* elevation: inset top-highlight + drop shadow so surfaces catch light (theme lab · dir A) */
+  --elev-1: inset 0 1px 0 rgba(255, 255, 255, 0.03), 0 1px 2px rgba(0, 0, 0, 0.45);
+  --elev-2: inset 0 1px 0 rgba(255, 255, 255, 0.05), 0 8px 22px -8px rgba(0, 0, 0, 0.65);
 
   --shadow-overlay:
     0 1px 1px rgba(0, 0, 0, 0.3),
@@ -86,29 +97,41 @@
 
 [data-theme="light"] {
   color-scheme: light;
-  --bg: #eef2f7;
+  /* Graphite light: pure-white surfaces, graphite ink, quiet hairlines.
+     Body ink (--ink / --ink-muted) clears WCAG AA on white; --ink-faint is
+     reserved for de-emphasized / larger text. */
+  --bg: #f6f7f9;
   --bg-elev: #ffffff;
   --surface: #ffffff;
-  --surface-2: #f0f2f9;
-  --surface-3: #e3e8ef;
-  --hairline: #e3e8ef;
-  --hairline-strong: #d1d6dd;
-  --ink: #121723;
-  --ink-strong: #000000;
-  --ink-muted: #788293;
-  --ink-faint: #8b95a4;
+  --surface-2: #f0f2f5;
+  --surface-3: #e6e9ee;
+  --hairline: #e4e7ec;
+  --hairline-strong: #c7ccd4;
+  --ink: #1a1d24;
+  --ink-strong: #0a0c11;
+  --ink-muted: #545b66;
+  --ink-faint: #8a919d;
 
-  --accent: #2563eb;
-  --accent-hover: #1d4ed8;
+  --accent: #0d9488;
+  --accent-hover: #0f766e;
   --accent-ink: #ffffff;
-  --accent-glow: rgba(37, 99, 235, 0.18);
-  --accent-soft: rgba(37, 99, 235, 0.10);
+  --accent-glow: rgba(13, 148, 136, 0.22);
+  --accent-soft: rgba(13, 148, 136, 0.10);
+
+  /* graphite canvas / terminal texture (transposed from theme lab · dir A) */
+  --edge: #c0c6cf;
+  --grid-dot: rgba(20, 30, 45, 0.05);
+  --term-bg: #0d0e11;
+
+  /* elevation: soft drop shadow on white surfaces (theme lab · dir A, light) */
+  --elev-1: 0 1px 2px rgba(10, 15, 20, 0.06);
+  --elev-2: 0 8px 22px -8px rgba(10, 15, 20, 0.16);
 
   --shadow-overlay:
-    0 1px 1px rgba(15, 18, 23, 0.08),
-    0 4px 8px rgba(15, 18, 23, 0.1),
-    0 16px 32px rgba(15, 18, 23, 0.14);
-  --shadow-popover: 0 4px 16px rgba(15, 18, 23, 0.12);
+    0 1px 1px rgba(15, 18, 23, 0.1),
+    0 4px 8px rgba(15, 18, 23, 0.12),
+    0 16px 32px rgba(15, 18, 23, 0.16);
+  --shadow-popover: 0 4px 16px rgba(15, 18, 23, 0.14);
 }
 
 /* ---------- reset + base ---------- */

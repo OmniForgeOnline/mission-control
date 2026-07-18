@@ -259,22 +259,22 @@ export function WorkflowEditor({ initial, isNew, onClose, onSaved }: EditorProps
             {isNew ? "Define a workflow; it persists as a YAML file." : `Editing ${draft.id}.yml`}
           </p>
         </div>
-        <div class="row wf-header-actions">
-          <button class="btn btn-ghost" type="button" onClick={onClose}>
-            <span dangerouslySetInnerHTML={{ __html: icon("arrow-left", 14) }} />
-            <span>Back</span>
-          </button>
-          {!isNew ? (
-            <button class="btn btn-ghost" type="button" onClick={() => void remove()}>
-              <span dangerouslySetInnerHTML={{ __html: icon("trash", 14) }} />
-              <span>Delete</span>
+          <div class="row row-actions wf-header-actions">
+            <button class="btn btn-ghost" type="button" onClick={onClose}>
+              <span dangerouslySetInnerHTML={{ __html: icon("arrow-left", 14) }} />
+              <span>Back</span>
             </button>
-          ) : null}
-          <button class="btn" type="button" onClick={(e) => void save(e)}>
-            <span dangerouslySetInnerHTML={{ __html: icon("check", 14) }} />
-            <span>{isNew ? "Create" : "Save"}</span>
-          </button>
-        </div>
+            {!isNew ? (
+              <button class="btn btn-ghost" type="button" onClick={() => void remove()}>
+                <span dangerouslySetInnerHTML={{ __html: icon("trash", 14) }} />
+                <span>Delete</span>
+              </button>
+            ) : null}
+            <button class="btn" type="button" onClick={(e) => void save(e)}>
+              <span dangerouslySetInnerHTML={{ __html: icon("check", 14) }} />
+              <span>{isNew ? "Create" : "Save"}</span>
+            </button>
+          </div>
       </div>
 
       <div class="wf-tabs">
@@ -306,7 +306,7 @@ export function WorkflowEditor({ initial, isNew, onClose, onSaved }: EditorProps
                 <span>Workflow settings</span>
               </button>
             </div>
-            <div class="wf-graph-canvas">
+            <div class="wf-graph-canvas wf-canvas-viewport">
               <WorkflowCanvas
                 task={DRAFT_TASK}
                 workflow={defToSummary(draft)}

@@ -161,8 +161,8 @@ function RunGroup({
 
 /**
  * Renders the grouped run history for a set of runs, owning the expand/collapse
- * state and live-tail binding. Shared by the per-project Runs tab and the
- * System → Maintenance view so both render identical run cards.
+ * state and live-tail binding. Shared by the per-project Runs tab and
+ * Settings → System → Maintenance so both render identical run cards.
  */
 export function RunGroupList({ runs }: { runs: HarnessRun[] }) {
   const [, setTick] = useState(0);

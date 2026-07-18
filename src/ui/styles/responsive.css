@@ -22,17 +22,27 @@
 
   .app-shell .rail-link .label,
   .app-shell .rail-link .count,
-  .app-shell .rail-heading {
+  .app-shell .rail-heading,
+  .app-shell .rail-project-status,
+  .app-shell .rail-project-tickets,
+  .app-shell .rail-project-toggle,
+  .app-shell .rail-projects-empty {
     display: none;
   }
 
   .app-shell .rail-link {
     justify-content: center;
+    min-height: 40px;
+  }
+
+  .app-shell .rail-project-head {
+    grid-template-columns: minmax(0, 1fr);
   }
 
   /* Icon-only rail: same flyout labels as .app-shell.collapsed. */
   .app-rail {
     overflow: visible;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
   }
 
   .rail-link[data-tip]::after {
@@ -58,12 +68,16 @@
   }
 
   .rail-link[data-tip]:hover::after,
-  .rail-link[data-tip]:focus-visible::after {
+  .rail-link[data-tip]:focus::after,
+  .rail-link[data-tip]:focus-visible::after,
+  .rail-link[data-tip]:active::after {
     opacity: 1;
   }
 
   .view {
     padding: var(--s-4);
+    min-width: 0;
+    max-width: 100%;
   }
 
   .form-grid {
@@ -106,9 +120,15 @@
 /* Master-detail is a wide layout, not a centered reading column: drop the
    shared .view 1280px cap so the catalog sits flush-left and the detail
    panel gets the full content pane (the .view-header label compound
-   raises specificity above plain .view regardless of stylesheet order). */
+   raises specificity above plain .view regardless of stylesheet order).
+   Fill the main pane so rail + detail scroll locally instead of growing
+   the whole app-main canvas. */
 .view.catalog-view {
   max-width: none;
+  height: 100%;
+  max-height: 100%;
+  box-sizing: border-box;
+  overflow: hidden;
 }
 
 .catalog-view-header {
@@ -117,6 +137,7 @@
   justify-content: space-between;
   gap: var(--s-4);
   flex-wrap: wrap;
+  flex: none;
 }
 
 .catalog-health {
@@ -142,19 +163,38 @@
 
 .catalog-shell {
   display: grid;
-  grid-template-columns: 300px minmax(0, 1fr);
+  /* Mobile-first: stack rail above detail. Desktop two-column is min-width only
+     so nested Settings embeds (Skills/Workflows/Connectors) cannot stay side-by-side
+     on phone widths. */
+  grid-template-columns: 1fr;
   gap: var(--s-5);
-  align-items: start;
+  align-content: start;
+  align-items: stretch;
   margin-top: var(--s-4);
+  flex: none;
+  min-height: 0;
+  overflow: visible;
+}
+
+@media (min-width: 1081px) {
+  .catalog-shell {
+    grid-template-columns: 300px minmax(0, 1fr);
+    /* Leftover height goes to the detail column — never inflate the rail (gap above detail). */
+    grid-template-rows: minmax(0, 1fr);
+    align-content: stretch;
+    flex: 1 1 0;
+    overflow: hidden;
+  }
 }
 
 /* ---------- left rail: catalog ---------- */
 .catalog-rail {
-  position: sticky;
-  top: var(--s-4);
   display: flex;
   flex-direction: column;
   gap: var(--s-4);
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
 }
 
 .catalog-search {
@@ -353,10 +393,28 @@ button.catalog-group-head[aria-expanded="true"] .catalog-group-chevron {
 /* ---------- right: detail ---------- */
 .catalog-detail {
   min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  display: flex;
+  flex-direction: column;
 }
 
 .catalog-detail-inner {
   max-width: 1080px;
+  display: flex;
+  flex-direction: column;
+  flex: 0 1 auto;
+  min-height: 0;
+}
+
+/* Mapping card can grow with the list; scrolling happens inside .connector-map-scroll. */
+.catalog-panel-fill {
+  flex: 0 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 0;
 }
 
 .catalog-id-head {
@@ -364,6 +422,7 @@ button.catalog-group-head[aria-expanded="true"] .catalog-group-chevron {
   align-items: flex-start;
   gap: var(--s-4);
   padding-bottom: var(--s-5);
+  flex-wrap: nowrap;
 }
 
 .catalog-id-logo {
@@ -414,6 +473,8 @@ button.catalog-group-head[aria-expanded="true"] .catalog-group-chevron {
   display: flex;
   gap: var(--s-2);
   flex: none;
+  flex-wrap: nowrap;
+  align-items: center;
 }
 
 /* badges */
@@ -468,12 +529,30 @@ button.catalog-group-head[aria-expanded="true"] .catalog-group-chevron {
   gap: var(--s-2);
   text-transform: none;
   letter-spacing: 0;
+  flex-wrap: nowrap;
+  align-items: center;
+}
+
+@media (max-width: 720px) {
+  .catalog-section-label {
+    flex-wrap: wrap;
+    align-items: flex-start;
+    row-gap: var(--s-2);
+  }
+
+  .catalog-section-actions {
+    flex-wrap: wrap;
+    width: 100%;
+    margin-left: 0;
+    justify-content: flex-start;
+  }
 }
 
 .catalog-panel {
   background: var(--surface);
   border: 1px solid var(--hairline);
   border-radius: var(--r-xl);
+  box-shadow: var(--elev-1);
   margin-bottom: var(--s-4);
   overflow: hidden;
 }
@@ -482,11 +561,18 @@ button.catalog-group-head[aria-expanded="true"] .catalog-group-chevron {
   padding: var(--s-5);
 }
 
-/* identity facts grid */
+/* identity facts — label and value on one line to save vertical canvas */
 .catalog-facts {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: var(--s-5) var(--s-6);
+  gap: var(--s-2) var(--s-5);
+}
+
+.catalog-fact {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s-2);
+  min-width: 0;
 }
 
 .catalog-fact-k {
@@ -495,12 +581,26 @@ button.catalog-group-head[aria-expanded="true"] .catalog-group-chevron {
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--ink-faint);
-  margin-bottom: 5px;
+  flex: none;
 }
 
 .catalog-fact-v {
-  font-size: var(--t-base);
+  font-size: var(--t-sm);
   color: var(--ink);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.catalog-fact-v:has(.connector-chips) {
+  white-space: normal;
+  overflow: visible;
+  text-overflow: unset;
+}
+
+.catalog-panel-body-compact {
+  padding: var(--s-3) var(--s-4);
 }
 
 .catalog-fact-mono {
@@ -554,10 +654,71 @@ button.catalog-group-head[aria-expanded="true"] .catalog-group-chevron {
   max-width: 56ch;
 }
 
+@media (max-width: 720px) {
+  .connector-action-zone {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .connector-action-zone .btn {
+    width: 100%;
+  }
+
+  .connector-map-toolbar {
+    flex-wrap: wrap;
+  }
+
+  .connector-map-search {
+    max-width: none;
+    flex: 1 1 100%;
+  }
+
+  .connector-map-table {
+    min-width: 0;
+  }
+
+  .connector-map-table thead {
+    display: none;
+  }
+
+  .connector-map-table,
+  .connector-map-table tbody,
+  .connector-map-table tr,
+  .connector-map-table td {
+    display: block;
+    width: 100%;
+  }
+
+  .connector-map-table tbody tr {
+    padding: var(--s-3);
+    border-bottom: 1px solid var(--hairline);
+  }
+
+  .connector-map-table tbody td {
+    padding: 4px 0;
+    border: 0;
+  }
+
+  .connector-map-table tbody td.cm-col-sub {
+    display: flex;
+    align-items: center;
+    gap: var(--s-2);
+  }
+
+  .connector-map-project {
+    max-width: none;
+  }
+
+  .connector-map-scroll {
+    overflow-x: visible;
+  }
+}
+
 /* ---------- ClickUp mapping table ---------- */
 .connector-map {
   display: flex;
   flex-direction: column;
+  min-height: 0;
 }
 
 .connector-map-toolbar {
@@ -566,6 +727,7 @@ button.catalog-group-head[aria-expanded="true"] .catalog-group-chevron {
   gap: var(--s-3);
   padding: var(--s-3) var(--s-4);
   border-bottom: 1px solid var(--hairline);
+  flex: none;
 }
 
 .connector-map-search {
@@ -603,6 +765,7 @@ button.catalog-group-head[aria-expanded="true"] .catalog-group-chevron {
 .connector-map-scroll {
   max-height: 460px;
   overflow: auto;
+  overscroll-behavior: contain;
 }
 
 .connector-map-table {
@@ -743,6 +906,7 @@ button.catalog-group-head[aria-expanded="true"] .catalog-group-chevron {
   padding: 11px var(--s-4);
   border-top: 1px solid var(--hairline);
   font-size: var(--t-xs);
+  flex: none;
   color: var(--ink-faint);
 }
 
@@ -871,12 +1035,40 @@ button.catalog-group-head[aria-expanded="true"] .catalog-group-chevron {
 
 /* ---------- responsive ---------- */
 @media (max-width: 1080px) {
+  .view.catalog-view {
+    height: auto;
+    max-height: none;
+    overflow: visible;
+  }
+
   .catalog-shell {
-    grid-template-columns: 1fr;
+    flex: none;
+    overflow: visible;
+    align-content: start;
+    align-items: start;
+    grid-template-rows: none;
   }
 
   .catalog-rail {
-    position: static;
+    max-height: min(40vh, 280px);
+    overflow: auto;
+  }
+
+  .catalog-detail {
+    overflow: visible;
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .catalog-detail-inner,
+  .catalog-panel,
+  .catalog-panel-fill {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .catalog-panel-fill {
+    flex: none;
   }
 
   .catalog-facts {
@@ -884,12 +1076,33 @@ button.catalog-group-head[aria-expanded="true"] .catalog-group-chevron {
     gap: var(--s-4);
   }
 
+  .catalog-id-head {
+    flex-wrap: wrap;
+  }
+
+  .catalog-id-actions {
+    flex-wrap: wrap;
+    width: 100%;
+  }
+
   .connector-map-scroll {
     overflow-x: auto;
+    overscroll-behavior-x: contain;
+    -webkit-overflow-scrolling: touch;
+    min-height: 200px;
+    max-width: 100%;
   }
 
   .connector-map-table {
     min-width: 560px;
+  }
+
+  /* Prevent wide mono chips / code from forcing horizontal page crop. */
+  .chip-mono {
+    max-width: min(100%, 70vw);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 }
 
@@ -899,6 +1112,13 @@ button.catalog-group-head[aria-expanded="true"] .catalog-group-chevron {
    ============================================================ */
 .skill-doc.message-body {
   padding: var(--s-5) var(--s-6);
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.skill-doc.message-body pre {
+  max-width: 100%;
 }
 
 .skill-doc-empty {
@@ -953,30 +1173,32 @@ button.catalog-group-head[aria-expanded="true"] .catalog-group-chevron {
 
 /* ============================================================
    Workflows — detail pane (on the shared catalog shell)
-   Diagram (the real ticket canvas) sits beside config + stages,
-   so a wide monitor isn't wasted next to the narrow vertical DAG.
+   Horizontal DAG needs width: chart on top, config + stages below.
    ============================================================ */
-.wf-detail-split {
-  display: grid;
-  grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
+.wf-detail-stack {
+  display: flex;
+  flex-direction: column;
   gap: var(--s-5);
-  align-items: start;
+  min-width: 0;
 }
 
 .wf-detail-canvas {
-  position: sticky;
-  top: var(--s-4);
-  height: clamp(460px, 70vh, 760px);
-  border: 1px solid var(--hairline);
+  /* Height comes from shared .wf-canvas-viewport (workflows.css). */
   border-radius: var(--r-xl);
-  overflow: hidden;
-  background: var(--bg);
 }
 
-.wf-detail-side {
+.wf-detail-panels {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr);
+  gap: var(--s-5);
+  align-items: start;
+  min-width: 0;
+}
+
+.wf-detail-panel {
   display: flex;
   flex-direction: column;
-  gap: var(--s-4);
+  gap: var(--s-2);
   min-width: 0;
 }
 
@@ -1037,12 +1259,7 @@ button.catalog-group-head[aria-expanded="true"] .catalog-group-chevron {
 }
 
 @media (max-width: 1180px) {
-  .wf-detail-split {
+  .wf-detail-panels {
     grid-template-columns: 1fr;
-  }
-
-  .wf-detail-canvas {
-    position: static;
-    height: clamp(380px, 56vh, 620px);
   }
 }

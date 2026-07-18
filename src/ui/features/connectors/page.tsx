@@ -3,9 +3,7 @@ import type {
   ConnectorsState
 } from "../../../core/types.ts";
 import { useEffect, useMemo, useState } from "preact/hooks";
-import { render } from "preact";
 import { api } from "@ui/data/api.js";
-import { $ } from "@ui/shell/dom.js";
 import { parseHash } from "@ui/app/router.js";
 import { ui } from "@ui/app/state.js";
 import { toast, errorToast } from "@ui/overlays/toast.js";
@@ -25,7 +23,13 @@ function connectorsState(): ConnectorsState {
   return raw as ConnectorsState;
 }
 
-function ConnectorsView({ state }: { state: ConnectorsState }) {
+function ConnectorsView({
+  state,
+  embedded = false
+}: {
+  state: ConnectorsState;
+  embedded?: boolean;
+}) {
   const [clickUpResources, setClickUpResources] = useState<ConnectorResourceOption[]>([]);
   const [syncingClickUpConnectionId, setSyncingClickUpConnectionId] = useState<string | null>(null);
   const [query, setQuery] = useState("");
@@ -45,7 +49,7 @@ function ConnectorsView({ state }: { state: ConnectorsState }) {
     const connected = hashQuery.get("connected");
     if (connected) {
       toast(`${connected} connected.`, { tone: "success" });
-      window.location.hash = "#/connectors";
+      window.location.hash = "#/settings?section=connectors";
     }
   }, []);
 
@@ -160,19 +164,31 @@ function ConnectorsView({ state }: { state: ConnectorsState }) {
   const polledLists = subscribedListCount(connectionForProvider(state.connections, "clickup"));
 
   return (
-    <div class="view catalog-view">
-      <div class="view-header catalog-view-header">
-        <div>
-          <h1 class="view-title">Connectors</h1>
-          <p class="view-subtitle">
-            Connect trackers, import open work, and auto-bind GitHub/GitLab issues to local repos.
-          </p>
+    <div class={embedded ? "settings-embedded-panel catalog-view" : "view catalog-view"}>
+      {embedded ? null : (
+        <div class="view-header catalog-view-header">
+          <div>
+            <h1 class="view-title">Connectors</h1>
+            <p class="view-subtitle">
+              Connect trackers, import open work, and auto-bind GitHub/GitLab issues to local repos.
+            </p>
+          </div>
+          <div class="catalog-health">
+            <span class="catalog-health-dot" />
+            {connectedCount} connected
+            {polledLists ? ` · polling ${polledLists} ${polledLists === 1 ? "list" : "lists"}` : ""}
+          </div>
         </div>
-        <div class="catalog-health">
-          <span class="catalog-health-dot" />
-          {connectedCount} connected{polledLists ? ` · polling ${polledLists} ${polledLists === 1 ? "list" : "lists"}` : ""}
+      )}
+      {embedded ? (
+        <div class="settings-embedded-toolbar">
+          <div class="catalog-health">
+            <span class="catalog-health-dot" />
+            {connectedCount} connected
+            {polledLists ? ` · polling ${polledLists} ${polledLists === 1 ? "list" : "lists"}` : ""}
+          </div>
         </div>
-      </div>
+      ) : null}
 
       <div class="catalog-shell">
         <Catalog
@@ -209,8 +225,6 @@ function ConnectorsView({ state }: { state: ConnectorsState }) {
   );
 }
 
-export function renderConnectorsView(): void {
-  const root = $("#viewContent");
-  if (!root) return;
-  render(<ConnectorsView state={connectorsState()} />, root);
+export function ConnectorsPanel() {
+  return <ConnectorsView state={connectorsState()} embedded />;
 }

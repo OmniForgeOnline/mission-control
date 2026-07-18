@@ -9,6 +9,8 @@
     "rail main";
   min-height: 100svh;
   height: 100svh;
+  padding-top: env(safe-area-inset-top, 0px);
+  box-sizing: border-box;
 }
 
 .app-shell.collapsed {
@@ -20,7 +22,7 @@
   display: flex;
   align-items: center;
   gap: var(--s-3);
-  padding: 0 var(--s-4);
+  padding: 0 max(var(--s-4), env(safe-area-inset-right, 0px)) 0 max(var(--s-4), env(safe-area-inset-left, 0px));
   border-bottom: 1px solid var(--hairline);
   background: var(--bg-elev);
   position: sticky;
@@ -36,13 +38,18 @@
   letter-spacing: 0;
 }
 
-.app-bar .brand-mark {
-  width: 26px;
-  height: 26px;
-  object-fit: contain;
+.app-bar .brand-logo {
+  height: 28px;
+  width: auto;
   flex-shrink: 0;
   display: block;
-  transition: filter var(--d-fast) var(--ease-out);
+  /* Dark theme default: white wordmark; mark gradient stays in the SVG. */
+  color: #ffffff;
+  transition: opacity var(--d-fast) var(--ease-out);
+}
+
+[data-theme="light"] .app-bar .brand-logo {
+  color: #0a0a0a;
 }
 
 .app-bar .brand-wordmark {
@@ -50,12 +57,6 @@
   align-items: center;
   gap: var(--s-2);
   min-width: 0;
-}
-
-.app-bar .brand-name {
-  font-weight: var(--w-semi);
-  color: var(--ink-strong);
-  letter-spacing: -0.01em;
 }
 
 .app-bar .brand-sep {
@@ -123,6 +124,16 @@
   color: var(--ink-muted);
   cursor: pointer;
   transition: border-color var(--d-fast) var(--ease-out);
+}
+
+.status-pill-count {
+  font-variant-numeric: tabular-nums;
+  font-weight: var(--w-medium);
+  color: var(--ink);
+}
+
+.status-pill-label {
+  color: var(--ink-muted);
 }
 
 .status-pill:hover {
@@ -340,6 +351,12 @@ body.rail-resizing {
   gap: var(--s-2);
 }
 
+.rail-heading-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
 .rail-heading-action {
   display: inline-flex;
   align-items: center;
@@ -354,6 +371,23 @@ body.rail-resizing {
   transition: color 0.12s ease, background 0.12s ease;
 }
 
+@media (pointer: coarse) {
+  .rail-heading-action {
+    width: 32px;
+    height: 32px;
+  }
+
+  .rail-collapse {
+    width: 32px;
+    height: 32px;
+  }
+
+  .rail-project-toggle {
+    width: 32px;
+    height: 36px;
+  }
+}
+
 .rail-heading-action:hover {
   color: var(--accent);
   background: var(--surface-2);
@@ -364,7 +398,7 @@ body.rail-resizing {
   padding: var(--s-1) var(--s-3) var(--s-2);
 }
 
-.app-shell.collapsed .rail-heading-action {
+.app-shell.collapsed .rail-heading-actions {
   display: none;
 }
 
@@ -654,7 +688,9 @@ body.rail-resizing {
 }
 
 .app-shell.collapsed .rail-link[data-tip]:hover::after,
-.app-shell.collapsed .rail-link[data-tip]:focus-visible::after {
+.app-shell.collapsed .rail-link[data-tip]:focus::after,
+.app-shell.collapsed .rail-link[data-tip]:focus-visible::after,
+.app-shell.collapsed .rail-link[data-tip]:active::after {
   opacity: 1;
 }
 
@@ -685,6 +721,7 @@ body.rail-resizing {
 }
 
 .view-title {
+  font-family: var(--font-display);
   font-size: var(--t-2xl);
   font-weight: var(--w-semi);
   letter-spacing: -0.01em;
@@ -715,7 +752,12 @@ body.rail-resizing {
   background: var(--surface);
   border: 1px solid var(--hairline);
   border-radius: var(--r-lg);
+  box-shadow: var(--elev-1);
   overflow: hidden;
+}
+
+.autonomy-panel[data-clickup-ticket-sync] {
+  margin-bottom: var(--s-4);
 }
 
 .autonomy-head,
@@ -868,7 +910,15 @@ body.rail-resizing {
     display: none;
   }
 
+  /* Parent tracks were a 5-col desktop grid with ~528px min width + overflow:hidden,
+     which cropped Active/Auto off-screen. Collapse to one column on narrow viewports. */
+  .autonomy-panel {
+    grid-template-columns: minmax(0, 1fr);
+    overflow: visible;
+  }
+
   .autonomy-row {
+    grid-column: 1;
     grid-template-columns: minmax(0, 1fr) auto;
     grid-template-areas:
       "job actions"
@@ -880,6 +930,7 @@ body.rail-resizing {
 
   .autonomy-job {
     grid-area: job;
+    flex-wrap: wrap;
   }
 
   .autonomy-schedule {
@@ -902,18 +953,47 @@ body.rail-resizing {
 
   .autonomy-actions {
     grid-area: actions;
+    flex-wrap: wrap;
+    justify-content: flex-end;
   }
 }
 
-/* compact brand: drop the app sub-label on narrow viewports */
+/* compact chrome on narrow viewports */
 @media (max-width: 720px) {
   .app-bar .brand-sub,
   .app-bar .brand-sep {
     display: none;
   }
 
+  .app-bar .brand-logo {
+    height: 24px;
+  }
+
   .app-bar .update-pill span {
     display: none;
+  }
+
+  .app-bar .palette-trigger span,
+  .app-bar .palette-trigger kbd {
+    display: none;
+  }
+
+  .app-bar .palette-trigger {
+    padding: 6px;
+    gap: 0;
+  }
+
+  .app-bar .status-pill-label {
+    display: none;
+  }
+
+  .app-bar .status-pill {
+    padding: 4px 8px;
+    gap: 5px;
+  }
+
+  .app-bar {
+    gap: var(--s-2);
   }
 }
 

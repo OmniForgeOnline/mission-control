@@ -395,7 +395,8 @@ function TasksView() {
         <div class="empty-state">
           <h3>No tasks yet</h3>
           <p>
-            Go to <strong>Home</strong> and describe what you want to build, or press <kbd>N</kbd>.
+            Go to <strong>Home</strong> for tickets that need attention, or open a project in the
+            sidebar to start new work.
           </p>
         </div>
       </ViewShell>

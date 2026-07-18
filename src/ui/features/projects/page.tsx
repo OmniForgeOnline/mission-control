@@ -332,57 +332,59 @@ function ProjectOverview({ project }: { project: ProjectSummary }) {
               </select>
             </div>
             {rows.length ? (
-              <table class="project-ticket-table">
-                <thead>
-                  <tr>
-                    <th scope="col">Name</th>
-                    <th scope="col">Status</th>
-                    <th scope="col">
-                      <button
-                        class="ticket-sort-toggle"
-                        type="button"
-                        onClick={() =>
-                          setFilter({
-                            ...filter,
-                            sort: filter.sort === "updated-desc" ? "updated-asc" : "updated-desc"
-                          })
-                        }
-                      >
-                        <span>Updated</span>
-                        <span
-                          class={`ticket-sort-caret${filter.sort === "updated-asc" ? " is-asc" : ""}`}
-                        >
-                          <Icon name="chevron-down" size={12} />
-                        </span>
-                      </button>
-                    </th>
-                    <th scope="col">Branch</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {rows.map((task) => (
-                    <tr class="project-ticket-row" key={task.id}>
-                      <td>
+              <div class="project-ticket-table-scroll">
+                <table class="project-ticket-table">
+                  <thead>
+                    <tr>
+                      <th scope="col">Name</th>
+                      <th scope="col">Status</th>
+                      <th scope="col">
                         <button
-                          class="ticket-link"
+                          class="ticket-sort-toggle"
                           type="button"
-                          onClick={() => navigate("task", task.id)}
+                          onClick={() =>
+                            setFilter({
+                              ...filter,
+                              sort: filter.sort === "updated-desc" ? "updated-asc" : "updated-desc"
+                            })
+                          }
                         >
-                          {task.title}
+                          <span>Updated</span>
+                          <span
+                            class={`ticket-sort-caret${filter.sort === "updated-asc" ? " is-asc" : ""}`}
+                          >
+                            <Icon name="chevron-down" size={12} />
+                          </span>
                         </button>
-                      </td>
-                      <td>
-                        <span class="ticket-status-badge" data-status={uiLegacyStatus(task)}>
-                          <span class="dot" />
-                          {uiLegacyStatus(task)}
-                        </span>
-                      </td>
-                      <td class="ticket-updated">{relativeTime(task.updatedAt)}</td>
-                      <td class="ticket-branch">{task.branch ? task.branch : "-"}</td>
+                      </th>
+                      <th scope="col">Branch</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {rows.map((task) => (
+                      <tr class="project-ticket-row" key={task.id}>
+                        <td>
+                          <button
+                            class="ticket-link"
+                            type="button"
+                            onClick={() => navigate("task", task.id)}
+                          >
+                            {task.title}
+                          </button>
+                        </td>
+                        <td>
+                          <span class="ticket-status-badge" data-status={uiLegacyStatus(task)}>
+                            <span class="dot" />
+                            {uiLegacyStatus(task)}
+                          </span>
+                        </td>
+                        <td class="ticket-updated">{relativeTime(task.updatedAt)}</td>
+                        <td class="ticket-branch">{task.branch ? task.branch : "-"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             ) : (
               <div class="empty-state">
                 <h3>No matching tickets</h3>

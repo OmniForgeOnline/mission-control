@@ -5,6 +5,7 @@ dist/
 *.log
 # Local browser-tooling artifacts (Playwright MCP snapshots/screenshots).
 .playwright-mcp/
+tmp/
 # npm pack output.
 *.tgz
 # Local harness state — memory, runs, tasks, indexes (personal, not repo-backed)

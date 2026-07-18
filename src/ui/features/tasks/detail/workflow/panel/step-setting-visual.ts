@@ -13,7 +13,9 @@ const KNOWN_AGENT_VISUALS: Record<string, AgentVisual> = {
   codex: { color: "#10a37f", initial: "C" },
   claude: { color: "#d97757", initial: "C" },
   grok: { color: "#1d9bf0", initial: "G" },
-  opencode: { color: "var(--accent)", initial: "O" }
+  opencode: { color: "var(--accent)", initial: "O" },
+  cursor: { color: "#f54e00", initial: "C" },
+  kiro: { color: "#9046FF", initial: "K" }
 };
 
 /**

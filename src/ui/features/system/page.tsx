@@ -1,5 +1,3 @@
-import { render } from "preact";
-import { $ } from "@ui/shell/dom.js";
 import { icon } from "@ui/shell/icons.js";
 import { ui } from "@ui/app/state.js";
 import { AutonomyPanel } from "@ui/features/autonomy/page.js";
@@ -12,25 +10,27 @@ function Icon({ name, size = 16 }: { name: string; size?: number }) {
 }
 
 /**
- * System → Maintenance. Surfaces the daemon-wide background jobs (worktree
- * cleanup, workflow reconcile, merge status, ClickUp sync) and their run
- * history. These are cross-cutting infrastructure with no owning project, so
+ * Settings → System → Maintenance. Surfaces the daemon-wide background jobs
+ * (worktree cleanup, workflow reconcile, merge status, ClickUp sync) and their
+ * run history. These are cross-cutting infrastructure with no owning project, so
  * they live here rather than in any project's tabs.
  */
-export function MaintenanceView() {
+export function MaintenanceView({ embedded = false }: { embedded?: boolean }) {
   const runs = (ui.data?.runs ?? []).filter(isMaintenanceRun);
   const runLabel = runs.length === 1 ? "run" : "runs";
 
   return (
-    <div class="view" id="maintenanceView">
-      <div class="view-header">
-        <div>
-          <h1 class="view-title">Maintenance</h1>
-          <p class="view-subtitle">
-            Daemon-wide background jobs that keep the harness healthy across every project.
-          </p>
+    <div class={embedded ? "settings-embedded-panel" : "view"} id="maintenanceView">
+      {embedded ? null : (
+        <div class="view-header">
+          <div>
+            <h1 class="view-title">Maintenance</h1>
+            <p class="view-subtitle">
+              Daemon-wide background jobs that keep the harness healthy across every project.
+            </p>
+          </div>
         </div>
-      </div>
+      )}
       <AutonomyPanel scope={{ kind: "harness" }} />
       <section class="project-panel">
         <div class="project-section-head">
@@ -50,6 +50,10 @@ export function MaintenanceView() {
       <PowerControl />
     </div>
   );
+}
+
+export function MaintenancePanel() {
+  return <MaintenanceView embedded />;
 }
 
 /**
@@ -90,10 +94,4 @@ function PowerControl() {
       </div>
     </section>
   );
-}
-
-export function renderSystemView(): void {
-  const root = $("#viewContent");
-  if (!root) return;
-  render(<MaintenanceView />, root);
 }

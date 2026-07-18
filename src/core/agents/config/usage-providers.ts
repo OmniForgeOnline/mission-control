@@ -245,14 +245,14 @@ export const defaultUsageProviderDeps: UsageProviderDeps = {
   fetchClaudeUsage: defaultFetchClaudeUsage
 };
 
-function snapshotFrom(
-  tool: AgentToolConfig,
-  pool: ModelPoolConfig,
-  reading: UsageReading
-): UsageSnapshot {
+/**
+ * Build an account-level usage snapshot for a tool. Live sources (codex app-server,
+ * Claude OAuth) report the logged-in account quota, not a per-model limit — so
+ * `modelPoolId` is intentionally omitted.
+ */
+function snapshotFrom(tool: AgentToolConfig, reading: UsageReading): UsageSnapshot {
   return {
     toolId: tool.id,
-    modelPoolId: pool.id,
     used: 0,
     usedPercent: Math.max(0, Math.min(100, reading.usedPercent)),
     ...(reading.windowMinutes !== undefined ? { windowMinutes: reading.windowMinutes } : {}),
@@ -264,9 +264,11 @@ function snapshotFrom(
 }
 
 /**
- * Fetch live usage for a model pool based on its `usageSource`. Returns null when
+ * Fetch live usage for a tool based on a pool's `usageSource`. Returns null when
  * the source is `none` or no subscription quota is available; an error snapshot
  * when a live fetch fails (so the UI can show the reason without fabricating data).
+ *
+ * Snapshots are account/tool-scoped: providers do not return per-model limits.
  */
 export async function fetchPoolUsage(
   tool: AgentToolConfig,
@@ -277,19 +279,18 @@ export async function fetchPoolUsage(
   try {
     if (pool.usageSource === "codex-app-server") {
       const reading = mapCodexRateLimits(await deps.fetchCodexRateLimits(tool.command, cwd));
-      return reading ? snapshotFrom(tool, pool, reading) : null;
+      return reading ? snapshotFrom(tool, reading) : null;
     }
     if (pool.usageSource === "claude-oauth") {
       const token = await deps.readClaudeOAuthToken();
       if (!token) return null; // API-key / third-party endpoint: no subscription quota to report.
       const reading = mapClaudeUsage(await deps.fetchClaudeUsage(token));
-      return reading ? snapshotFrom(tool, pool, reading) : null;
+      return reading ? snapshotFrom(tool, reading) : null;
     }
     return null;
   } catch (err) {
     return {
       toolId: tool.id,
-      modelPoolId: pool.id,
       used: 0,
       fetchedAt: new Date().toISOString(),
       source: "cli",

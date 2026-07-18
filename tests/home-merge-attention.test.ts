@@ -1,4 +1,9 @@
-import { awaitingMergeTasks, mergeAttentionState } from "../src/ui/features/home/selectors.ts";
+import {
+  attentionFocusIds,
+  attentionSections,
+  awaitingMergeTasks,
+  mergeAttentionState
+} from "../src/ui/features/home/selectors.ts";
 import type { HarnessTask } from "../src/ui/app/types.ts";
 
 function task(id: string, overrides: Partial<HarnessTask> = {}): HarnessTask {
@@ -77,5 +82,28 @@ describe("home awaiting-merge data mapping", () => {
       mergeRequest: { provider: "github", url: "u", number: 1, state: "merged", mergedAt: "2026-01-02T00:00:00.000Z" }
     });
     expect(awaitingMergeTasks([merged])).toEqual([]);
+  });
+});
+
+describe("home attention sections", () => {
+  it("assigns each task to at most one section with merge taking priority", () => {
+    const merge = task("merge", {
+      mergeRequest: { provider: "github", url: "u", number: 1, state: "open" },
+      blockedReason: "should not win"
+    });
+    const blocked = task("blocked", { blockedReason: "need credentials" });
+    const paused = task("paused", { pausedAt: "2026-01-02T00:00:00.000Z" });
+
+    const sections = attentionSections([merge, blocked, paused]);
+    expect(sections.map((s) => s.id)).toEqual(["merge", "blocked", "resumable"]);
+    expect(sections.find((s) => s.id === "merge")?.tasks.map((t) => t.id)).toEqual(["merge"]);
+    expect(sections.find((s) => s.id === "blocked")?.tasks.map((t) => t.id)).toEqual(["blocked"]);
+    expect(sections.find((s) => s.id === "resumable")?.tasks.map((t) => t.id)).toEqual(["paused"]);
+  });
+
+  it("maps app-bar filters to focus section ids", () => {
+    expect([...attentionFocusIds("awaiting")].sort()).toEqual(["awaiting", "merge"]);
+    expect([...attentionFocusIds("running")].sort()).toEqual(["running", "stalled"]);
+    expect([...attentionFocusIds("all")]).toEqual([]);
   });
 });

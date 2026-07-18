@@ -1,13 +1,20 @@
 import { render } from "preact";
-import { useState } from "preact/hooks";
+import { useEffect } from "preact/hooks";
 
-import { ui, relativeTime } from "@ui/app/state.js";
+import { ui, relativeTime, liveness } from "@ui/app/state.js";
 import { navigate } from "@ui/app/router.js";
 import { $ } from "@ui/shell/dom.js";
 import { icon } from "@ui/shell/icons.js";
 import { MergeRequestChip } from "@ui/shared/components/task-chips.js";
-import { awaitingMergeTasks, mergeAttentionState } from "./selectors.js";
-import type { HarnessTask, ProjectSummary } from "@ui/app/types.js";
+import {
+  attentionFocusIds,
+  attentionSections,
+  mergeAttentionState,
+  type AttentionSection,
+  type AttentionSectionId
+} from "./selectors.js";
+import { SetupChecklist } from "./setup-checklist.js";
+import type { HarnessTask } from "@ui/app/types.js";
 
 let homeHost: HTMLElement | null = null;
 
@@ -15,164 +22,95 @@ function Icon({ name, size = 16 }: { name: string; size?: number }) {
   return <span dangerouslySetInnerHTML={{ __html: icon(name, size) }} />;
 }
 
-function projectTicketCount(project: ProjectSummary): number {
-  return (ui.data?.tasks ?? []).filter((task) => task.projectId === project.id).length;
-}
-
 function projectName(task: HarnessTask): string | undefined {
   if (!task.projectId) return undefined;
   return ui.data?.projects?.find((project) => project.id === task.projectId)?.name;
 }
 
-function AwaitingMergeSection({ tasks }: { tasks: HarnessTask[] }) {
-  if (!tasks.length) return null;
-  const openCount = tasks.filter((task) => mergeAttentionState(task).tone === "open").length;
-  const closedCount = tasks.length - openCount;
+function rowMeta(task: HarnessTask, sectionId: AttentionSectionId): {
+  label: string;
+  tone: string;
+} {
+  if (sectionId === "merge") {
+    const state = mergeAttentionState(task);
+    return { label: state.label, tone: state.tone };
+  }
+  if (sectionId === "stalled") {
+    const live = liveness(task);
+    return { label: live?.text ?? "Stalled", tone: "stalled" };
+  }
+  if (sectionId === "blocked") {
+    return { label: task.blockedReason?.trim() || "Blocked", tone: "blocked" };
+  }
+  if (sectionId === "resumable") {
+    return { label: task.pausedAt ? "Paused" : "Interrupted", tone: "resumable" };
+  }
+  if (sectionId === "awaiting") {
+    return { label: "Needs reply", tone: "awaiting" };
+  }
+  const live = liveness(task);
+  return { label: live?.text ?? "Running", tone: "running" };
+}
+
+function AttentionRow({
+  task,
+  sectionId
+}: {
+  task: HarnessTask;
+  sectionId: AttentionSectionId;
+}) {
+  const project = projectName(task);
+  const meta = rowMeta(task, sectionId);
 
   return (
-    <section class="home-attention">
-      <div class="project-section-head">
-        <h2>Awaiting review &amp; merge</h2>
-        <span class="muted">
-          {openCount} open · {closedCount} closed
+    <button
+      class="home-attention-row"
+      type="button"
+      data-tone={meta.tone}
+      onClick={() => navigate("task", task.id)}
+    >
+      <span class="home-attention-main">
+        <strong class="home-attention-title">{task.title}</strong>
+        <span class="home-attention-meta">
+          {project ? <span class="home-attention-project">{project}</span> : null}
+          {task.mergeRequest && sectionId === "merge" ? (
+            <MergeRequestChip mergeRequest={task.mergeRequest} />
+          ) : null}
+          <span class={`merge-state merge-state-${meta.tone}`} data-tone={meta.tone}>
+            {meta.tone === "closed" || meta.tone === "blocked" || meta.tone === "stalled" ? (
+              <Icon name="alert-triangle" size={12} />
+            ) : null}
+            {meta.label}
+          </span>
+          <span class="muted">{relativeTime(task.updatedAt)}</span>
         </span>
-      </div>
-      <div class="home-attention-list">
-        {tasks.map((task) => {
-          const state = mergeAttentionState(task);
-          const project = projectName(task);
-          return (
-            <button
-              class="home-attention-row"
-              type="button"
-              key={task.id}
-              data-tone={state.tone}
-              onClick={() => navigate("task", task.id)}
-            >
-              <span class="home-attention-main">
-                <strong class="home-attention-title">{task.title}</strong>
-                <span class="home-attention-meta">
-                  {project ? <span class="home-attention-project">{project}</span> : null}
-                  {task.mergeRequest ? <MergeRequestChip mergeRequest={task.mergeRequest} /> : null}
-                  <span class={`merge-state merge-state-${state.tone}`} data-tone={state.tone}>
-                    {state.tone === "closed" ? <Icon name="alert-triangle" size={12} /> : null}
-                    {state.label}
-                  </span>
-                  <span class="muted">{relativeTime(task.createdAt)}</span>
-                </span>
-              </span>
-              <Icon name="chevron-right" size={16} />
-            </button>
-          );
-        })}
-      </div>
-    </section>
+      </span>
+      <Icon name="chevron-right" size={16} />
+    </button>
   );
 }
 
-const SETUP_DISMISSED_KEY = "harness:setup-dismissed";
-
-function readSetupDismissed(): boolean {
-  return localStorage.getItem(SETUP_DISMISSED_KEY) === "1";
-}
-
-function writeSetupDismissed(): void {
-  localStorage.setItem(SETUP_DISMISSED_KEY, "1");
-}
-
-function SetupChecklist({ hasProjects }: { hasProjects: boolean }) {
-  // Once dismissed, the checklist stays gone across reloads. This is a UI-local
-  // view preference, so it rides localStorage like the rail width and project
-  // collapse state rather than the server settings store.
-  const [dismissed, setDismissed] = useState(readSetupDismissed());
-
-  function handleDismiss(): void {
-    writeSetupDismissed();
-    setDismissed(true);
-  }
-
-  if (dismissed) return null;
-
-  const items = [
-    {
-      iconName: "terminal",
-      title: "Install an agent CLI",
-      body: "Confirm `claude`, `codex`, `grok`, `opencode`, or an ACP-compatible tool is on your PATH.",
-      done: false
-    },
-    {
-      iconName: "folder",
-      title: "Add your first project",
-      body: hasProjects ? "A local git project is ready for scoped tickets." : "Use the + next to Projects to select a local git repository.",
-      done: hasProjects
-    },
-    {
-      iconName: "bot",
-      title: "Configure agents",
-      body: "Choose a default agent and confirm available CLI tools in Settings.",
-      done: false,
-      action: () => navigate("settings")
-    },
-    {
-      iconName: "external-link",
-      title: "Connect GitHub or GitLab",
-      body: "Optional: add a connector only when you want PR or MR workflows.",
-      done: false,
-      action: () => navigate("connectors")
-    },
-    {
-      iconName: "play",
-      title: "Run a quickstart",
-      body: "Open a project and pick one of its generated quickstarts to see the workflow loop.",
-      done: false
-    }
-  ];
-
+function AttentionSectionBlock({
+  section,
+  focused
+}: {
+  section: AttentionSection;
+  focused: boolean;
+}) {
   return (
-    <section class="home-setup-checklist" aria-labelledby="homeSetupTitle">
+    <section
+      class={`home-attention${focused ? " is-focused" : ""}`}
+      id={`home-section-${section.id}`}
+      data-section={section.id}
+    >
       <div class="project-section-head">
-        <div>
-          <h2 id="homeSetupTitle">First run setup</h2>
-          <p class="home-setup-subtitle">Recommended order before the first real ticket.</p>
-        </div>
-        <div class="home-setup-head-actions">
-          <span class="badge">{items.filter((item) => item.done).length}/{items.length}</span>
-          <button
-            class="btn btn-ghost btn-icon home-setup-dismiss"
-            type="button"
-            aria-label="Dismiss first run setup"
-            title="Dismiss"
-            onClick={handleDismiss}
-          >
-            <Icon name="x" size={14} />
-          </button>
-        </div>
+        <h2>{section.title}</h2>
+        <span class="muted">{section.tasks.length}</span>
       </div>
-      <div class="home-setup-grid">
-        {items.map((item) => {
-          const content = (
-            <>
-              <span class={`home-setup-icon${item.done ? " is-done" : ""}`}>
-                <Icon name={item.done ? "check" : item.iconName} size={16} />
-              </span>
-              <span class="home-setup-copy">
-                <strong>{item.title}</strong>
-                <span>{item.body}</span>
-              </span>
-              {item.action ? <Icon name="chevron-right" size={15} /> : null}
-            </>
-          );
-
-          return item.action ? (
-            <button class="home-setup-item is-action" type="button" key={item.title} onClick={item.action}>
-              {content}
-            </button>
-          ) : (
-            <div class="home-setup-item" key={item.title}>
-              {content}
-            </div>
-          );
-        })}
+      <div class="home-attention-list">
+        {section.tasks.map((task) => (
+          <AttentionRow key={task.id} task={task} sectionId={section.id} />
+        ))}
       </div>
     </section>
   );
@@ -180,59 +118,46 @@ function SetupChecklist({ hasProjects }: { hasProjects: boolean }) {
 
 function HomeView() {
   const projects = ui.data?.projects ?? [];
-  const awaiting = awaitingMergeTasks(ui.data?.tasks ?? []);
+  const sections = attentionSections(ui.data?.tasks ?? []);
+  const focusIds = attentionFocusIds(ui.tasksFilter);
+  const total = sections.reduce((sum, section) => sum + section.tasks.length, 0);
+
+  useEffect(() => {
+    if (focusIds.size === 0) return;
+    const first = sections.find((section) => focusIds.has(section.id));
+    if (!first) return;
+    document.getElementById(`home-section-${first.id}`)?.scrollIntoView({
+      behavior: "smooth",
+      block: "start"
+    });
+  }, [ui.tasksFilter, sections.map((s) => s.id).join(",")]);
 
   return (
     <div class="view intake-view" id="homeView">
       <div class="intake-layout">
         <header class="intake-header">
           <div>
-            <h1 class="view-title">Mission Control</h1>
-            <p class="view-subtitle">
-              Choose a project to start a scoped ticket. Tickets always belong to a project.
-            </p>
+            <h1 class="view-title">Needs attention</h1>
           </div>
-          <div class="view-actions">
-            <button class="btn btn-ghost" type="button" onClick={() => navigate("tasks")}>
-              <Icon name="list-checks" size={14} />
-              <span>All tasks</span>
-            </button>
-          </div>
+          {total > 0 ? <span class="badge">{total}</span> : null}
         </header>
-        <AwaitingMergeSection tasks={awaiting} />
+
         <SetupChecklist hasProjects={projects.length > 0} />
-        <section class="project-picker">
-          <div class="project-section-head">
-            <h2>Projects</h2>
-            <span class="muted">{projects.length ? `${projects.length} available` : "No projects"}</span>
+
+        {sections.length ? (
+          sections.map((section) => (
+            <AttentionSectionBlock
+              key={section.id}
+              section={section}
+              focused={focusIds.has(section.id)}
+            />
+          ))
+        ) : (
+          <div class="empty-state home-clear">
+            <h3>All clear</h3>
+            <p>Nothing needs attention right now. Open a project in the sidebar to create a ticket.</p>
           </div>
-          {projects.length ? (
-            <div class="project-picker-grid">
-              {projects.map((project) => (
-                <button
-                  class="project-picker-card"
-                  type="button"
-                  key={project.id}
-                  onClick={() => navigate("project", project.id)}
-                >
-                  <span class="project-picker-icon">
-                    <Icon name="folder" size={18} />
-                  </span>
-                  <span class="project-picker-body">
-                    <strong>{project.name}</strong>
-                    <span>{project.repoPath}</span>
-                  </span>
-                  <span class="badge">{projectTicketCount(project)}</span>
-                </button>
-              ))}
-            </div>
-          ) : (
-            <div class="empty-state">
-              <h3>No projects</h3>
-              <p>Add a project before creating tickets.</p>
-            </div>
-          )}
-        </section>
+        )}
       </div>
     </div>
   );

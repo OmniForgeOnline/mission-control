@@ -29,6 +29,11 @@ const CODEX_TOOL: AgentToolConfig = {
   eventParser: "codex",
   supportsCustomModel: true,
   resumesSessionViaCli: true,
+  setup: {
+    installShell: "curl -fsSL https://chatgpt.com/codex/install.sh | sh",
+    loginShell: "codex login",
+    docsUrl: "https://github.com/openai/codex"
+  },
   usage: { kind: "usage-only", softThresholdPercent: 80 }
 };
 
@@ -61,13 +66,18 @@ const CLAUDE_TOOL: AgentToolConfig = {
   externalMcpInjection: "claude-mcp-json",
   supportsCustomModel: true,
   resumesSessionViaCli: true,
+  setup: {
+    installShell: "curl -fsSL https://claude.ai/install.sh | bash",
+    loginShell: "claude auth login",
+    docsUrl: "https://code.claude.com/docs/en/quickstart"
+  },
   usage: { kind: "usage-only", softThresholdPercent: 80 }
 };
 
 const GROK_TOOL: AgentToolConfig = {
   id: "grok",
   displayName: "Grok Build",
-  command: "agent",
+  command: "grok",
   adapter: "grok",
   enabled: true,
   builtin: true,
@@ -81,7 +91,7 @@ const GROK_TOOL: AgentToolConfig = {
   },
   promptTransport: "argv",
   maxPromptArgBytes: 30_000,
-  fallbackCommands: [],
+  fallbackCommands: ["agent"],
   versionArgs: ["--version"],
   helpArgs: [],
   capabilityFlags: {},
@@ -294,9 +304,80 @@ const KIRO_DEFAULT_POOL: ModelPoolConfig = {
   builtin: true
 };
 
+const CURSOR_TOOL: AgentToolConfig = {
+  id: "cursor",
+  displayName: "Cursor CLI",
+  // Prefer cursor-agent: plain `agent` often collides with other CLIs (e.g. Grok).
+  command: "cursor-agent",
+  adapter: "acp",
+  enabled: true,
+  builtin: true,
+  supportsEffort: false,
+  effortLevels: [],
+  // ACP over stdio (`cursor-agent acp`); live capabilities come from adapter defaults.
+  cli: {},
+  promptTransport: "stdin",
+  promptInputFormat: "text",
+  fallbackCommands: ["cursor-cli"],
+  versionArgs: ["--version"],
+  helpArgs: ["--help"],
+  capabilityFlags: {},
+  streamFormat: "acp-json-rpc",
+  eventParser: "acp",
+  externalMcpInjection: "acp-merge",
+  supportsCustomModel: true,
+  resumesSessionViaCli: true,
+  setup: {
+    installShell: "curl https://cursor.com/install -fsS | bash",
+    loginShell: "cursor-agent login",
+    docsUrl: "https://cursor.com/docs/cli/installation"
+  },
+  usage: { kind: "unavailable" }
+};
+
+const CURSOR_DEFAULT_POOL: ModelPoolConfig = {
+  id: "cursor-default",
+  toolId: "cursor",
+  displayName: "Cursor (default)",
+  modelArgs: [],
+  modelEnv: {},
+  capabilities: ["author", "reviewer", "code", "plan", "review"],
+  qualityWeight: 50,
+  tier: "paid",
+  usage: { kind: "unavailable" },
+  usageSource: "none",
+  enabled: true,
+  builtin: true
+};
+
+/** Curated defaults; full account list comes from Discover (`cursor-agent --list-models`). */
+const CURSOR_MODELS: Array<[string, string, number]> = [
+  ["Auto", "auto", 55],
+  ["Composer 2.5", "composer-2.5", 90],
+  ["Composer 2.5 Fast", "composer-2.5-fast", 85],
+  ["Opus 4.8", "claude-opus-4-8-high", 88],
+  ["Sonnet 5", "claude-sonnet-5-high", 80],
+  ["GPT-5.5", "gpt-5.5-medium", 78]
+];
+const CURSOR_POOLS: ModelPoolConfig[] = CURSOR_MODELS.map(([displayName, modelId, qualityWeight]) => ({
+  id: `cursor-${modelId}`,
+  toolId: "cursor",
+  displayName,
+  modelArgs: ["--model", modelId],
+  modelEnv: {},
+  capabilities: ["author", "reviewer", "code", "plan", "review"],
+  qualityWeight,
+  tier: "paid",
+  usage: { kind: "unavailable" },
+  usageSource: "none",
+  // Only Auto is on by default; Discover adds the rest disabled.
+  enabled: modelId === "auto",
+  builtin: true
+}));
+
 export function builtinAgentConfigBundle(): AgentConfigBundle {
   return {
-    tools: [CODEX_TOOL, CLAUDE_TOOL, GROK_TOOL, OPENCODE_TOOL, KIRO_TOOL].map((tool) => ({ ...tool })),
+    tools: [CODEX_TOOL, CLAUDE_TOOL, GROK_TOOL, OPENCODE_TOOL, KIRO_TOOL, CURSOR_TOOL].map((tool) => ({ ...tool })),
     pools: [
       CODEX_POOL,
       CLAUDE_DEFAULT_POOL,
@@ -305,7 +386,9 @@ export function builtinAgentConfigBundle(): AgentConfigBundle {
       ...GROK_POOLS,
       OPENCODE_POOL,
       KIRO_DEFAULT_POOL,
-      ...KIRO_POOLS
+      ...KIRO_POOLS,
+      CURSOR_DEFAULT_POOL,
+      ...CURSOR_POOLS
     ].map((pool) => ({ ...pool })),
     profiles: DEFAULT_PROFILES.map((profile) => ({ ...profile }))
   };

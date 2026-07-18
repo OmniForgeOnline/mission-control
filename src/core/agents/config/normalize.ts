@@ -5,6 +5,7 @@ import type {
   AgentCliConfig,
   AgentConfigBundle,
   AgentToolConfig,
+  AgentToolSetup,
   ExternalMcpInjection,
   ModelPoolConfig,
   ModelTier,
@@ -152,6 +153,20 @@ function normalizeAuthProbe(raw: unknown, label: string): AgentToolConfig["authP
   return { args, ...(timeoutRaw !== undefined ? { timeoutMs: Math.floor(timeoutRaw) } : {}) };
 }
 
+function normalizeSetup(raw: unknown, label: string): AgentToolSetup | undefined {
+  const record = asRecord(raw, `${label} setup`, { orNull: true });
+  if (!record) return undefined;
+  const installShell = str(record["installShell"]);
+  const loginShell = str(record["loginShell"]);
+  const docsUrl = str(record["docsUrl"]);
+  if (!installShell && !loginShell && !docsUrl) return undefined;
+  return {
+    ...(installShell !== undefined ? { installShell } : {}),
+    ...(loginShell !== undefined ? { loginShell } : {}),
+    ...(docsUrl !== undefined ? { docsUrl } : {})
+  };
+}
+
 function commandString(value: unknown, label: string): string {
   const command = str(value);
   if (!command) throw new Error(`${label} is required.`);
@@ -188,6 +203,7 @@ export function normalizeTool(raw: unknown): AgentToolConfig {
   }
   const commandTemplate = stringArray(record["commandTemplate"]);
   const authProbe = normalizeAuthProbe(record["authProbe"], label);
+  const setup = normalizeSetup(record["setup"], label);
   const transport = (str(record["promptTransport"]) ??
     (record["cli"] && asRecord(record["cli"], "cli", { orNull: true })?.["promptAsArg"] === true ? "argv" : "stdin")) as PromptTransport;
   if (!VALID_PROMPT_TRANSPORTS.has(transport)) {
@@ -240,6 +256,7 @@ export function normalizeTool(raw: unknown): AgentToolConfig {
     helpArgs: stringArray(record["helpArgs"]),
     capabilityFlags: stringRecord(record["capabilityFlags"], `${label} capabilityFlags`),
     ...(authProbe !== undefined ? { authProbe } : {}),
+    ...(setup !== undefined ? { setup } : {}),
     ...(streamFormat !== undefined ? { streamFormat } : {}),
     ...(eventParser !== undefined ? { eventParser } : {}),
     ...(externalMcpInjection !== undefined ? { externalMcpInjection } : {}),

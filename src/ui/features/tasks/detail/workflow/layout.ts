@@ -1,22 +1,22 @@
 export const LAYOUT = {
   NODE_WIDTH: 196,
-  NODE_HEIGHT: 110,
+  NODE_HEIGHT: 72,
   /** Horizontal step spacing along the flow (left → right). */
-  COL_WIDTH: 220,
+  COL_WIDTH: 216,
   /** Vertical spacing between parallel lanes. */
-  LANE_HEIGHT: 128,
-  LEFT_PADDING: 20,
-  TOP_PADDING: 20,
+  LANE_HEIGHT: 96,
+  LEFT_PADDING: 28,
+  TOP_PADDING: 28,
   /** Outer padding added around content when computing canvas bounds. */
-  BOUNDS_PAD: 28,
-  LANE_GROUP_PAD: 12,
-  LANE_GROUP_EXTRA_WIDTH: 20,
+  BOUNDS_PAD: 36,
+  LANE_GROUP_PAD: 10,
+  LANE_GROUP_EXTRA_WIDTH: 16,
   // Legacy aliases for older call sites / tests.
   CENTER_X: 300,
-  CENTER_Y: 20,
-  LANE_WIDTH: 220,
-  ROW_HEIGHT: 128,
-  LANE_GROUP_HEIGHT: 120
+  CENTER_Y: 28,
+  LANE_WIDTH: 216,
+  ROW_HEIGHT: 96,
+  LANE_GROUP_HEIGHT: 88
 } as const;
 
 export type LayoutEdgeKind = "sequential" | "fan-out" | "fan-in" | "branch";

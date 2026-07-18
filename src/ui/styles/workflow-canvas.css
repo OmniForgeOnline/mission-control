@@ -24,6 +24,7 @@
 
 .ticket-title {
   margin: 0;
+  font-family: var(--font-display);
   font-size: var(--t-xl);
   font-weight: var(--w-semi);
   letter-spacing: -0.01em;
@@ -60,13 +61,13 @@
   align-items: center;
   justify-content: center;
   gap: 8px;
-  height: 30px;
   min-height: 30px;
-  padding: 0 12px;
+  height: auto;
+  padding: 6px 12px;
   border-radius: var(--r-pill);
   font-size: var(--t-sm);
   font-weight: var(--w-medium);
-  line-height: 1;
+  line-height: 1.25;
   white-space: nowrap;
 }
 
@@ -333,8 +334,11 @@ button.status-badge-btn:focus-visible {
   overflow: hidden;
   min-height: 0;
   height: 100%;
+  touch-action: none;
+  /* Graphite dot-grid + faint accent aurora — transposed from the theme lab. */
   background:
-    radial-gradient(circle at 1px 1px, var(--hairline) 1px, transparent 0) 0 0 / 22px 22px,
+    radial-gradient(circle at 1px 1px, var(--grid-dot) 1px, transparent 0) 0 0 / 22px 22px,
+    radial-gradient(ellipse 70% 50% at 50% 18%, color-mix(in srgb, var(--accent) 6%, transparent), transparent 60%),
     var(--bg);
   cursor: grab;
 }
@@ -351,45 +355,8 @@ button.status-badge-btn:focus-visible {
   will-change: transform;
 }
 
-.wf-edge {
-  --edge-color: var(--hairline-strong);
-  position: absolute;
-  height: 2px;
-  background: var(--edge-color);
-  transform-origin: 0 50%;
-  z-index: 1;
-  pointer-events: none;
-}
-
-/* Arrowhead at the target end, communicating flow direction. It rotates with
-   the edge div, so it points toward the `to` node for both forward and
-   back-edges. */
-.wf-edge::after {
-  content: "";
-  position: absolute;
-  right: -1px;
-  top: 50%;
-  width: 0;
-  height: 0;
-  border-left: 8px solid var(--edge-color);
-  border-top: 5px solid transparent;
-  border-bottom: 5px solid transparent;
-  transform: translateY(-50%);
-}
-
-.wf-edge.done {
-  --edge-color: color-mix(in srgb, var(--status-completed) 70%, var(--hairline));
-}
-
-.wf-edge.active {
-  --edge-color: color-mix(in srgb, var(--status-running) 70%, var(--hairline));
-}
-
-/* Branch = a rework/feedback loop (review → implement, checks failed → implement).
-   Drawn as an SVG curve that bows clear of the column (see .wf-branch-layer),
-   not a straight rotated div, so the loop-back reads as a direction, not a stripe.
-   Amber + dashed says "sent back", distinct from forward progress and hard failure. */
-.wf-branch-layer {
+/* All flow edges: orthogonal SVG paths (right angles, no diagonals/curves). */
+.wf-edge-layer {
   position: absolute;
   top: 0;
   left: 0;
@@ -398,13 +365,40 @@ button.status-badge-btn:focus-visible {
   pointer-events: none;
 }
 
+.wf-edge-path {
+  fill: none;
+  stroke: var(--edge);
+  stroke-width: 1.25;
+  stroke-linecap: square;
+  stroke-linejoin: miter;
+  opacity: 0.9;
+}
+
+.wf-edge-path.is-done {
+  stroke: color-mix(in srgb, var(--status-completed) 68%, var(--hairline));
+  opacity: 1;
+}
+
+.wf-edge-path.is-active {
+  stroke: color-mix(in srgb, var(--status-running) 82%, var(--hairline));
+  stroke-width: 1.75;
+  opacity: 1;
+  filter: drop-shadow(0 0 5px color-mix(in srgb, var(--status-running) 40%, transparent));
+}
+
+.wf-edge-arrow {
+  fill: var(--edge);
+}
+
+/* Rework back-edges: orthogonal U under the graph. Amber dashed = sent back. */
 .wf-branch-path {
   fill: none;
   stroke: var(--status-await-review);
-  stroke-width: 2;
-  stroke-dasharray: 5 6;
-  stroke-linecap: round;
-  opacity: 0.9;
+  stroke-width: 1.5;
+  stroke-dasharray: 3 4;
+  stroke-linecap: square;
+  stroke-linejoin: miter;
+  opacity: 0.92;
 }
 
 .wf-branch-arrow {
@@ -413,20 +407,20 @@ button.status-badge-btn:focus-visible {
 
 .wf-branch-label rect {
   fill: var(--bg-elev);
-  stroke: color-mix(in srgb, var(--status-await-review) 45%, var(--hairline));
+  stroke: color-mix(in srgb, var(--status-await-review) 50%, var(--hairline));
   stroke-width: 1;
 }
 
 .wf-branch-label text {
   fill: var(--status-await-review);
-  font-size: 9.5px;
+  font-size: 9px;
   font-weight: var(--w-semi);
-  letter-spacing: 0.08em;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
+  font-family: var(--font-mono);
 }
 
-/* Dashes march from the source step toward the target, reinforcing the
-   backward direction of the loop. */
+/* Dashes march toward the remediation target. */
 @media (prefers-reduced-motion: no-preference) {
   .wf-branch-path {
     animation: wf-rework-flow 1.4s linear infinite;
@@ -434,7 +428,7 @@ button.status-badge-btn:focus-visible {
 
   @keyframes wf-rework-flow {
     to {
-      stroke-dashoffset: -22;
+      stroke-dashoffset: -18;
     }
   }
 }
@@ -443,178 +437,223 @@ button.status-badge-btn:focus-visible {
   position: absolute;
   z-index: 0;
   pointer-events: none;
-  border: 1px dashed color-mix(in srgb, var(--status-running) 38%, var(--hairline));
-  border-radius: var(--r-lg);
-  background: color-mix(in srgb, var(--status-running) 4%, transparent);
+  border: 1px solid color-mix(in srgb, var(--status-running) 28%, var(--hairline));
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--status-running) 5%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--status-running) 6%, transparent);
 }
 
 .wf-lane-tag {
   position: absolute;
-  top: -10px;
-  left: 12px;
-  padding: 1px 8px;
-  border-radius: var(--r-pill);
-  font-size: 10px;
+  top: -9px;
+  left: 10px;
+  padding: 1px 7px;
+  border-radius: 3px;
+  font-size: 9px;
   font-weight: var(--w-semi);
-  letter-spacing: 0.04em;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
+  font-family: var(--font-mono);
   color: var(--status-running);
   background: var(--bg-elev);
-  border: 1px solid color-mix(in srgb, var(--status-running) 38%, var(--hairline));
+  border: 1px solid color-mix(in srgb, var(--status-running) 32%, var(--hairline));
 }
 
 .wf-node {
   position: absolute;
   width: 196px;
-  padding: var(--s-3);
-  border-radius: var(--r-lg);
-  border: 1px solid var(--hairline);
-  background: var(--surface-2);
+  height: 72px;
+  box-sizing: border-box;
+  padding: 0 12px;
+  touch-action: manipulation;
+  border-radius: 8px;
+  border: 1px solid color-mix(in srgb, var(--hairline-strong) 55%, var(--hairline));
+  background:
+    linear-gradient(
+      165deg,
+      color-mix(in srgb, white 4.5%, var(--surface-2)) 0%,
+      var(--surface-2) 42%,
+      color-mix(in srgb, var(--bg) 18%, var(--surface-2)) 100%
+    );
+  box-shadow:
+    0 1px 0 color-mix(in srgb, white 5%, transparent) inset,
+    0 0 0 1px color-mix(in srgb, black 8%, transparent),
+    0 1px 2px rgb(0 0 0 / 14%),
+    0 10px 24px -14px rgb(0 0 0 / 45%);
   z-index: 2;
   cursor: pointer;
-  text-align: left;
-  transition: border-color var(--d-fast) var(--ease-out), box-shadow var(--d-fast) var(--ease-out), transform var(--d-fast) var(--ease-out);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition:
+    border-color var(--d-fast) var(--ease-out),
+    box-shadow var(--d-fast) var(--ease-out),
+    transform var(--d-fast) var(--ease-out),
+    background var(--d-fast) var(--ease-out);
+}
+
+/* Top-left: agent (or "no agent" pill for daemon/human-only steps). */
+.wf-node-agent {
+  position: absolute;
+  top: 8px;
+  left: 10px;
+  max-width: 46%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 9.5px;
+  font-weight: var(--w-medium);
+  font-family: var(--font-mono);
+  letter-spacing: 0.02em;
+  color: color-mix(in srgb, var(--accent) 70%, var(--ink-muted));
+  line-height: 1.2;
+}
+
+.wf-node-agent.is-none {
+  top: 7px;
+  left: 9px;
+  padding: 2px 6px;
+  border-radius: 999px;
+  font-size: 9px;
+  font-weight: var(--w-semi);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  background: color-mix(in srgb, var(--bg) 60%, transparent);
+  border: 1px solid color-mix(in srgb, var(--hairline) 90%, transparent);
+}
+
+/* Top-right: status */
+.wf-node-state {
+  position: absolute;
+  top: 7px;
+  right: 9px;
+  max-width: 48%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 9px;
+  font-weight: var(--w-semi);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-family: var(--font-mono);
+  color: var(--ink-faint);
+  padding: 2px 6px;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--bg) 55%, transparent);
+  border: 1px solid color-mix(in srgb, var(--hairline) 80%, transparent);
+  line-height: 1.2;
+}
+
+/* Center: step name */
+.wf-node-name {
+  display: block;
+  width: 100%;
+  padding: 0 4px;
+  margin-top: 10px;
+  font-size: 13px;
+  font-weight: var(--w-semi);
+  letter-spacing: -0.02em;
+  text-transform: capitalize;
+  color: var(--ink-strong);
+  line-height: 1.25;
+  text-align: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .wf-node:hover {
   transform: translateY(-1px);
+  border-color: color-mix(in srgb, var(--accent) 32%, var(--hairline));
+  box-shadow:
+    0 1px 0 color-mix(in srgb, white 6%, transparent) inset,
+    0 0 0 1px color-mix(in srgb, var(--accent) 12%, transparent),
+    0 2px 6px rgb(0 0 0 / 16%),
+    0 14px 32px -14px rgb(0 0 0 / 48%);
 }
 
 .wf-node.is-selected {
-  box-shadow: 0 0 0 2px var(--accent), var(--shadow-overlay);
+  box-shadow:
+    0 0 0 1px var(--accent),
+    0 0 0 5px color-mix(in srgb, var(--accent) 18%, transparent),
+    0 12px 30px -12px rgb(0 0 0 / 50%);
   border-color: var(--accent);
 }
 
 .wf-node.is-done {
-  border-color: color-mix(in srgb, var(--status-completed) 40%, var(--hairline));
-  background: color-mix(in srgb, var(--status-completed) 8%, var(--surface-2));
+  border-color: color-mix(in srgb, var(--status-completed) 45%, var(--hairline));
+  background:
+    linear-gradient(
+      165deg,
+      color-mix(in srgb, var(--status-completed) 12%, var(--surface-2)),
+      color-mix(in srgb, var(--status-completed) 4%, var(--surface-2))
+    );
 }
 
 .wf-node.is-current {
   border-color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 12%, var(--surface-2));
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 30%, transparent);
+  background:
+    linear-gradient(
+      165deg,
+      color-mix(in srgb, var(--accent) 16%, var(--surface-2)),
+      color-mix(in srgb, var(--accent) 6%, var(--surface-2))
+    );
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--accent) 22%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--accent) 30%, transparent),
+    0 10px 26px -12px color-mix(in srgb, var(--accent) 45%, transparent);
 }
 
 .wf-node.is-running {
-  border-color: color-mix(in srgb, var(--status-running) 55%, var(--hairline));
-  background: color-mix(in srgb, var(--status-running) 9%, var(--surface-2));
+  border-color: color-mix(in srgb, var(--status-running) 58%, var(--hairline));
+  background:
+    linear-gradient(
+      165deg,
+      color-mix(in srgb, var(--status-running) 14%, var(--surface-2)),
+      color-mix(in srgb, var(--status-running) 5%, var(--surface-2))
+    );
 }
 
 .wf-node.is-upcoming {
-  opacity: 0.72;
-  border-style: dashed;
-  border-color: var(--hairline);
-  background: var(--surface-2);
+  opacity: 0.68;
+  border-color: color-mix(in srgb, var(--hairline) 90%, transparent);
+  background: color-mix(in srgb, var(--surface-2) 82%, transparent);
+  box-shadow: none;
 }
 
 .wf-node.is-blocked {
-  border-color: color-mix(in srgb, var(--status-blocked) 50%, var(--hairline));
-  background: color-mix(in srgb, var(--status-blocked) 8%, var(--surface-2));
+  border-color: color-mix(in srgb, var(--status-blocked) 52%, var(--hairline));
+  background:
+    linear-gradient(
+      165deg,
+      color-mix(in srgb, var(--status-blocked) 12%, var(--surface-2)),
+      color-mix(in srgb, var(--status-blocked) 4%, var(--surface-2))
+    );
 }
 
-.wf-node.gate-operator {
-  border-left: 3px solid color-mix(in srgb, var(--status-await-operator) 70%, transparent);
+.wf-node.is-done .wf-node-state {
+  color: var(--status-completed);
+  border-color: color-mix(in srgb, var(--status-completed) 28%, var(--hairline));
+  background: color-mix(in srgb, var(--status-completed) 10%, transparent);
 }
 
-.wf-node.gate-daemon {
-  border-left: 3px solid color-mix(in srgb, var(--status-running) 55%, transparent);
+.wf-node.is-current .wf-node-state {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 30%, var(--hairline));
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
 }
 
-.wf-node-head {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 6px;
+.wf-node.is-running .wf-node-state {
+  color: var(--status-running);
+  border-color: color-mix(in srgb, var(--status-running) 30%, var(--hairline));
+  background: color-mix(in srgb, var(--status-running) 12%, transparent);
 }
 
-.wf-node-dot {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  background: var(--surface);
-  border: 2px solid var(--hairline-strong);
-  flex-shrink: 0;
-}
-
-.wf-node.is-done .wf-node-dot,
-.wf-node-dot.is-done {
-  background: var(--status-completed);
-  border-color: transparent;
-}
-
-.wf-node.is-current .wf-node-dot,
-.wf-node-dot.is-current {
-  background: var(--accent);
-  border-color: transparent;
-  box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 18%, transparent);
-}
-
-.wf-node.is-running .wf-node-dot,
-.wf-node-dot.is-running {
-  background: var(--status-running);
-  border-color: transparent;
-  box-shadow: 0 0 0 4px color-mix(in srgb, var(--status-running) 18%, transparent);
-  animation: pulse-dot 1.6s ease-in-out infinite;
-}
-
-.wf-node.is-blocked .wf-node-dot,
-.wf-node-dot.is-blocked {
-  background: var(--status-blocked);
-  border-color: transparent;
-}
-
-.wf-node-name {
-  font-size: var(--t-sm);
-  font-weight: var(--w-semi);
-  text-transform: capitalize;
-  color: var(--ink-strong);
-}
-
-.wf-node-state {
-  margin-left: auto;
-  font-size: 10px;
-  font-weight: var(--w-semi);
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
-  color: var(--ink-faint);
-}
-
-.wf-node.is-done .wf-node-state { color: var(--status-completed); }
-.wf-node.is-current .wf-node-state { color: var(--accent); }
-.wf-node.is-running .wf-node-state { color: var(--status-running); }
-.wf-node.is-blocked .wf-node-state { color: var(--status-blocked); }
-
-.wf-node-meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-}
-
-.wf-tag {
-  font-size: var(--t-xs);
-  padding: 2px 6px;
-  border-radius: var(--r-sm);
-  background: color-mix(in srgb, var(--surface) 70%, transparent);
-  border: 1px solid var(--hairline);
-  color: var(--ink-muted);
-}
-
-.wf-tag.is-approval {
-  color: var(--status-await-operator);
-}
-
-.wf-node-foot {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-top: 8px;
-  font-size: var(--t-xs);
-  color: var(--ink-faint);
-}
-
-.wf-comments.has {
-  color: var(--status-await-operator);
+.wf-node.is-blocked .wf-node-state {
+  color: var(--status-blocked);
+  border-color: color-mix(in srgb, var(--status-blocked) 30%, var(--hairline));
+  background: color-mix(in srgb, var(--status-blocked) 12%, transparent);
 }
 
 .wf-canvas-toolbar {
@@ -622,26 +661,65 @@ button.status-badge-btn:focus-visible {
   top: var(--s-3);
   right: var(--s-3);
   display: flex;
-  gap: 6px;
+  gap: 4px;
   z-index: 4;
+  padding: 3px;
+  border-radius: 8px;
+  border: 1px solid var(--hairline);
+  background: color-mix(in srgb, var(--bg-elev) 88%, transparent);
+  backdrop-filter: blur(10px);
+  box-shadow: 0 4px 16px -6px rgb(0 0 0 / 35%);
+}
+
+@media (max-width: 720px) {
+  .wf-canvas-toolbar {
+    top: auto;
+    bottom: var(--s-3);
+    right: var(--s-3);
+  }
+
+  .wf-auto-note {
+    max-width: calc(100% - 88px);
+    font-size: 10px;
+    padding: 5px 8px;
+  }
 }
 
 .wf-ctl {
-  width: 30px;
-  height: 30px;
+  width: 28px;
+  height: 28px;
   display: grid;
   place-items: center;
-  border-radius: var(--r-md);
-  border: 1px solid var(--hairline-strong);
-  background: var(--bg-elev);
+  border-radius: 5px;
+  border: 0;
+  background: transparent;
   color: var(--ink-muted);
-  box-shadow: var(--shadow-popover);
   cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+}
+
+@media (pointer: coarse), (max-width: 720px) {
+  .wf-ctl {
+    width: 36px;
+    height: 36px;
+    font-size: 16px;
+  }
+
+  .wf-panel-collapse {
+    width: 48px;
+    height: 32px;
+  }
+
+  .wf-splitter::after {
+    top: -10px;
+    bottom: -10px;
+  }
 }
 
 .wf-ctl:hover {
-  color: var(--ink);
-  border-color: var(--accent);
+  color: var(--ink-strong);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
 }
 
 .wf-auto-note {
@@ -652,12 +730,14 @@ button.status-badge-btn:focus-visible {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  padding: 6px 10px;
-  border-radius: var(--r-md);
+  padding: 6px 11px;
+  border-radius: 7px;
   font-size: var(--t-xs);
   color: var(--ink-muted);
-  background: color-mix(in srgb, var(--status-running) 10%, var(--bg-elev));
-  border: 1px solid color-mix(in srgb, var(--status-running) 30%, var(--hairline));
+  background: color-mix(in srgb, var(--bg-elev) 88%, transparent);
+  border: 1px solid color-mix(in srgb, var(--status-running) 28%, var(--hairline));
+  backdrop-filter: blur(10px);
+  box-shadow: 0 4px 16px -8px rgb(0 0 0 / 35%);
 }
 
 .wf-auto-note .dot {
@@ -801,7 +881,9 @@ button.status-badge-btn:focus-visible {
   padding: var(--s-2) var(--s-3) var(--s-3);
 }
 
-.wf-pane.is-terminal {
+/* Conversation / terminal panes fill the panel; content scrolls inside. */
+.wf-pane.is-terminal,
+.wf-pane:has(> .wf-step-discuss) {
   display: flex;
   flex-direction: column;
   flex: 1 1 auto;
@@ -810,7 +892,8 @@ button.status-badge-btn:focus-visible {
   gap: var(--s-2);
 }
 
-.wf-pane.is-terminal .wf-details {
+.wf-pane.is-terminal > .wf-details,
+.wf-pane:has(> .wf-step-discuss) > .wf-details {
   flex-shrink: 0;
   margin-bottom: 0;
 }
@@ -876,7 +959,7 @@ button.status-badge-btn:focus-visible {
   background: color-mix(in srgb, var(--surface) 88%, var(--bg));
 }
 
-/* Approve / Rollback: same row as knobs, pinned to the right. */
+/* Approve / Revert / Done / MR chip: same row as knobs, pinned to the right. */
 .wf-settings-actions {
   display: flex;
   flex-wrap: nowrap;
@@ -1204,20 +1287,32 @@ button.status-badge-btn:focus-visible {
 }
 
 .wf-step-discuss {
-  margin-top: var(--s-2);
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  margin-top: 0;
+  gap: var(--s-3);
+}
+
+.wf-step-discuss > .wf-sec-title {
+  flex-shrink: 0;
+  margin-bottom: 0;
 }
 
 .wf-step-chat {
   display: flex;
   flex-direction: column;
   gap: var(--s-2);
-  max-height: 280px;
+  flex: 1 1 auto;
+  min-height: 0;
   overflow: auto;
-  margin-bottom: var(--s-3);
+  margin-bottom: 0;
   padding-right: 2px;
 }
 
 .wf-step-composer {
+  flex-shrink: 0;
   border: 1px solid var(--hairline);
   border-radius: var(--r-md);
   background: var(--surface);
@@ -1403,6 +1498,7 @@ button.status-badge-btn:focus-visible {
   border: 1px solid var(--hairline);
   border-radius: var(--r-md);
   background: var(--surface);
+  box-shadow: var(--elev-1);
   padding: var(--s-3);
   margin-bottom: var(--s-3);
 }
@@ -1460,10 +1556,56 @@ button.status-badge-btn:focus-visible {
   padding: 0;
 }
 
+/* Light theme: keep the active-edge stroke reading clearly against white. */
+[data-theme="light"] .wf-edge-path.is-active {
+  stroke: color-mix(in srgb, var(--accent) 85%, var(--ink));
+}
+
+[data-theme="light"] .wf-edge-label {
+  color: var(--ink-muted);
+  background: color-mix(in srgb, var(--surface) 92%, var(--ink));
+  border-color: var(--hairline-strong);
+}
+
+[data-theme="light"] .wf-node {
+  border-color: var(--hairline-strong);
+  box-shadow:
+    0 1px 2px rgba(15, 18, 23, 0.08),
+    0 2px 8px rgba(15, 18, 23, 0.06);
+}
+
+[data-theme="light"] .wf-node.is-upcoming {
+  border-color: color-mix(in srgb, var(--ink) 35%, var(--hairline-strong));
+  background: var(--surface);
+}
+
+[data-theme="light"] .wf-node-kind,
+[data-theme="light"] .wf-node-meta {
+  color: var(--ink-muted);
+}
+
+[data-theme="light"] .wf-node-title {
+  color: var(--ink-strong);
+}
+
+[data-theme="light"] .wf-canvas-empty,
+[data-theme="light"] .wf-empty {
+  color: var(--ink-muted);
+}
+
+[data-theme="light"] .wf-zoom-btn {
+  border-color: var(--hairline-strong);
+  color: var(--ink-muted);
+}
+
+[data-theme="light"] .wf-zoom-btn:hover {
+  color: var(--ink);
+  border-color: var(--ink-faint);
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .wf-edge.active,
+  .wf-branch-path,
   .wf-auto-note .dot,
-  .wf-node.is-running .wf-node-dot,
   .exec-badge .dot {
     animation: none;
   }

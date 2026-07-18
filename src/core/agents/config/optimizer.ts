@@ -63,8 +63,11 @@ function gatherCandidates(
     if (!tool || !tool.enabled) continue;
     if (request.installedToolIds && !request.installedToolIds.has(tool.id)) continue;
 
-    const toolStatus = capacityStatus(tool.usage, usageIndex.get(tool.id));
-    const poolStatus = capacityStatus(pool.usage, usageIndex.get(`${tool.id}::${pool.id}`));
+    // Live quotas are account/tool-scoped; pool-keyed snaps (e.g. runtime exhaustion) override.
+    const toolSnap = usageIndex.get(tool.id);
+    const poolSnap = usageIndex.get(`${tool.id}::${pool.id}`) ?? toolSnap;
+    const toolStatus = capacityStatus(tool.usage, toolSnap);
+    const poolStatus = capacityStatus(pool.usage, poolSnap);
     if (isExhausted(toolStatus) || isExhausted(poolStatus)) continue;
 
     candidates.push({

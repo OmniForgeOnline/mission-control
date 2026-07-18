@@ -64,6 +64,16 @@ export interface UsagePolicy {
   softThresholdPercent?: number;
 }
 
+/** Interactive install / login helpers for Settings (terminal modal). */
+export interface AgentToolSetup {
+  /** Shell command typed into an interactive login shell to install the CLI. */
+  installShell?: string;
+  /** Shell command to start vendor login (OAuth / API key). */
+  loginShell?: string;
+  /** Optional docs link shown next to Install / Login. */
+  docsUrl?: string;
+}
+
 export interface AgentToolConfig {
   id: ToolId;
   displayName: string;
@@ -92,6 +102,8 @@ export interface AgentToolConfig {
     args: string[];
     timeoutMs?: number;
   };
+  /** Optional Install / Login terminal bootstrap for Settings. */
+  setup?: AgentToolSetup;
   streamFormat?: string;
   eventParser?: string;
   externalMcpInjection?: ExternalMcpInjection;
