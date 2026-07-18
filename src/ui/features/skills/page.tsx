@@ -1,7 +1,6 @@
 import type { SkillCategoryId } from "../../../core/catalog/skill-categories.ts";
 import { groupSkillsByCategory } from "../../../core/catalog/skill-categories.ts";
 import { useEffect, useState } from "preact/hooks";
-import { render } from "preact";
 import type { ComponentChildren } from "preact";
 import { api } from "@ui/data/api.js";
 import { $ } from "@ui/shell/dom.js";
@@ -117,7 +116,7 @@ function Group({
   );
 }
 
-function SkillsView({ data }: { data: SkillsResponse }) {
+function SkillsView({ data, embedded = false }: { data: SkillsResponse; embedded?: boolean }) {
   const [query, setQuery] = useState("");
   const [selection, setSelection] = useState<Selection | null>(null);
   const [collapsed, setCollapsed] = useState<Set<string>>(() => {
@@ -216,16 +215,18 @@ function SkillsView({ data }: { data: SkillsResponse }) {
   }
 
   return (
-    <div class="view catalog-view" id="skillsView">
-      <div class="view-header catalog-view-header">
-        <div>
-          <h1 class="view-title">Skills &amp; Kernel</h1>
-          <p class="view-subtitle">
-            {data.skills.length} skill(s) · {data.kernelSections.length} kernel section(s). Edit a skill
-            inline; kernel sections are read-only.
-          </p>
+    <div class={embedded ? "settings-embedded-panel catalog-view" : "view catalog-view"} id="skillsView">
+      {embedded ? null : (
+        <div class="view-header catalog-view-header">
+          <div>
+            <h1 class="view-title">Skills &amp; Kernel</h1>
+            <p class="view-subtitle">
+              {data.skills.length} skill(s) · {data.kernelSections.length} kernel section(s). Edit a skill
+              inline; kernel sections are read-only.
+            </p>
+          </div>
         </div>
-      </div>
+      )}
 
       <div class="catalog-shell">
         <aside class="catalog-rail">
@@ -383,26 +384,31 @@ function SkillsView({ data }: { data: SkillsResponse }) {
   );
 }
 
-function mountSkills(data: SkillsResponse | null): void {
-  const root = $("#viewContent");
-  if (!root) return;
-  if (!data) {
-    render(
-      <div class="view">
-        <div class="empty-state">
-          <h3>Loading…</h3>
-        </div>
-      </div>,
-      root
-    );
-    return;
-  }
-  render(<SkillsView data={data} />, root);
-}
+export function SkillsPanel() {
+  const [data, setData] = useState<SkillsResponse | null>(cached);
+  const [error, setError] = useState(false);
 
-export async function renderSkillsView(): Promise<void> {
-  if (!cached) {
-    cached = await api<SkillsResponse>("/api/skills");
-  }
-  mountSkills(cached);
+  useEffect(() => {
+    if (data) return;
+    let cancelled = false;
+    void api<SkillsResponse>("/api/skills")
+      .then((res) => {
+        if (cancelled || !res) {
+          if (!cancelled) setError(true);
+          return;
+        }
+        cached = res;
+        setData(res);
+      })
+      .catch(() => {
+        if (!cancelled) setError(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [data]);
+
+  if (error) return <p class="muted">Could not load skills.</p>;
+  if (!data) return <p class="muted">Loading skills…</p>;
+  return <SkillsView data={data} embedded />;
 }

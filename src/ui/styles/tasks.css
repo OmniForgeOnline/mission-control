@@ -37,15 +37,19 @@
   background: var(--surface);
   border: 1px solid var(--hairline);
   border-radius: var(--r-lg);
+  box-shadow: var(--elev-1);
   cursor: pointer;
   transition: border-color var(--d-fast) var(--ease-out),
     background var(--d-fast) var(--ease-out),
+    box-shadow var(--d-fast) var(--ease-out),
     transform var(--d-fast) var(--ease-out);
 }
 
 .task-row:hover {
-  border-color: var(--hairline-strong);
+  border-color: color-mix(in srgb, var(--accent) 30%, var(--hairline-strong));
   background: var(--surface-2);
+  box-shadow: var(--elev-2);
+  transform: translateY(-1px);
 }
 
 .task-row:focus-visible {
@@ -56,11 +60,17 @@
 .task-row.selected {
   border-color: var(--accent);
   background: var(--accent-soft);
+  box-shadow: var(--elev-2), 0 0 0 1px color-mix(in srgb, var(--accent) 30%, transparent);
 }
 
 .task-row[data-tone="running"] {
   border-color: color-mix(in srgb, var(--status-running) 40%, transparent);
   background: color-mix(in srgb, var(--status-running) 6%, var(--surface));
+  box-shadow: var(--elev-1), 0 0 18px -8px color-mix(in srgb, var(--status-running) 60%, transparent);
+}
+
+.task-row[data-tone="running"]:hover {
+  box-shadow: var(--elev-2), 0 0 22px -8px color-mix(in srgb, var(--status-running) 65%, transparent);
 }
 
 .task-row[data-tone="awaiting_operator"] {
@@ -96,6 +106,7 @@
 
 .task-row .body {
   min-width: 0;
+  overflow: hidden;
 }
 
 .task-row .title-line {
@@ -148,16 +159,28 @@
 
 .task-row .meta-line {
   display: flex;
+  flex-wrap: wrap;
   gap: var(--s-3);
   align-items: center;
   font-size: var(--t-xs);
   color: var(--ink-faint);
+  min-width: 0;
+  max-width: 100%;
 }
 
 .task-row .meta-line > * {
   display: inline-flex;
   align-items: center;
   gap: 4px;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.task-row .meta-line .chip {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 
@@ -168,12 +191,20 @@
   transition: opacity var(--d-fast) var(--ease-out);
 }
 
-.task-row:hover .row-actions {
+.task-row:hover .row-actions,
+.task-row:focus-within .row-actions {
   opacity: 1;
 }
 
 .task-row[data-tone="running"] .row-actions {
   opacity: 1;
+}
+
+/* Phones / touch: primary actions must be visible without hover. */
+@media (hover: none), (max-width: 720px) {
+  .task-row .row-actions {
+    opacity: 1;
+  }
 }
 
 .empty-state {
@@ -308,13 +339,20 @@
   border-radius: var(--r-md);
   border: 1px solid var(--hairline);
   background: var(--surface);
+  box-shadow: var(--elev-1);
   cursor: pointer;
   font-size: var(--t-sm);
+  transition: border-color var(--d-fast) var(--ease-out),
+    background var(--d-fast) var(--ease-out),
+    box-shadow var(--d-fast) var(--ease-out),
+    transform var(--d-fast) var(--ease-out);
 }
 
 .run-item:hover {
-  border-color: var(--hairline-strong);
+  border-color: color-mix(in srgb, var(--accent) 30%, var(--hairline-strong));
   background: var(--surface-2);
+  box-shadow: var(--elev-2);
+  transform: translateY(-1px);
 }
 
 .run-item .run-time {
@@ -364,12 +402,14 @@
   background: var(--surface);
   border: 1px solid var(--hairline);
   border-radius: var(--r-lg);
+  box-shadow: var(--elev-1);
   overflow: hidden;
 }
 
 .run-group[data-tone="running"] {
   border-color: color-mix(in srgb, var(--status-running) 40%, transparent);
   background: color-mix(in srgb, var(--status-running) 4%, var(--surface));
+  box-shadow: var(--elev-1), 0 0 20px -10px color-mix(in srgb, var(--status-running) 55%, transparent);
 }
 
 .run-group[data-tone="paused"] {

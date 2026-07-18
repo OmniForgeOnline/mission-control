@@ -9,15 +9,12 @@ interface ShortcutEntry {
 const SHORTCUTS: ShortcutEntry[] = [
   { keys: "⌘K / Ctrl+K", description: "Open command palette" },
   { keys: "?", description: "Show keyboard shortcuts" },
-  { keys: "g h", description: "Go to home" },
-  { keys: "g t", description: "Go to tasks" },
-  { keys: "g m", description: "Go to memory" },
-  { keys: "g r", description: "Go to runs" },
+  { keys: "g h", description: "Go to home (attention)" },
+  { keys: "g t", description: "Go to home (attention)" },
   { keys: "g s", description: "Go to skills" },
-  { keys: "g q", description: "Go to quality" },
-  { keys: "g a", description: "Go to autonomy" },
   { keys: "g c", description: "Go to connectors" },
-  { keys: "n", description: "Create new task (home intake)" },
+  { keys: "g m", description: "Go to maintenance" },
+  { keys: "n", description: "Open first project (new work)" },
   { keys: "Escape", description: "Dismiss the topmost overlay" },
   { keys: "↑ / ↓", description: "Navigate palette results" },
   { keys: "Enter", description: "Run selected palette item" }
@@ -42,7 +39,7 @@ function render(): string {
       <div class="shortcuts-head">
         <div>
           <h2>Keyboard shortcuts</h2>
-          <p class="muted">Power-user affordances for the operator console.</p>
+          <p class="muted">Desktop power-user affordances. On touch, use Search and the rail.</p>
         </div>
         <button class="btn btn-ghost btn-icon" type="button" id="closeShortcuts">${icon("x", 14)}</button>
       </div>

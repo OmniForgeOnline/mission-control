@@ -5,14 +5,19 @@
   align-items: center;
   justify-content: center;
   gap: var(--s-2);
-  height: 32px;
-  padding: 0 var(--s-3);
+  box-sizing: border-box;
+  min-height: 32px;
+  height: auto;
+  padding: 6px var(--s-3);
+  line-height: 1.25;
+  white-space: nowrap;
   border-radius: var(--r-md);
   border: 1px solid var(--hairline);
   background: var(--surface);
   color: var(--ink);
   font-size: var(--t-md);
   font-weight: var(--w-medium);
+  box-shadow: var(--elev-1);
   transition: border-color var(--d-fast) var(--ease-out),
     background var(--d-fast) var(--ease-out),
     color var(--d-fast) var(--ease-out);
@@ -32,6 +37,7 @@
   background: var(--accent);
   color: var(--accent-ink);
   border-color: var(--accent);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.16), 0 4px 14px var(--accent-glow);
 }
 
 .btn-primary:hover {
@@ -90,12 +96,16 @@
 
 .btn-icon {
   width: 32px;
+  min-width: 32px;
+  min-height: 32px;
+  height: 32px;
   padding: 0;
+  flex-shrink: 0;
 }
 
 .btn-sm {
-  height: 26px;
-  padding: 0 10px;
+  min-height: 26px;
+  padding: 4px 10px;
   font-size: var(--t-sm);
 }
 
@@ -311,7 +321,7 @@
   border: 1px solid var(--hairline);
   border-radius: var(--r-lg);
   padding: var(--s-4);
-  box-shadow: inset 0 1px 0 color-mix(in srgb, white 6%, transparent);
+  box-shadow: var(--elev-2);
 }
 
 .card-title {
@@ -452,6 +462,53 @@
   gap: var(--s-3);
   align-items: center;
   flex-wrap: wrap;
+}
+
+/* Primary action clusters (Sync / New / Edit, etc.) stay on one line on desktop. */
+.row-actions {
+  flex-wrap: nowrap;
+}
+
+@media (max-width: 720px) {
+  /* Prefer wrapping whole buttons onto new rows over clipping wrapped label text. */
+  .row-actions {
+    flex-wrap: wrap;
+    width: 100%;
+  }
+
+  .row-actions .btn:not(.btn-icon),
+  .catalog-section-actions .btn:not(.btn-icon),
+  .view-actions .btn:not(.btn-icon),
+  .catalog-id-actions .btn:not(.btn-icon) {
+    flex: 0 1 auto;
+    max-width: 100%;
+  }
+
+  .catalog-section-label {
+    flex-wrap: wrap;
+    align-items: flex-start;
+    row-gap: var(--s-2);
+  }
+
+  .catalog-section-actions {
+    flex-wrap: wrap;
+    width: 100%;
+    margin-left: 0;
+    justify-content: flex-start;
+    gap: var(--s-2);
+  }
+
+  .view-actions {
+    flex-wrap: wrap;
+    width: 100%;
+  }
+
+  /* If a button is forced narrower than its label, allow soft wrap without clipping. */
+  .btn:not(.btn-icon) {
+    white-space: normal;
+    text-wrap: balance;
+    overflow-wrap: anywhere;
+  }
 }
 
 .col {

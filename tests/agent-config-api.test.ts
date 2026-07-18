@@ -26,6 +26,7 @@ describe("agent config API", () => {
     expect(response.body.agentConfig.tools.map((t: { id: string }) => t.id).sort()).toEqual([
       "claude",
       "codex",
+      "cursor",
       "grok",
       "kiro",
       "opencode"
@@ -60,6 +61,28 @@ describe("agent config API", () => {
     expect(response.status).toBe(400);
   });
 
+  it("bulk-enables or disables all pools for a tool", async () => {
+    const app = createServer({ root, testMode: true });
+    const off = await request(app)
+      .post("/api/agent-config/pools/bulk-enabled")
+      .send({ toolId: "cursor", enabled: false })
+      .expect(200);
+    expect(off.body.config.pools.filter((p: { toolId: string }) => p.toolId === "cursor").every((p: { enabled: boolean }) => !p.enabled)).toBe(
+      true
+    );
+
+    const on = await request(app)
+      .post("/api/agent-config/pools/bulk-enabled")
+      .send({ toolId: "cursor", enabled: true })
+      .expect(200);
+    expect(on.body.config.pools.filter((p: { toolId: string }) => p.toolId === "cursor").every((p: { enabled: boolean }) => p.enabled)).toBe(
+      true
+    );
+
+    await request(app).post("/api/agent-config/pools/bulk-enabled").send({ toolId: "nope", enabled: false }).expect(404);
+    await request(app).post("/api/agent-config/pools/bulk-enabled").send({ toolId: "cursor" }).expect(400);
+  });
+
   it("includes runtime diagnostics without blocking config loading", async () => {
     const app = createServer({ root });
     await request(app)
@@ -70,6 +93,28 @@ describe("agent config API", () => {
     const runtime = response.body.runtimeDiagnostics as Record<string, { available: boolean; diagnostics: Array<{ code: string }> }>;
     expect(runtime["missing-runtime"]?.available).toBe(false);
     expect(runtime["missing-runtime"]?.diagnostics[0]?.code).toBe("AGENT_COMMAND_NOT_FOUND");
+  });
+
+  it("probes one or all tools and returns updated availability", async () => {
+    const app = createServer({ root, testMode: true });
+    await request(app)
+      .put("/api/agent-config/tools")
+      .send({ id: "missing-runtime", command: "definitely-not-a-harness-agent", adapter: "generic" })
+      .expect(200);
+
+    const one = await request(app)
+      .post("/api/agent-config/probe")
+      .send({ toolId: "missing-runtime" })
+      .expect(200);
+    expect(one.body.runtimeDiagnostics["missing-runtime"]?.available).toBe(false);
+    expect(one.body.runtimeDiagnostics["missing-runtime"]?.diagnostics[0]?.code).toBe("AGENT_COMMAND_NOT_FOUND");
+
+    const all = await request(app).post("/api/agent-config/probe").send({}).expect(200);
+    expect(all.body.runtimeDiagnostics["missing-runtime"]?.available).toBe(false);
+    expect(all.body.runtimeDiagnostics.claude).toBeDefined();
+
+    const missing = await request(app).post("/api/agent-config/probe").send({ toolId: "nope" }).expect(404);
+    expect(missing.body.error).toMatch(/Unknown tool/);
   });
 
   it("refreshes usage snapshots", async () => {

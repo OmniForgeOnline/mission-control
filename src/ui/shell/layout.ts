@@ -6,6 +6,7 @@ import { countTaskBuckets, type TaskFilter } from "@ui/features/tasks/filters.js
 import { taskIsComplete, uiLegacyStatus } from "@ui/app/task-status.js";
 import type { HarnessTask } from "@ui/app/types.js";
 import { updatePillHtml, bindUpdatePill } from "@ui/shell/update-pill.js";
+import { brandLogoHtml } from "@ui/shell/brand-logo.js";
 import { confirmAndShutdown } from "@ui/features/system/shutdown.js";
 
 let eventsConnected = true;
@@ -38,11 +39,8 @@ export function updateChromeCounts(): void {
     const filter = pill.dataset["filter"];
     if (!filter || !(filter in pills)) return;
     const count = pills[filter]!;
-    const dot = pill.querySelector(".dot");
-    const label = filter === "running" ? "running" : filter === "awaiting" ? "await" : filter;
-    pill.textContent = "";
-    if (dot) pill.appendChild(dot);
-    pill.append(`${count} ${label}`);
+    const countEl = pill.querySelector(".status-pill-count");
+    if (countEl) countEl.textContent = String(count);
     pill.hidden = filter === "blocked" || filter === "resumable" ? count === 0 : false;
   });
 
@@ -80,9 +78,8 @@ export function renderAppBar(): void {
 
   bar.innerHTML = `
     <button class="brand brand-btn" id="brandHome" type="button" title="OmniForge — Home">
-      <img class="brand-mark" src="/omniforge-mark.png" alt="OmniForge" width="26" height="26" decoding="async" />
+      ${brandLogoHtml()}
       <span class="brand-wordmark">
-        <span class="brand-name">OmniForge</span>
         <span class="brand-sep" aria-hidden="true"></span>
         <span class="brand-sub">Mission Control</span>
       </span>
@@ -97,20 +94,22 @@ export function renderAppBar(): void {
     <div class="status-pills">
       <button class="status-pill" data-tone="running" data-filter="running" title="Running tasks">
         <span class="dot"></span>
-        ${running} running
+        <span class="status-pill-count">${running}</span>
+        <span class="status-pill-label">running</span>
       </button>
       <button class="status-pill" data-tone="awaiting" data-filter="awaiting" title="Awaiting reply / review">
         <span class="dot"></span>
-        ${awaiting} await
+        <span class="status-pill-count">${awaiting}</span>
+        <span class="status-pill-label">await</span>
       </button>
       ${
         blocked > 0
-          ? `<button class="status-pill" data-tone="blocked" data-filter="blocked" title="Blocked tasks"><span class="dot"></span>${blocked} blocked</button>`
+          ? `<button class="status-pill" data-tone="blocked" data-filter="blocked" title="Blocked tasks"><span class="dot"></span><span class="status-pill-count">${blocked}</span><span class="status-pill-label">blocked</span></button>`
           : ""
       }
       ${
         resumable > 0
-          ? `<button class="status-pill" data-tone="resumable" data-filter="resumable" title="Paused / interrupted tasks"><span class="dot"></span>${resumable} resumable</button>`
+          ? `<button class="status-pill" data-tone="resumable" data-filter="resumable" title="Paused / interrupted tasks"><span class="dot"></span><span class="status-pill-count">${resumable}</span><span class="status-pill-label">resumable</span></button>`
           : ""
       }
     </div>
@@ -131,9 +130,9 @@ export function renderAppBar(): void {
     btn.addEventListener("click", () => {
       const filter = btn.dataset["filter"];
       if (filter) {
-        navigate("tasks", null, { filter: filter as TaskFilter });
+        navigate("home", null, { filter: filter as TaskFilter });
       } else {
-        navigate("tasks");
+        navigate("home");
       }
     });
   });
@@ -157,20 +156,8 @@ interface RailItem {
 export function renderRail(): void {
   const rail = $("#appRail");
   if (!rail) return;
-  const data = ui.data;
-  const tasks = data?.tasks ?? [];
 
-  const taskItems: RailItem[] = [
-    { view: "home", label: "Home", iconName: "sparkles" },
-    { view: "tasks", label: "All tasks", iconName: "list-checks", count: tasks.length, filter: "all" }
-  ];
-
-  const systemItems: RailItem[] = [
-    { view: "connectors", label: "Connectors", iconName: "external-link" },
-    { view: "skills", label: "Skills", iconName: "sparkles" },
-    { view: "workflows", label: "Workflows", iconName: "workflow" },
-    { view: "maintenance", label: "Maintenance", iconName: "activity" }
-  ];
+  const taskItems: RailItem[] = [{ view: "home", label: "Home", iconName: "home" }];
 
   const settingsItem: RailItem = { view: "settings", label: "Settings", iconName: "settings" };
 
@@ -179,10 +166,6 @@ export function renderRail(): void {
       ${taskItems.map(railItemHtml).join("")}
     </div>
     ${projectRailHtml()}
-    <div class="rail-heading">System</div>
-    <div class="rail-section">
-      ${systemItems.map(railItemHtml).join("")}
-    </div>
     <div class="rail-spacer"></div>
     <div class="rail-section rail-section-footer">
       ${railItemHtml(settingsItem)}
@@ -205,6 +188,11 @@ export function renderRail(): void {
   rail.querySelector<HTMLElement>("[data-new-project]")?.addEventListener("click", (event) => {
     event.stopPropagation();
     document.dispatchEvent(new CustomEvent("harness:new-project"));
+  });
+
+  rail.querySelector<HTMLElement>("[data-collapse-all-projects]")?.addEventListener("click", (event) => {
+    event.stopPropagation();
+    toggleAllProjectsCollapse();
   });
 
   rail.querySelectorAll<HTMLElement>("[data-collapse-project-id]").forEach((button) => {
@@ -235,8 +223,7 @@ export function renderRail(): void {
     });
   });
 
-  const targetView: string = ui.view === "task" ? "tasks" : ui.view;
-  const activeFilter = ui.view === "tasks" || ui.view === "task" ? ui.tasksFilter : null;
+  const targetView: string = ui.view === "task" ? "home" : ui.view;
 
   rail.querySelectorAll<HTMLElement>(".rail-link").forEach((link) => {
     const view = link.dataset["view"];
@@ -244,14 +231,6 @@ export function renderRail(): void {
 
     if (targetView === "project") {
       if (link.dataset["projectId"] === ui.taskId) {
-        link.classList.add("active");
-      }
-      return;
-    }
-
-    if (targetView === "tasks") {
-      const linkFilter = link.dataset["filter"] ?? "all";
-      if (linkFilter === (activeFilter ?? "all")) {
         link.classList.add("active");
       }
       return;
@@ -268,6 +247,7 @@ function projectRailHtml(): string {
   const tasks = ui.data?.tasks ?? [];
   const collapsed = readCollapsedProjects();
   const expanded = readExpandedProjects();
+  const allCollapsed = projects.length > 0 && projects.every((project) => collapsed.has(project.id));
   const rows = projects.map((project) => {
     const scoped = tasks.filter((task) => task.projectId === project.id);
     const open = scoped
@@ -301,12 +281,23 @@ function projectRailHtml(): string {
       </div>
     `;
   });
+  const collapseAllLabel = allCollapsed ? "Expand all" : "Collapse all";
+  const collapseAllIcon = allCollapsed ? "chevron-down" : "chevron-up";
   return `
     <div class="rail-heading rail-heading-row">
       <span>Projects</span>
-      <button class="rail-heading-action" data-new-project type="button" title="Add project" aria-label="Add project">
-        ${icon("plus", 14)}
-      </button>
+      <div class="rail-heading-actions">
+        ${
+          projects.length
+            ? `<button class="rail-heading-action" data-collapse-all-projects type="button" title="${collapseAllLabel}" aria-label="${collapseAllLabel}">
+          ${icon(collapseAllIcon, 14)}
+        </button>`
+            : ""
+        }
+        <button class="rail-heading-action" data-new-project type="button" title="Add project" aria-label="Add project">
+          ${icon("plus", 14)}
+        </button>
+      </div>
     </div>
     <div class="rail-section rail-projects">
       ${
@@ -382,6 +373,20 @@ function toggleProjectCollapse(projectId: string): void {
     collapsed.add(projectId);
   }
   writeCollapsedProjects(collapsed);
+  renderRail();
+}
+
+function toggleAllProjectsCollapse(): void {
+  const projects = ui.data?.projects ?? [];
+  if (!projects.length) return;
+  const collapsed = readCollapsedProjects();
+  const allCollapsed = projects.every((project) => collapsed.has(project.id));
+  if (allCollapsed) {
+    writeCollapsedProjects(new Set());
+  } else {
+    writeCollapsedProjects(new Set(projects.map((project) => project.id)));
+    writeExpandedProjects(new Set());
+  }
   renderRail();
 }
 

@@ -50,8 +50,19 @@ function mergeBuiltins(current: AgentConfigBundle): AgentConfigBundle {
       tools.push({ ...builtin });
       changed = true;
     } else if (existing.tool.builtin) {
-      const next = { ...existing.tool, usage: builtin.usage };
-      if (JSON.stringify(next.usage) !== JSON.stringify(existing.tool.usage)) {
+      const next: AgentToolConfig = {
+        ...existing.tool,
+        usage: builtin.usage,
+        command: builtin.command,
+        fallbackCommands: builtin.fallbackCommands ?? [],
+        ...(builtin.setup !== undefined ? { setup: builtin.setup } : {})
+      };
+      if (
+        JSON.stringify(next.usage) !== JSON.stringify(existing.tool.usage) ||
+        next.command !== existing.tool.command ||
+        JSON.stringify(next.fallbackCommands) !== JSON.stringify(existing.tool.fallbackCommands) ||
+        JSON.stringify(next.setup) !== JSON.stringify(existing.tool.setup)
+      ) {
         tools[existing.index] = next;
         changed = true;
       }
@@ -125,6 +136,18 @@ export async function upsertModelPool(root: string, pool: ModelPoolConfig): Prom
   return mutate(root, (bundle) => ({
     ...bundle,
     pools: replaceById(bundle.pools, pool, (entry) => entry.id)
+  }));
+}
+
+/** Enable or disable every model pool for a tool (bulk Settings action). */
+export async function setToolPoolsEnabled(
+  root: string,
+  toolId: ToolId,
+  enabled: boolean
+): Promise<AgentConfigBundle> {
+  return mutate(root, (bundle) => ({
+    ...bundle,
+    pools: bundle.pools.map((pool) => (pool.toolId === toolId ? { ...pool, enabled } : pool))
   }));
 }
 

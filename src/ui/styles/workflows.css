@@ -5,14 +5,23 @@
 
 /* editor */
 .wf-editor .view-header {
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: var(--s-3);
+  flex: none;
+}
+.wf-editor .view-header > div:first-child {
+  min-width: 0;
 }
 /* The Graph editor fills the main scroll area so the canvas can grow to the
    full viewport height; the split + canvas then flex into that space. */
 .view.wf-editor {
   height: 100%;
+  max-height: 100%;
   min-height: 0;
+  box-sizing: border-box;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 .wf-header-actions {
   margin-left: auto;
@@ -59,7 +68,7 @@
 .wf-field > span,
 .wf-field-label {
   font-size: var(--t-xs);
-  color: var(--muted);
+  color: var(--ink-muted);
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
@@ -147,28 +156,33 @@
   white-space: pre-wrap;
 }
 
-/* graph: the canvas itself is the task-detail WorkflowCanvas; this just sizes its viewport */
-.wf-graph-canvas {
-  margin-top: var(--s-4);
-  height: clamp(380px, 70vh, 760px);
+/* Shared compact viewport for browse preview + editor graph.
+   The canvas itself is the task-detail WorkflowCanvas; this only sizes the frame. */
+.wf-canvas-viewport {
+  height: clamp(160px, 22vh, 240px);
+  min-height: 140px;
   border: 1px solid var(--hairline);
   border-radius: var(--r-lg);
   overflow: hidden;
+  background: var(--bg);
+  flex: none;
 }
 
-/* graph-first editor: graph hero on the left, inspector panel on the right */
+.wf-graph-canvas {
+  margin-top: var(--s-4);
+}
+
+/* graph-first editor: wide canvas on top, inspector / settings below */
 .wf-editor-split {
   display: flex;
+  flex-direction: column;
   gap: var(--s-4);
   align-items: stretch;
-  /* Grow to fill the remaining viewport height so the graph canvas is tall
-     instead of collapsing to its min-height. Requires the view to own a
-     definite height (see .view.wf-editor below). */
   flex: 1;
   min-height: 0;
 }
 .wf-editor-graph {
-  flex: 1;
+  flex: none;
   min-width: 0;
   display: flex;
   flex-direction: column;
@@ -181,23 +195,27 @@
 }
 .wf-editor-graph .wf-graph-canvas {
   margin-top: 0;
-  flex: 1;
-  min-height: 440px;
-  height: auto;
+}
+.wf-editor .wf-tabs {
+  flex: none;
 }
 .wf-editor-panel {
-  width: 360px;
-  flex-shrink: 0;
+  width: 100%;
+  min-width: 0;
+  flex: 1 1 auto;
+  min-height: 0;
 }
 .wf-panel {
   background: var(--surface);
   border: 1px solid var(--hairline);
   border-radius: var(--r-lg);
+  box-shadow: var(--elev-1);
   display: flex;
   flex-direction: column;
-  max-height: clamp(440px, 70vh, 760px);
-  position: sticky;
-  top: var(--s-4);
+  max-height: none;
+  position: static;
+  height: 100%;
+  min-height: 0;
 }
 .wf-panel-head {
   display: flex;
@@ -206,6 +224,7 @@
   gap: var(--s-2);
   padding: var(--s-3);
   border-bottom: 1px solid var(--hairline);
+  flex: none;
 }
 .wf-panel-title {
   font-family: var(--font-mono);
@@ -218,32 +237,24 @@
 .wf-panel-body {
   padding: var(--s-3);
   overflow-y: auto;
+  min-height: 0;
+  flex: 1 1 auto;
 }
 .wf-panel-empty {
   margin: 0;
-  color: var(--muted);
+  color: var(--ink-muted);
   font-size: var(--t-sm);
   line-height: 1.5;
 }
-/* inside the panel, stack the form grids and strip the step card chrome */
-.wf-panel-body .wf-grid-2,
-.wf-panel-body .wf-grid-3 {
-  grid-template-columns: 1fr;
-}
+/* Full-width inspector: keep the form grids multi-column. */
 .wf-panel-body .wf-step {
   background: transparent;
   border: 0;
   padding: 0;
 }
-@media (max-width: 980px) {
-  .wf-editor-split {
-    flex-direction: column;
-  }
-  .wf-editor-panel {
-    width: 100%;
-  }
-  .wf-panel {
-    position: static;
-    max-height: none;
+@media (max-width: 720px) {
+  .wf-canvas-viewport {
+    height: clamp(140px, 20vh, 200px);
+    min-height: 120px;
   }
 }

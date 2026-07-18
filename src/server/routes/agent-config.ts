@@ -5,6 +5,7 @@ import {
   loadAgentConfig,
   removeModelPool,
   removeTool,
+  setToolPoolsEnabled,
   upsertModelPool,
   upsertRoutingProfile,
   upsertTool
@@ -31,13 +32,49 @@ import {
 } from "../../core/agents/extensions/store.ts";
 import { mergeRegistryWithDiscovery } from "../../core/agents/extensions/resolve.ts";
 import { normalizeExtension } from "../../core/agents/extensions/normalize.ts";
-import { probeAgentRuntime } from "../../core/agents/runtime/probe.ts";
+import {
+  clearAgentRuntimeProbeCache,
+  probeAgentRuntime
+} from "../../core/agents/runtime/probe.ts";
+import type { AgentToolConfig } from "../../core/agents/config/types.ts";
 import {
   defaultUsageProviderDeps,
   mapCodexModels,
   type UsageProviderDeps
 } from "../../core/agents/config/usage-providers.ts";
+import { cursorPoolIdForModel, fetchCursorModels } from "../../core/agents/config/models-discover-cursor.ts";
+import { resolveRuntimeCommand } from "../../core/agents/runtime/launch.ts";
 import { asyncRoute, param, type ServerOptions } from "./helpers.ts";
+
+export type ToolRuntimeDiagnostic = {
+  available: boolean;
+  command: string;
+  capabilities: Record<string, boolean>;
+  diagnostics: Array<{ code: string; message: string }>;
+};
+
+async function probeTools(
+  tools: AgentToolConfig[],
+  cwd: string,
+  force: boolean
+): Promise<Record<string, ToolRuntimeDiagnostic>> {
+  return Object.fromEntries(
+    await Promise.all(
+      tools.map(async (tool) => {
+        const probe = await probeAgentRuntime(tool, { cwd, force });
+        return [
+          tool.id,
+          {
+            available: probe.available,
+            command: probe.command,
+            capabilities: probe.capabilities,
+            diagnostics: probe.diagnostics
+          }
+        ] as const;
+      })
+    )
+  );
+}
 
 export function createAgentConfigRouter(options: ServerOptions): Router {
   const router = Router();
@@ -59,23 +96,37 @@ export function createAgentConfigRouter(options: ServerOptions): Router {
         loadAgentConfig(options.root),
         loadUsageSnapshots(options.root)
       ]);
-      const runtimeDiagnostics =
-        options.testMode
-          ? {}
-          : Object.fromEntries(
-              await Promise.all(
-                config.tools.map(async (tool) => {
-                  const probe = await probeAgentRuntime(tool, { cwd: options.root });
-                  return [tool.id, {
-                    available: probe.available,
-                    command: probe.command,
-                    capabilities: probe.capabilities,
-                    diagnostics: probe.diagnostics
-                  }];
-                })
-              )
-            );
+      const runtimeDiagnostics = options.testMode
+        ? {}
+        : await probeTools(config.tools, options.root, false);
       res.json({ config, usage, runtimeDiagnostics });
+    })
+  );
+
+  /** Re-probe one or all tools (clears cache) for Settings Rescan / post-install. */
+  router.post(
+    "/agent-config/probe",
+    asyncRoute(async (req, res) => {
+      await ensureHarnessRepository(options.root);
+      const config = await loadAgentConfig(options.root);
+      const toolId =
+        typeof (req.body as { toolId?: unknown })?.toolId === "string"
+          ? String((req.body as { toolId: string }).toolId).trim()
+          : "";
+      if (toolId) {
+        const tool = config.tools.find((entry) => entry.id === toolId);
+        if (!tool) {
+          res.status(404).json({ error: `Unknown tool: ${toolId}` });
+          return;
+        }
+        clearAgentRuntimeProbeCache(toolId);
+        const runtimeDiagnostics = await probeTools([tool], options.root, true);
+        res.json({ runtimeDiagnostics });
+        return;
+      }
+      clearAgentRuntimeProbeCache();
+      const runtimeDiagnostics = await probeTools(config.tools, options.root, true);
+      res.json({ runtimeDiagnostics });
     })
   );
 
@@ -112,6 +163,29 @@ export function createAgentConfigRouter(options: ServerOptions): Router {
   );
 
   router.post(
+    "/agent-config/pools/bulk-enabled",
+    asyncRoute(async (req, res) => {
+      const body = (req.body ?? {}) as { toolId?: unknown; enabled?: unknown };
+      const toolId = typeof body.toolId === "string" ? body.toolId.trim() : "";
+      if (!toolId) {
+        res.status(400).json({ error: "toolId is required." });
+        return;
+      }
+      if (typeof body.enabled !== "boolean") {
+        res.status(400).json({ error: "enabled must be a boolean." });
+        return;
+      }
+      const config = await loadAgentConfig(options.root);
+      if (!config.tools.some((tool) => tool.id === toolId)) {
+        res.status(404).json({ error: `Unknown tool "${toolId}".` });
+        return;
+      }
+      const updated = await setToolPoolsEnabled(options.root, toolId, body.enabled);
+      res.json({ config: updated });
+    })
+  );
+
+  router.post(
     "/agent-config/models/discover",
     asyncRoute(async (req, res) => {
       const toolId = param((req.body as { toolId?: string }).toolId, "toolId");
@@ -121,34 +195,51 @@ export function createAgentConfigRouter(options: ServerOptions): Router {
         res.status(404).json({ error: `Unknown tool "${toolId}".` });
         return;
       }
-      // Discovery is wired for codex (app-server model/list). Other tools don't
-      // expose a model list; the operator adds those by hand via the pools API.
-      if (tool.id !== "codex") {
+      if (tool.id !== "codex" && tool.id !== "cursor") {
         res
           .status(400)
           .json({ error: `Model discovery is not supported for "${toolId}". Add models manually.` });
         return;
       }
       try {
-        const models = mapCodexModels(await usageDeps.fetchCodexModels(tool.command, options.root));
+        const models =
+          tool.id === "codex"
+            ? mapCodexModels(await usageDeps.fetchCodexModels(tool.command, options.root))
+            : await (async () => {
+                const resolved = resolveRuntimeCommand(tool, options.root);
+                if (!resolved.command) {
+                  throw new Error(resolved.message ?? `Command not found: ${tool.command}`);
+                }
+                return fetchCursorModels(resolved.command, options.root);
+              })();
         let bundle = config;
+        let discovered = 0;
         for (const model of models) {
+          const poolId = tool.id === "codex" ? model.id : cursorPoolIdForModel(model.id);
+          const existing = bundle.pools.find((pool) => pool.id === poolId);
+          // Keep curated builtins (display name / quality) when rediscovering.
+          if (existing?.builtin) {
+            discovered += 1;
+            continue;
+          }
           bundle = await upsertModelPool(options.root, {
-            id: model.id,
+            id: poolId,
             toolId,
             displayName: model.displayName,
             modelArgs: ["--model", model.id],
             modelEnv: {},
             capabilities: ["author", "reviewer", "code", "plan", "review"],
-            qualityWeight: 50,
+            qualityWeight: existing?.qualityWeight ?? 50,
             tier: "paid",
-            usage: { kind: "usage-only" },
-            usageSource: "codex-app-server",
-            enabled: true,
+            usage: tool.id === "codex" ? { kind: "usage-only" } : { kind: "unavailable" },
+            usageSource: tool.id === "codex" ? "codex-app-server" : "none",
+            // Cursor lists can be huge — leave new rows off so operators opt in.
+            enabled: existing?.enabled ?? tool.id !== "cursor",
             builtin: false
           });
+          discovered += 1;
         }
-        res.json({ config: bundle, discovered: models.length });
+        res.json({ config: bundle, discovered });
       } catch (err) {
         res
           .status(500)

@@ -12,6 +12,7 @@ import { getConnectorVault, type ConnectorVault } from "./vault/index.ts";
 import { fetchClickUpAccount, fetchClickUpResources, importClickUpTasks } from "./providers/clickup.ts";
 import { fetchGithubAccount, fetchGithubResources, importGithubIssues } from "./providers/github.ts";
 import { fetchGitlabAccount, fetchGitlabResources, importGitlabIssues } from "./providers/gitlab.ts";
+import { setAutonomyJobStatus } from "../autonomy/jobs.ts";
 import { loadHarnessSettings } from "../core/settings.ts";
 import type {
   ConnectorAuthMethod,
@@ -24,6 +25,16 @@ import type {
 } from "../core/types.ts";
 
 type FetchLike = typeof fetch;
+
+const CLICKUP_TICKET_SYNC_JOB_ID = "clickup-ticket-sync";
+
+async function setClickUpTicketSyncStatus(root: string, status: "active" | "paused"): Promise<void> {
+  try {
+    await setAutonomyJobStatus(root, CLICKUP_TICKET_SYNC_JOB_ID, status);
+  } catch {
+    // Best-effort: disconnect/connect must not fail if the job store is unavailable.
+  }
+}
 
 async function resolveAccountLabel(
   providerId: ConnectorProviderId,
@@ -93,6 +104,9 @@ export async function connectWithToken(
       accountLabel
     });
     await vault.set(connection.id, { accessToken: trimmed });
+    if (providerId === "clickup") {
+      await setClickUpTicketSyncStatus(root, "active");
+    }
     return connection;
   } catch (err) {
     const message = err instanceof Error ? err.message : "Failed to validate token";
@@ -133,6 +147,9 @@ export async function disconnectConnector(
   const connection = await getConnection(root, connectionId);
   if (!connection) {
     return false;
+  }
+  if (connection.providerId === "clickup") {
+    await setClickUpTicketSyncStatus(root, "paused");
   }
   await vault.delete(connectionId);
   return deleteConnection(root, connectionId);

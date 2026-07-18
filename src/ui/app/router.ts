@@ -1,10 +1,13 @@
 import { parseTaskFilter, type TaskFilter } from "@ui/features/tasks/filters.js";
 import { recordPaletteRecent } from "@ui/overlays/palette-recent.js";
 import {
+  isSystemSettingsView,
   parseProjectTab,
+  parseSettingsSection,
   parseViewName,
   ui,
   type ProjectTab,
+  type SettingsSection,
   type ViewName
 } from "./state.js";
 
@@ -14,6 +17,7 @@ const listeners = new Set<Listener>();
 export interface NavigateOptions {
   filter?: TaskFilter;
   projectTab?: ProjectTab;
+  settingsSection?: SettingsSection;
 }
 
 function isTasksDomain(view: ViewName): boolean {
@@ -24,7 +28,8 @@ export function buildViewHash(
   view: ViewName,
   taskId: string | null = null,
   filter: TaskFilter = ui.tasksFilter,
-  projectTab: ProjectTab = ui.projectTab
+  projectTab: ProjectTab = ui.projectTab,
+  settingsSection: SettingsSection = ui.settingsSection
 ): string {
   if (view === "task" && taskId) return `#/task/${taskId}`;
   if (view === "project" && taskId) {
@@ -32,7 +37,12 @@ export function buildViewHash(
       ? `#/project/${taskId}/${projectTab}`
       : `#/project/${taskId}`;
   }
-  if (view === "tasks" && filter !== "all") return `#/tasks?filter=${encodeURIComponent(filter)}`;
+  if ((view === "tasks" || view === "home") && filter !== "all") {
+    return `#/${view}?filter=${encodeURIComponent(filter)}`;
+  }
+  if (view === "settings" && settingsSection !== "agents") {
+    return `#/settings?section=${encodeURIComponent(settingsSection)}`;
+  }
   return `#/${view}`;
 }
 
@@ -47,21 +57,35 @@ export function navigate(
 ): void {
   const previousView = ui.view;
 
+  // System destinations live inside Settings; keep deep links / palette working.
+  if (isSystemSettingsView(view)) {
+    options = { ...options, settingsSection: view as SettingsSection };
+    view = "settings";
+  }
+
   if (view === "task" && taskId && previousView !== "task") {
     ui.referringView = previousView;
-    ui.referringTasksFilter = previousView === "tasks" ? ui.tasksFilter : null;
+    ui.referringTasksFilter =
+      previousView === "tasks" || previousView === "home" ? ui.tasksFilter : null;
   }
 
   if (shouldClearTaskSelection(previousView, view)) {
     ui.selectedTaskIds.clear();
   }
 
-  if (view === "tasks" && options?.filter) {
+  if ((view === "tasks" || view === "home") && options?.filter) {
     ui.tasksFilter = options.filter;
+  }
+  if (view === "home" && !options?.filter) {
+    ui.tasksFilter = "all";
   }
 
   if (view === "project") {
     ui.projectTab = options?.projectTab ?? "overview";
+  }
+
+  if (view === "settings") {
+    ui.settingsSection = options?.settingsSection ?? "agents";
   }
 
   ui.view = view;
@@ -75,7 +99,7 @@ export function navigate(
     recordPaletteRecent(`nav-${view}`);
   }
 
-  const hash = buildViewHash(view, taskId, ui.tasksFilter);
+  const hash = buildViewHash(view, taskId, ui.tasksFilter, ui.projectTab, ui.settingsSection);
   if (window.location.hash !== hash) {
     window.location.hash = hash;
   }
@@ -83,9 +107,11 @@ export function navigate(
 }
 
 export function navigateBack(): void {
-  const ref = ui.referringView ?? "tasks";
-  if (ref === "tasks") {
-    navigate("tasks", null, { filter: ui.referringTasksFilter ?? "all" });
+  const ref = ui.referringView ?? "home";
+  if (ref === "tasks" || ref === "home") {
+    navigate(ref === "tasks" ? "home" : ref, null, {
+      filter: ui.referringTasksFilter ?? "all"
+    });
     return;
   }
   navigate(ref);
@@ -115,12 +141,22 @@ export function parseHash(): { query: URLSearchParams } {
   const viewName = parseViewName(head);
   const taskId = viewName === "task" || viewName === "project" ? parts[1] ?? null : null;
 
-  ui.view = viewName;
-  ui.taskId = taskId;
-  if (viewName === "project") {
+  if (isSystemSettingsView(viewName)) {
+    ui.view = "settings";
+    ui.taskId = null;
+    ui.settingsSection = viewName as SettingsSection;
+  } else {
+    ui.view = viewName;
+    ui.taskId = taskId;
+    if (viewName === "settings") {
+      ui.settingsSection = parseSettingsSection(query.get("section"));
+    }
+  }
+
+  if (viewName === "project" || ui.view === "project") {
     ui.projectTab = parseProjectTab(parts[2]);
   }
-  if (viewName === "tasks") {
+  if (ui.view === "tasks" || ui.view === "home") {
     ui.tasksFilter = parseTaskFilter(query.get("filter"));
   }
 

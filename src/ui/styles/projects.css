@@ -31,12 +31,19 @@
   border: 1px solid var(--hairline);
   border-radius: var(--r-lg);
   background: var(--surface);
+  box-shadow: var(--elev-1);
   text-align: left;
+  transition: border-color var(--d-fast) var(--ease-out),
+    background var(--d-fast) var(--ease-out),
+    box-shadow var(--d-fast) var(--ease-out),
+    transform var(--d-fast) var(--ease-out);
 }
 
 .project-picker-card:hover {
-  border-color: var(--hairline-strong);
+  border-color: color-mix(in srgb, var(--accent) 35%, var(--hairline-strong));
   background: var(--surface-2);
+  box-shadow: var(--elev-2);
+  transform: translateY(-1px);
 }
 
 .project-picker-icon {
@@ -84,6 +91,7 @@
 }
 
 .project-section-head h2 {
+  font-family: var(--font-display);
   font-size: var(--t-xl);
   font-weight: var(--w-semi);
   letter-spacing: -0.01em;
@@ -173,6 +181,18 @@
   border-radius: var(--r-lg);
   overflow: hidden;
   background: var(--surface);
+  box-shadow: var(--elev-1);
+}
+
+.project-ticket-table-scroll {
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
+  border-radius: var(--r-lg);
+}
+
+.project-ticket-table-scroll .project-ticket-table {
+  min-width: 520px;
 }
 
 .project-ticket-table th:nth-child(1),
@@ -450,4 +470,64 @@
   border-radius: var(--radius-sm);
   white-space: pre-wrap;
   word-break: break-word;
+}
+
+/* Phone: stack ticket rows so the page doesn't depend on sideways scroll. */
+@media (max-width: 640px) {
+  .project-ticket-table-scroll {
+    overflow-x: visible;
+  }
+
+  .project-ticket-table-scroll .project-ticket-table {
+    min-width: 0;
+    border: 0;
+    background: transparent;
+    overflow: visible;
+  }
+
+  .project-ticket-table thead {
+    display: none;
+  }
+
+  .project-ticket-table tbody {
+    display: flex;
+    flex-direction: column;
+    gap: var(--s-2);
+  }
+
+  .project-ticket-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 6px var(--s-3);
+    align-items: center;
+    padding: var(--s-3);
+    border: 1px solid var(--hairline);
+    border-radius: var(--r-lg);
+    background: var(--surface);
+  }
+
+  .project-ticket-row:last-child {
+    border-bottom: 1px solid var(--hairline);
+  }
+
+  .project-ticket-table td {
+    padding: 0;
+    width: auto !important;
+  }
+
+  .project-ticket-row td:nth-child(1) {
+    grid-column: 1 / -1;
+  }
+
+  .project-ticket-row td:nth-child(3),
+  .project-ticket-row td:nth-child(4) {
+    grid-column: 1 / -1;
+    font-size: var(--t-xs);
+  }
+
+  .ticket-filter-status {
+    flex: 1 1 100%;
+    min-width: 0;
+    width: 100%;
+  }
 }

@@ -146,6 +146,28 @@
   font-size: var(--t-sm);
 }
 
+@media (max-width: 520px) {
+  .shortcuts-modal {
+    width: min(520px, 96vw);
+    max-height: min(90svh, 100dvh);
+  }
+
+  .shortcuts-row {
+    grid-template-columns: 1fr;
+    gap: 4px;
+    padding: var(--s-2) 0;
+    border-bottom: 1px solid var(--hairline);
+  }
+
+  .shortcuts-row:last-child {
+    border-bottom: none;
+  }
+
+  .shortcuts-keys {
+    width: fit-content;
+  }
+}
+
 .shortcuts-keys {
   display: inline-block;
   padding: 4px 8px;

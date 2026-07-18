@@ -21,8 +21,6 @@ import {
 import { userIsEditing } from "@ui/shell/focus.js";
 import type { AppState, MemoryPage } from "@ui/app/types.js";
 import { VIEW_REGISTRY } from "./registry.js";
-import { focusIntakeInput } from "@ui/features/home/page.js";
-import { addProjectViaPicker } from "@ui/features/projects/add.js";
 
 parseHash();
 restoreRailWidthEarly();
@@ -138,10 +136,10 @@ document.addEventListener("harness:open-palette", () => {
 });
 document.addEventListener("harness:new-task", () => {
   navigate("home");
-  focusIntakeInput();
+  void import("@ui/features/home/page.js").then((m) => m.focusIntakeInput());
 });
 document.addEventListener("harness:new-project", () => {
-  void addProjectViaPicker();
+  void import("@ui/features/projects/add.js").then((m) => m.addProjectViaPicker());
 });
 document.addEventListener("harness:capture-memory", (event) => {
   const detail = (event as CustomEvent<{ projectId?: string }>).detail;
@@ -182,7 +180,7 @@ document.addEventListener("keydown", (event) => {
   if (goPrefix) {
     const map: Record<string, () => void> = {
       h: () => navigate("home"),
-      t: () => navigate("tasks"),
+      t: () => navigate("home"),
       s: () => navigate("skills"),
       c: () => navigate("connectors"),
       m: () => navigate("maintenance")
@@ -202,7 +200,7 @@ document.addEventListener("keydown", (event) => {
   if (event.key.toLowerCase() === "n") {
     event.preventDefault();
     navigate("home");
-    focusIntakeInput();
+    void import("@ui/features/home/page.js").then((m) => m.focusIntakeInput());
     return;
   }
 

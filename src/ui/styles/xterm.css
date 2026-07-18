@@ -1,0 +1,2 @@
+/* Side-effect import target so TypeScript resolves a local *.css module. */
+@import "@xterm/xterm/css/xterm.css";

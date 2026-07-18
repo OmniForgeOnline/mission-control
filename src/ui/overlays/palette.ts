@@ -80,11 +80,11 @@ function build(): PaletteItem[] {
         document.dispatchEvent(new CustomEvent("harness:refresh-render"));
       }
     },
-    ...(["home", "tasks", "skills", "connectors", "workflows", "maintenance", "settings"] as const).map(
+    ...(["home", "skills", "connectors", "workflows", "maintenance", "settings"] as const).map(
       (v) => ({
         section: "Navigate",
         id: `nav-${v}`,
-        label: `Go to ${v}`,
+        label: v === "home" ? "Go to home (attention)" : `Go to ${v}`,
         meta: v === "home" ? "g h" : `g ${v[0]}`,
         perform: () => {
           if (isViewName(v)) navigate(v);

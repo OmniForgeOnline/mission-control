@@ -1,7 +1,14 @@
-export type AgentLogoId = "codex" | "claude" | "grok" | "opencode" | "kiro";
+export type AgentLogoId = "codex" | "claude" | "grok" | "opencode" | "kiro" | "cursor";
 
 export function isKnownAgentLogo(id: string | null | undefined): id is AgentLogoId {
-  return id === "codex" || id === "claude" || id === "grok" || id === "opencode" || id === "kiro";
+  return (
+    id === "codex" ||
+    id === "claude" ||
+    id === "grok" ||
+    id === "opencode" ||
+    id === "kiro" ||
+    id === "cursor"
+  );
 }
 
 export function AgentLogo({ id, title }: { id: AgentLogoId; title: string }) {
@@ -50,6 +57,14 @@ export function AgentLogo({ id, title }: { id: AgentLogoId; title: string }) {
           />
           <path d="M636.123 549.353C603.328 549.353 598.359 510.097 598.359 486.742C598.359 465.623 602.086 448.977 609.293 438.293C615.504 428.852 624.697 424.131 636.123 424.131C647.555 424.131 657.492 428.852 664.447 438.541C672.398 449.474 676.623 466.12 676.623 486.742C676.623 525.998 661.471 549.353 636.375 549.353H636.123Z" fill="black" />
           <path d="M771.24 549.353C738.445 549.353 733.477 510.097 733.477 486.742C733.477 465.623 737.203 448.977 744.41 438.293C750.621 428.852 759.814 424.131 771.24 424.131C782.672 424.131 792.609 428.852 799.564 438.541C807.516 449.474 811.74 466.12 811.74 486.742C811.74 525.998 796.588 549.353 771.492 549.353H771.24Z" fill="black" />
+        </svg>
+      ) : null}
+      {id === "cursor" ? (
+        <svg viewBox="0 0 24 24" role="img" focusable="false" aria-hidden="true">
+          <path
+            fill="currentColor"
+            d="M4.5 2.5l15.2 8.2c.7.4.7 1.4 0 1.8L13 16.1l-2.4 5.6c-.3.7-1.3.7-1.6 0L4.5 2.5z"
+          />
         </svg>
       ) : null}
     </span>

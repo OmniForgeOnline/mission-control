@@ -84,10 +84,11 @@ describe("fetchPoolUsage", () => {
     fetchClaudeUsage: async () => ({ seven_day: { utilization: 12, resets_at: null } })
   };
 
-  it("fetches codex usage via the app-server source", async () => {
+  it("fetches codex usage via the app-server source as account-level (no pool id)", async () => {
     const pool = normalizeModelPool({ id: "codex-default", toolId: "codex", usageSource: "codex-app-server" });
     const snap = await fetchPoolUsage(codexTool, pool, "/tmp", deps);
-    expect(snap).toMatchObject({ toolId: "codex", modelPoolId: "codex-default", usedPercent: 50, source: "cli" });
+    expect(snap).toMatchObject({ toolId: "codex", usedPercent: 50, source: "cli" });
+    expect(snap?.modelPoolId).toBeUndefined();
   });
 
   it("returns null for claude-oauth when no subscription token exists", async () => {
@@ -149,8 +150,31 @@ describe("refreshUsageSnapshots", () => {
     const usage = await loadUsageSnapshots(root);
     const codex = usage.snapshots.find((s) => s.toolId === "codex");
     expect(codex?.usedPercent).toBe(73);
+    // Account quota is tool-scoped, not model-scoped.
+    expect(codex?.modelPoolId).toBeUndefined();
     // claude has no subscription token → no snapshot.
     expect(usage.snapshots.some((s) => s.toolId === "claude")).toBe(false);
     expect(usage.snapshots.map((s) => s.toolId).sort()).toEqual(["codex"]);
+  });
+
+  it("stores one account-level snapshot per tool even when many models share the source", async () => {
+    let claudeFetches = 0;
+    const deps: UsageProviderDeps = {
+      fetchCodexRateLimits: async () => null,
+      fetchCodexModels: async () => null,
+      readClaudeOAuthToken: async () => "tok",
+      fetchClaudeUsage: async () => {
+        claudeFetches += 1;
+        return { seven_day: { utilization: 41, resets_at: "2026-01-03T00:00:00.000Z" } };
+      }
+    };
+    await refreshUsageSnapshots(root, deps);
+    const usage = await loadUsageSnapshots(root);
+    const claudeSnaps = usage.snapshots.filter((s) => s.toolId === "claude");
+    // Default templates seed several Claude models, all on claude-oauth.
+    expect(claudeSnaps).toHaveLength(1);
+    expect(claudeSnaps[0]?.modelPoolId).toBeUndefined();
+    expect(claudeSnaps[0]?.usedPercent).toBe(41);
+    expect(claudeFetches).toBe(1);
   });
 });

@@ -3,7 +3,11 @@ import type { UsagePolicy } from "./types.ts";
 
 export type UsageState = "available" | "nearing" | "exhausted" | "unknown";
 
-/** A single consumption reading for a tool (and optionally a specific model pool). */
+/**
+ * A single consumption reading.
+ * Live provider quotas (codex/claude) are account-level: omit `modelPoolId`.
+ * Per-pool keys are reserved for runtime exhaustion detection on a specific model.
+ */
 export interface UsageSnapshot {
   toolId: ToolId;
   modelPoolId?: ModelPoolId;

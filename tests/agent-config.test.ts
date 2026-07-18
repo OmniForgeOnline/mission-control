@@ -111,6 +111,26 @@ describe("agent config normalization", () => {
     expect(() => normalizeTool({ id: "x", command: "x", maxPromptArgBytes: 0 })).toThrow(/maxPromptArgBytes/);
     expect(() => normalizeTool({ id: "x", command: "x", authProbe: { args: "status" } })).toThrow(/authProbe.args/);
   });
+
+  it("preserves optional setup install/login metadata", () => {
+    const tool = normalizeTool({
+      id: "claude",
+      command: "claude",
+      adapter: "claude",
+      setup: {
+        installShell: "curl -fsSL https://claude.ai/install.sh | bash",
+        loginShell: "claude auth login",
+        docsUrl: "https://code.claude.com/docs/en/quickstart"
+      }
+    });
+    expect(tool.setup).toEqual({
+      installShell: "curl -fsSL https://claude.ai/install.sh | bash",
+      loginShell: "claude auth login",
+      docsUrl: "https://code.claude.com/docs/en/quickstart"
+    });
+    const bare = normalizeTool({ id: "grok", command: "agent", adapter: "grok" });
+    expect(bare.setup).toBeUndefined();
+  });
 });
 
 describe("agent config store", () => {
@@ -127,8 +147,15 @@ describe("agent config store", () => {
 
   it("seeds built-in tools and pools on first load", async () => {
     const bundle = await loadAgentConfig(root);
-    expect(bundle.tools.map((tool) => tool.id).sort()).toEqual(["claude", "codex", "grok", "kiro", "opencode"]);
-    const unsupportedTools = ["grok", "kiro", "opencode"];
+    expect(bundle.tools.map((tool) => tool.id).sort()).toEqual([
+      "claude",
+      "codex",
+      "cursor",
+      "grok",
+      "kiro",
+      "opencode"
+    ]);
+    const unsupportedTools = ["grok", "kiro", "opencode", "cursor"];
     for (const id of unsupportedTools) {
       expect(bundle.tools.find((tool) => tool.id === id)?.usage).toEqual({ kind: "unavailable" });
       expect(bundle.pools.find((pool) => pool.toolId === id)?.usage).toEqual({ kind: "unavailable" });
@@ -144,7 +171,7 @@ describe("agent config store", () => {
 
     // Every tool has a no-arg "default" pool that does not override the model,
     // so the tool runs with whatever it is currently configured against.
-    for (const toolId of ["codex", "claude", "grok", "kiro", "opencode"]) {
+    for (const toolId of ["codex", "claude", "grok", "kiro", "opencode", "cursor"]) {
       const noArg = bundle.pools.find((p) => p.toolId === toolId && p.modelArgs.length === 0);
       expect(noArg, `${toolId} should have a no-arg default pool`).toBeTruthy();
     }
@@ -165,10 +192,23 @@ describe("agent config store", () => {
         "kiro-claude-haiku-4-5-20251001"
       ].sort()
     );
+    expect(named("cursor").sort()).toEqual(
+      [
+        "cursor-auto",
+        "cursor-composer-2.5",
+        "cursor-composer-2.5-fast",
+        "cursor-claude-opus-4-8-high",
+        "cursor-claude-sonnet-5-high",
+        "cursor-gpt-5.5-medium"
+      ].sort()
+    );
+    const cursorNamed = bundle.pools.filter((p) => p.toolId === "cursor" && p.modelArgs.length > 0);
+    expect(cursorNamed.find((p) => p.id === "cursor-auto")?.enabled).toBe(true);
+    expect(cursorNamed.filter((p) => p.id !== "cursor-auto").every((p) => !p.enabled)).toBe(true);
 
     // Named models carry a real --model value.
     for (const pool of bundle.pools.filter(
-      (p) => ["claude", "grok", "kiro"].includes(p.toolId) && p.modelArgs.length > 0
+      (p) => ["claude", "grok", "kiro", "cursor"].includes(p.toolId) && p.modelArgs.length > 0
     )) {
       expect(pool.modelArgs[0]).toBe("--model");
       expect(pool.modelArgs[1]).toBeTruthy();

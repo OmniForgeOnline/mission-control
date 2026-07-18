@@ -49,9 +49,7 @@ function settingBars(levels: readonly string[], current: string) {
   );
 }
 
-type NodeAction = "approve" | "rollback";
-
-async function runNodeAction(taskId: string, stepId: string, action: NodeAction): Promise<void> {
+async function runNodeAction(taskId: string, stepId: string, action: "approve"): Promise<void> {
   try {
     await api(`/api/tasks/${taskId}/workflow-step`, {
       method: "POST",
@@ -221,7 +219,6 @@ export function WorkflowStepPanel({
   const approved = task.workflowRun?.stepApprovals[stepId]?.status === "approved";
   const needsApproval = step.approval === "required" && !approved;
   const isActive = isStepActive(task, stepId);
-  const canRollback = Boolean(task.workflowRun?.completedSteps.includes(stepId));
   // Model recorded on the run that executed this step (completed or active);
   // falls back to the live run only for the step currently in flight.
   const stepModel = modelPoolDisplayName(stepRunModelPoolId(task, stepId));
@@ -258,7 +255,8 @@ export function WorkflowStepPanel({
   const interactiveSessionId = (ui.data?.interactiveSessions ?? []).find((s) => s.taskId === task.id)
     ?.terminalSessionId;
   const showInteractiveComplete = interactiveStep && (Boolean(interactiveSessionId) || (isActive && isRunning));
-  const showSettingsActions = needsApproval || canRollback || showInteractiveComplete;
+  const showSettingsActions =
+    needsApproval || canRevertStep || showInteractiveComplete || Boolean(task.mergeRequest);
 
   async function onInteractiveComplete(outcome: "done" | "blocked"): Promise<void> {
     if (completeBusy) return;
@@ -269,6 +267,28 @@ export function WorkflowStepPanel({
       errorToast((err as Error).message);
     } finally {
       setCompleteBusy(false);
+    }
+  }
+
+  async function onRevertAndResume(): Promise<void> {
+    if (isRunning || !stepId) return;
+    const label = stepId.replace(/_/g, " ");
+    const ok = await confirm({
+      title: `Revert to ${label} and resume?`,
+      message: "Downstream progress and artifacts are discarded, and this step is restarted.",
+      confirmLabel: "Revert & resume",
+      tone: "danger"
+    });
+    if (!ok) return;
+    try {
+      await api(`/api/tasks/${task.id}/revert-step`, {
+        method: "POST",
+        body: JSON.stringify({ stepId, run: true })
+      });
+      toast(`Reverted to ${label}`, { tone: "success" });
+      requestRefresh();
+    } catch (err) {
+      errorToast((err as Error).message);
     }
   }
 
@@ -335,6 +355,9 @@ export function WorkflowStepPanel({
           </div>
           {showSettingsActions ? (
             <div class="wf-settings-actions">
+              {task.mergeRequest ? (
+                <MergeRequestChip mergeRequest={task.mergeRequest} />
+              ) : null}
               {needsApproval ? (
                 <button
                   type="button"
@@ -364,35 +387,19 @@ export function WorkflowStepPanel({
                   </button>
                 </>
               ) : null}
-              {canRollback ? (
+              {canRevertStep ? (
                 <button
                   type="button"
                   class="btn btn-sm btn-danger"
-                  onClick={() => {
-                    void confirm({
-                      title: "Rollback to this step?",
-                      message: "Downstream progress will be trimmed.",
-                      confirmLabel: "Rollback",
-                      tone: "danger"
-                    }).then((ok) => {
-                      if (ok) void runNodeAction(task.id, stepId, "rollback");
-                    });
-                  }}
+                  disabled={isRunning}
+                  onClick={() => void onRevertAndResume()}
                 >
-                  Rollback
+                  Revert & resume
                 </button>
               ) : null}
             </div>
           ) : null}
         </div>
-        {task.mergeRequest ? (
-          <div class="wf-detail wide">
-            <span class="k">Merge request</span>
-            <span class="v">
-              <MergeRequestChip mergeRequest={task.mergeRequest} />
-            </span>
-          </div>
-        ) : null}
         {task.attachments?.length ? (
           <div class="wf-detail wide">
             <span class="k">Attachments</span>
@@ -409,7 +416,7 @@ export function WorkflowStepPanel({
           active={isActive && isRunning}
         />
       ) : (
-        <StepChat task={task} stepId={stepId} canRevert={canRevertStep} />
+        <StepChat task={task} stepId={stepId} />
       )}
     </div>
   );

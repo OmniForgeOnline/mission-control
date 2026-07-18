@@ -24,14 +24,19 @@ function shortSchedule(schedule: string): string {
 /** Scope of an autonomy panel: the global Mission Control jobs or a single project. */
 export type AutonomyScope = { kind: "harness" } | { kind: "project"; projectId: string };
 
+const CONNECTOR_OWNED_HARNESS_JOBS = new Set(["clickup-ticket-sync"]);
+
 function jobsForScope(jobs: AutonomyJob[], scope: AutonomyScope): AutonomyJob[] {
   if (scope.kind === "harness") {
-    return jobs.filter((job) => job.scope === "harness" || !job.scope);
+    return jobs.filter(
+      (job) =>
+        (job.scope === "harness" || !job.scope) && !CONNECTOR_OWNED_HARNESS_JOBS.has(job.id)
+    );
   }
   return jobs.filter((job) => job.scope === "project" && job.scopeId === scope.projectId);
 }
 
-function AutonomyJobRow({ job, scopeId }: { job: AutonomyJob; scopeId?: string }) {
+export function AutonomyJobRow({ job, scopeId }: { job: AutonomyJob; scopeId?: string }) {
   const lastLine = job.lastSummary ?? job.description;
   const when = job.lastRunAt ? relativeTime(job.lastRunAt) : "never";
   const canStop = Boolean(job.isRunning && job.activeRunId);

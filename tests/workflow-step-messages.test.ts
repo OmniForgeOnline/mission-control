@@ -101,7 +101,7 @@ describe("workflow step messages", () => {
     });
   });
 
-  it("keeps inactive step chat as a scoped note", () => {
+  it("does not mark inactive step chat as runnable", () => {
     const submission = stepChatSubmission(
       task({
         workflowRun: {
@@ -121,8 +121,7 @@ describe("workflow step messages", () => {
       requestBody: {
         author: "operator",
         body: "Save this for review.",
-        stepId: "review",
-        noteOnly: true
+        stepId: "review"
       }
     });
   });

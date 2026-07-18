@@ -20,6 +20,14 @@ export default defineConfig({
     outDir: path.resolve(__dirname, "dist/ui"),
     emptyOutDir: true,
     rollupOptions: {
+      output: {
+        // Keep heavy optional deps and route modules out of the entry chunk.
+        manualChunks(id) {
+          if (id.includes("node_modules/@xterm")) return "xterm";
+          if (id.includes("node_modules/marked")) return "marked";
+          if (id.includes("node_modules/preact")) return "preact";
+        }
+      },
       onwarn(warning, defaultHandler) {
         if (warning.code === "ILLEGAL_REASSIGNMENT") {
           throw new Error(warning.message);

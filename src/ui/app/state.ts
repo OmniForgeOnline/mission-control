@@ -28,6 +28,47 @@ const VIEW_NAMES = new Set<ViewName>([
 /** Tabs surfaced inside a project detail view. */
 export type ProjectTab = "overview" | "runs" | "autonomy" | "memory" | "quality";
 
+/** Sections inside Settings (including System destinations). */
+export type SettingsSection =
+  | "agents"
+  | "monitoring"
+  | "projects"
+  | "workspace"
+  | "connectors"
+  | "skills"
+  | "workflows"
+  | "maintenance"
+  | "appearance"
+  | "about";
+
+const SETTINGS_SECTIONS = new Set<SettingsSection>([
+  "agents",
+  "monitoring",
+  "projects",
+  "workspace",
+  "connectors",
+  "skills",
+  "workflows",
+  "maintenance",
+  "appearance",
+  "about"
+]);
+
+const SYSTEM_SETTINGS_VIEWS = new Set<ViewName>(["connectors", "skills", "workflows", "maintenance"]);
+
+export function isSettingsSection(value: string): value is SettingsSection {
+  return SETTINGS_SECTIONS.has(value as SettingsSection);
+}
+
+export function parseSettingsSection(value: string | null | undefined): SettingsSection {
+  if (value && isSettingsSection(value)) return value;
+  return "agents";
+}
+
+export function isSystemSettingsView(view: ViewName): boolean {
+  return SYSTEM_SETTINGS_VIEWS.has(view);
+}
+
 const PROJECT_TABS = new Set<ProjectTab>(["overview", "runs", "autonomy", "memory", "quality"]);
 
 export function parseProjectTab(value: string | undefined): ProjectTab {
@@ -48,6 +89,7 @@ export interface UIState {
   view: ViewName;
   taskId: string | null;
   projectTab: ProjectTab;
+  settingsSection: SettingsSection;
   data: AppState | null;
   selectedTaskIds: Set<string>;
   tasksFilter: TaskFilter;
@@ -60,6 +102,7 @@ export const ui: UIState = {
   view: "home",
   taskId: null,
   projectTab: "overview",
+  settingsSection: "agents",
   data: null,
   selectedTaskIds: new Set(),
   tasksFilter: "all",

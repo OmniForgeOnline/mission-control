@@ -15,8 +15,23 @@ export interface AgentRuntimeProbe {
   diagnostics: AgentRuntimeDiagnostic[];
 }
 
-export async function probeAgentRuntime(tool: AgentToolConfig, input: { cwd: string }): Promise<AgentRuntimeProbe> {
+/** Drop cached probe results so Rescan / post-install can re-resolve PATH. */
+export function clearAgentRuntimeProbeCache(toolId?: string): void {
+  if (!toolId) {
+    probeCache.clear();
+    return;
+  }
+  for (const key of [...probeCache.keys()]) {
+    if (key.startsWith(`${toolId}:`)) probeCache.delete(key);
+  }
+}
+
+export async function probeAgentRuntime(
+  tool: AgentToolConfig,
+  input: { cwd: string; force?: boolean }
+): Promise<AgentRuntimeProbe> {
   const cacheKey = `${tool.id}:${tool.command}:${input.cwd}`;
+  if (input.force) probeCache.delete(cacheKey);
   const cached = probeCache.get(cacheKey);
   if (cached) return cached;
 

@@ -3,9 +3,10 @@ import { computeBranchEdgeGeometry, computeEdgeGeometry } from "./edges.js";
 import {
   CONTAIN_FIT,
   DEFAULT_TRANSFORM,
-  PANEL_FIT,
   clampZoom,
   computeFitTransform,
+  panelFitForViewport,
+  zoomToward,
   type FitTransform
 } from "./fit.js";
 import { layoutFromWorkflowSummary } from "./layout.js";
@@ -28,6 +29,16 @@ export interface WorkflowCanvasProps {
 
 type Transform = FitTransform;
 
+type Point = { x: number; y: number };
+
+function pointerDistance(a: Point, b: Point): number {
+  return Math.hypot(b.x - a.x, b.y - a.y);
+}
+
+function pointerMidpoint(a: Point, b: Point): Point {
+  return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+}
+
 export function WorkflowCanvas({
   task,
   workflow,
@@ -35,11 +46,11 @@ export function WorkflowCanvas({
   onSelectStep,
   fitMode = "panel"
 }: WorkflowCanvasProps) {
-  const fitConfig = fitMode === "contain" ? CONTAIN_FIT : PANEL_FIT;
   const wrapRef = useRef<HTMLDivElement>(null);
   const [transform, setTransform] = useState<Transform>(DEFAULT_TRANSFORM);
   const [dragging, setDragging] = useState(false);
-  const dragStart = useRef({ x: 0, y: 0, tx: 0, ty: 0 });
+  const transformRef = useRef(transform);
+  transformRef.current = transform;
 
   const layout = layoutFromWorkflowSummary(workflow);
   const decorated = decorateLayoutEdges(layout.edges, task, workflow);
@@ -50,9 +61,34 @@ export function WorkflowCanvas({
     return { ...geom, done: meta?.done, active: meta?.active, branch: meta?.branch ?? geom.branch };
   });
   const branchGeometry = computeBranchEdgeGeometry(layout.nodes, decorated);
+  const forwardGeometry = geometry.filter((edge) => !edge.branch);
+  const maxBranchBow = branchGeometry.reduce((max, edge) => Math.max(max, edge.bowY), 0);
+  const edgeLayerW = layout.bounds.width;
+  const edgeLayerH = Math.max(layout.bounds.height, maxBranchBow > 0 ? maxBranchBow + 18 : 0);
   const autoNoteStep = task.workflowRun?.currentStepId;
   const showAutoNote =
     autoNoteStep && stepShowsAutoAdvanceNote(task, workflow, autoNoteStep);
+
+  function activeFitConfig(viewportWidth: number) {
+    return fitMode === "contain" ? CONTAIN_FIT : panelFitForViewport(viewportWidth);
+  }
+
+  function fitToViewport(): void {
+    const el = wrapRef.current;
+    if (!el) {
+      setTransform(DEFAULT_TRANSFORM);
+      return;
+    }
+    setTransform(
+      computeFitTransform(
+        el.clientWidth,
+        el.clientHeight,
+        layout.bounds,
+        layout.content,
+        activeFitConfig(el.clientWidth)
+      )
+    );
+  }
 
   useEffect(() => {
     const el = wrapRef.current;
@@ -64,7 +100,7 @@ export function WorkflowCanvas({
           el.clientHeight,
           layout.bounds,
           layout.content,
-          fitConfig
+          activeFitConfig(el.clientWidth)
         )
       );
     });
@@ -78,30 +114,135 @@ export function WorkflowCanvas({
     layout.content.maxX,
     layout.content.minY,
     layout.content.maxY,
-    fitConfig
+    fitMode
   ]);
 
+  // Pan (1 pointer) + pinch-zoom (2 pointers). Pointer Events cover mouse + touch.
   useEffect(() => {
-    function onMouseMove(event: MouseEvent): void {
-      if (!dragging) return;
-      setTransform((current) => ({
-        ...current,
-        x: dragStart.current.tx + (event.clientX - dragStart.current.x),
-        y: dragStart.current.ty + (event.clientY - dragStart.current.y)
-      }));
-    }
+    const maybe = wrapRef.current;
+    if (!maybe) return;
+    const surface: HTMLElement = maybe;
 
-    function onMouseUp(): void {
+    const pointers = new Map<number, Point>();
+    let pan: { origin: Point; tx: number; ty: number } | null = null;
+    let pinch: {
+      distance: number;
+      scale: number;
+      mid: Point;
+      tx: number;
+      ty: number;
+    } | null = null;
+
+    function beginPinch(): void {
+      if (pointers.size < 2) return;
+      const [a, b] = [...pointers.values()];
+      if (!a || !b) return;
+      const t = transformRef.current;
+      pan = null;
       setDragging(false);
+      pinch = {
+        distance: Math.max(1, pointerDistance(a, b)),
+        scale: t.scale,
+        mid: pointerMidpoint(a, b),
+        tx: t.x,
+        ty: t.y
+      };
     }
 
-    window.addEventListener("mousemove", onMouseMove);
-    window.addEventListener("mouseup", onMouseUp);
+    function onPointerDown(event: PointerEvent): void {
+      if ((event.target as HTMLElement).closest(".wf-node, .wf-canvas-toolbar button")) return;
+      if (event.pointerType === "mouse" && event.button !== 0) return;
+
+      pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+      try {
+        surface.setPointerCapture(event.pointerId);
+      } catch {
+        /* optional */
+      }
+      event.preventDefault();
+
+      if (pointers.size >= 2) {
+        beginPinch();
+        return;
+      }
+
+      const t = transformRef.current;
+      pan = { origin: { x: event.clientX, y: event.clientY }, tx: t.x, ty: t.y };
+      setDragging(true);
+    }
+
+    function onPointerMove(event: PointerEvent): void {
+      if (!pointers.has(event.pointerId)) return;
+      pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+
+      if (pinch && pointers.size >= 2) {
+        const [a, b] = [...pointers.values()];
+        if (!a || !b) return;
+        const dist = Math.max(1, pointerDistance(a, b));
+        const mid = pointerMidpoint(a, b);
+        const rect = surface.getBoundingClientRect();
+        const nextScale = clampZoom(pinch.scale * (dist / pinch.distance));
+        const zoomed = zoomToward(
+          { x: pinch.tx, y: pinch.ty, scale: pinch.scale },
+          rect.left,
+          rect.top,
+          pinch.mid.x,
+          pinch.mid.y,
+          nextScale
+        );
+        setTransform({
+          ...zoomed,
+          x: zoomed.x + (mid.x - pinch.mid.x),
+          y: zoomed.y + (mid.y - pinch.mid.y)
+        });
+        return;
+      }
+
+      if (pan && pointers.size === 1) {
+        setTransform({
+          ...transformRef.current,
+          x: pan.tx + (event.clientX - pan.origin.x),
+          y: pan.ty + (event.clientY - pan.origin.y)
+        });
+      }
+    }
+
+    function onPointerUp(event: PointerEvent): void {
+      if (!pointers.has(event.pointerId)) return;
+      pointers.delete(event.pointerId);
+      try {
+        surface.releasePointerCapture(event.pointerId);
+      } catch {
+        /* optional */
+      }
+
+      if (pointers.size < 2) pinch = null;
+
+      if (pointers.size === 0) {
+        pan = null;
+        setDragging(false);
+        return;
+      }
+
+      if (pointers.size === 1) {
+        const remaining = [...pointers.values()][0]!;
+        const t = transformRef.current;
+        pan = { origin: remaining, tx: t.x, ty: t.y };
+        setDragging(true);
+      }
+    }
+
+    surface.addEventListener("pointerdown", onPointerDown);
+    surface.addEventListener("pointermove", onPointerMove);
+    surface.addEventListener("pointerup", onPointerUp);
+    surface.addEventListener("pointercancel", onPointerUp);
     return () => {
-      window.removeEventListener("mousemove", onMouseMove);
-      window.removeEventListener("mouseup", onMouseUp);
+      surface.removeEventListener("pointerdown", onPointerDown);
+      surface.removeEventListener("pointermove", onPointerMove);
+      surface.removeEventListener("pointerup", onPointerUp);
+      surface.removeEventListener("pointercancel", onPointerUp);
     };
-  }, [dragging]);
+  }, []);
 
   function zoomBy(factor: number): void {
     setTransform((current) => ({ ...current, scale: clampZoom(current.scale * factor) }));
@@ -111,22 +252,27 @@ export function WorkflowCanvas({
     <div
       ref={wrapRef}
       class={`wf-canvas-wrap${dragging ? " is-grabbing" : ""}`}
-      onMouseDown={(event) => {
-        if ((event.target as HTMLElement).closest(".wf-node, .wf-canvas-toolbar button")) return;
-        setDragging(true);
-        dragStart.current = {
-          x: event.clientX,
-          y: event.clientY,
-          tx: transform.x,
-          ty: transform.y
-        };
-      }}
       onWheel={(event) => {
         event.preventDefault();
+        const el = wrapRef.current;
+        if (!el) {
+          zoomBy(event.deltaY < 0 ? 1.15 : 0.87);
+          return;
+        }
         const direction = event.deltaY < 0 ? 1 : -1;
         const magnitude = Math.min(Math.abs(event.deltaY), 200);
         const factor = 1 + direction * magnitude * 0.003;
-        zoomBy(factor);
+        const rect = el.getBoundingClientRect();
+        setTransform((current) =>
+          zoomToward(
+            current,
+            rect.left,
+            rect.top,
+            event.clientX,
+            event.clientY,
+            current.scale * factor
+          )
+        );
       }}
     >
       {showAutoNote ? (
@@ -147,27 +293,7 @@ export function WorkflowCanvas({
         <button class="wf-ctl" type="button" title="Zoom out" onClick={() => zoomBy(0.87)}>
           −
         </button>
-        <button
-          class="wf-ctl"
-          type="button"
-          title="Fit"
-          onClick={() => {
-            const el = wrapRef.current;
-            if (!el) {
-              setTransform(DEFAULT_TRANSFORM);
-              return;
-            }
-            setTransform(
-              computeFitTransform(
-                el.clientWidth,
-                el.clientHeight,
-                layout.bounds,
-                layout.content,
-                fitConfig
-              )
-            );
-          }}
-        >
+        <button class="wf-ctl" type="button" title="Fit" onClick={() => fitToViewport()}>
           ⊡
         </button>
       </div>
@@ -193,48 +319,52 @@ export function WorkflowCanvas({
           </div>
         ))}
 
-        {geometry
-          .filter((edge) => !edge.branch)
-          .map((edge) => (
-            <div
-              key={`${edge.from}-${edge.to}-${edge.kind}`}
-              class={[
-                "wf-edge",
-                edge.done ? "done" : "",
-                edge.active ? "active" : ""
-              ]
-                .filter(Boolean)
-                .join(" ")}
-              style={{
-                left: `${edge.x1}px`,
-                top: `${edge.y1}px`,
-                width: `${edge.length}px`,
-                transform: `rotate(${edge.angleDeg}deg)`
-              }}
-            />
-          ))}
-
-        {branchGeometry.length > 0 ? (
+        {forwardGeometry.length > 0 || branchGeometry.length > 0 ? (
           <svg
-            class="wf-branch-layer"
-            width={layout.bounds.width}
-            height={layout.bounds.height}
-            viewBox={`0 0 ${layout.bounds.width} ${layout.bounds.height}`}
+            class="wf-edge-layer"
+            width={edgeLayerW}
+            height={edgeLayerH}
+            viewBox={`0 0 ${edgeLayerW} ${edgeLayerH}`}
             aria-hidden="true"
           >
             <defs>
               <marker
-                id="wf-rework-arrow"
-                markerWidth="11"
-                markerHeight="11"
+                id="wf-edge-arrow"
+                markerWidth="10"
+                markerHeight="10"
                 refX="8"
                 refY="5"
                 orient="auto"
                 markerUnits="userSpaceOnUse"
               >
-                <path class="wf-branch-arrow" d="M1 1 L9 5 L1 9 Z" />
+                <path class="wf-edge-arrow" d="M1.5 1.2 L8.5 5 L1.5 8.8 Z" />
+              </marker>
+              <marker
+                id="wf-rework-arrow"
+                markerWidth="10"
+                markerHeight="10"
+                refX="8"
+                refY="5"
+                orient="auto"
+                markerUnits="userSpaceOnUse"
+              >
+                <path class="wf-branch-arrow" d="M1.5 1.2 L8.5 5 L1.5 8.8 Z" />
               </marker>
             </defs>
+            {forwardGeometry.map((edge) => (
+              <path
+                key={`${edge.from}-${edge.to}-${edge.kind}`}
+                class={[
+                  "wf-edge-path",
+                  edge.done ? "is-done" : "",
+                  edge.active ? "is-active" : ""
+                ]
+                  .filter(Boolean)
+                  .join(" ")}
+                d={edge.path}
+                marker-end="url(#wf-edge-arrow)"
+              />
+            ))}
             {branchGeometry.map((edge) => (
               <g key={`branch-${edge.from}-${edge.to}`}>
                 <path
@@ -246,7 +376,7 @@ export function WorkflowCanvas({
                   class="wf-branch-label"
                   transform={`translate(${edge.labelX}, ${edge.labelY})`}
                 >
-                  <rect x="-30" y="-10" width="60" height="20" rx="10" />
+                  <rect x="-28" y="-9" width="56" height="18" rx="2" />
                   <text x="0" y="1" text-anchor="middle" dominant-baseline="middle">
                     rework
                   </text>
@@ -269,7 +399,6 @@ export function WorkflowCanvas({
           />
         ))}
       </div>
-
     </div>
   );
 }

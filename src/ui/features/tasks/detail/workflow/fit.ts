@@ -32,7 +32,7 @@ export interface FitMode {
 }
 
 /** Absolute pan/zoom clamps shared by the canvas zoom controls. */
-export const ZOOM_MIN_SCALE = 0.45;
+export const ZOOM_MIN_SCALE = 0.3;
 export const ZOOM_MAX_SCALE = 1.8;
 
 /**
@@ -41,8 +41,18 @@ export const ZOOM_MAX_SCALE = 1.8;
  */
 export const PANEL_FIT: FitMode = { minScale: 0.55, maxScale: 1.15, centerY: true };
 
+/** Narrow phone strip: allow smaller scale so full DAGs still fit width-wise. */
+export const NARROW_PANEL_FIT: FitMode = { minScale: 0.3, maxScale: 1.05, centerY: true };
+
 /** Workflow editor: fit the whole graph and center it. */
 export const CONTAIN_FIT: FitMode = { minScale: ZOOM_MIN_SCALE, maxScale: 1, centerY: true };
+
+const NARROW_VIEWPORT_WIDTH = 520;
+
+/** Pick panel fit clamps from the live canvas width (phone vs desktop strip). */
+export function panelFitForViewport(viewportWidth: number): FitMode {
+  return viewportWidth > 0 && viewportWidth < NARROW_VIEWPORT_WIDTH ? NARROW_PANEL_FIT : PANEL_FIT;
+}
 
 const FIT_PAD = 32;
 const LEFT_EDGE_GUARD = 12;
@@ -56,6 +66,31 @@ export const DEFAULT_TRANSFORM: FitTransform = {
 
 export function clampZoom(scale: number): number {
   return Math.min(ZOOM_MAX_SCALE, Math.max(ZOOM_MIN_SCALE, scale));
+}
+
+/**
+ * Zoom so the plane point under (clientX, clientY) stays fixed in the viewport.
+ * Used by pinch-zoom and can back wheel-zoom toward the cursor later.
+ */
+export function zoomToward(
+  current: FitTransform,
+  viewportLeft: number,
+  viewportTop: number,
+  clientX: number,
+  clientY: number,
+  nextScale: number
+): FitTransform {
+  const scale = clampZoom(nextScale);
+  if (scale === current.scale) return current;
+  const vx = clientX - viewportLeft;
+  const vy = clientY - viewportTop;
+  const px = (vx - current.x) / current.scale;
+  const py = (vy - current.y) / current.scale;
+  return {
+    scale,
+    x: vx - px * scale,
+    y: vy - py * scale
+  };
 }
 
 export function computeFitTransform(
