@@ -22,7 +22,7 @@ jobs:
       - name: Suppress git defaultBranchName advice
         run: git config --global init.defaultBranch main
       - name: Setup Node 22
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
           node-version: "22"
           cache: npm
