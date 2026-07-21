@@ -1,4 +1,5 @@
 import type { RunEventInput } from "../../core/runs/events.ts";
+import { parseUsageFromAcpUpdate } from "../../core/runs/usage-parsers.ts";
 
 /**
  * Map one ACP `session/update` notification payload into canonical run events.
@@ -35,8 +36,12 @@ export function runEventsFromAcpUpdate(update: unknown): RunEventInput[] {
       return [{ type: "tool_result", tool, ...(result !== undefined ? { toolResult: result } : {}) }];
     }
     case "retry_warning": {
+      const events: RunEventInput[] = [];
       const text = typeof record["message"] === "string" ? record["message"] : undefined;
-      return text ? [{ type: "agent_status", text }] : [];
+      if (text) events.push({ type: "agent_status", text });
+      const usage = parseUsageFromAcpUpdate(update);
+      if (usage) events.push(usage);
+      return events;
     }
     default:
       return [];

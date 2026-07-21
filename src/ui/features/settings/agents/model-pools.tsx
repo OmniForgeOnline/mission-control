@@ -2,6 +2,7 @@ import { useState } from "preact/hooks";
 import { api } from "@ui/data/api.js";
 import { toast } from "@ui/overlays/toast.js";
 import type { ModelPoolConfig } from "../../../../core/agents/config/types.ts";
+import type { VerificationState } from "../../../../core/agents/identity-types.ts";
 
 function refresh(): void {
   document.dispatchEvent(new CustomEvent("harness:refresh"));
@@ -15,6 +16,17 @@ function poolModelId(pool: ModelPoolConfig): string | undefined {
   return args.length ? args.join(" ") : undefined;
 }
 
+function poolIdentityRoute(pool: ModelPoolConfig): string | null {
+  const identity = pool.identity;
+  if (!identity) return null;
+  return `${pool.toolId} → ${identity.provider}/${identity.configuredModel}`;
+}
+
+function verificationLabel(state: VerificationState | undefined): string | null {
+  if (!state || state === "verified") return null;
+  return state;
+}
+
 /**
  * One model row: name (+ optional model id) and an enable toggle.
  * Routing knobs (tier, quality, capabilities) stay in config but are not operator surface.
@@ -23,6 +35,8 @@ function poolModelId(pool: ModelPoolConfig): string | undefined {
 export function PoolRow({ pool }: { pool: ModelPoolConfig }) {
   const [busy, setBusy] = useState(false);
   const modelId = poolModelId(pool);
+  const identityRoute = poolIdentityRoute(pool);
+  const verification = verificationLabel(pool.identity?.verificationState);
 
   async function toggle(): Promise<void> {
     setBusy(true);
@@ -43,7 +57,13 @@ export function PoolRow({ pool }: { pool: ModelPoolConfig }) {
     <li class={`pool-row${pool.enabled ? "" : " is-disabled"}`}>
       <div class="pool-id">
         <span class="pool-name">{pool.displayName}</span>
+        {identityRoute ? <span class="pool-identity-route">{identityRoute}</span> : null}
         {modelId && modelId !== pool.displayName ? <span class="pool-model-id">{modelId}</span> : null}
+        {verification ? (
+          <span class={`pool-verification is-${verification}`} title={`Identity ${verification}`}>
+            {verification}
+          </span>
+        ) : null}
       </div>
       <label
         class="settings-switch"
@@ -102,7 +122,7 @@ export function AddModelForm({ toolId }: { toolId: string }) {
           modelEnv,
           // Routing defaults: not exposed in the form; operators only pick models to offer.
           capabilities: ["author", "reviewer", "code", "plan", "review"],
-          qualityWeight: 50,
+          features: ["large-context"],
           tier: "paid",
           usage: { kind: "usage-only" },
           usageSource: "none",

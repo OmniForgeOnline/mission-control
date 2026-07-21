@@ -1,0 +1,51 @@
+{
+  "schemaVersion": 1,
+  "id": "small-mvp-outline",
+  "workflowId": "product-spec",
+  "taskClass": "small",
+  "inputs": {
+    "title": "Spec: intake confidence badges",
+    "description": "Write a short product spec for showing intake confidence in the ticket list with operator-facing rationale on hover.",
+    "targets": [
+      {
+        "path": "docs",
+        "kind": "directory"
+      }
+    ]
+  },
+  "permittedTools": [
+    "kiro",
+    "claude"
+  ],
+  "outcome": {
+    "artifact": {
+      "kind": "spec-document",
+      "requiredSections": [
+        "Problem",
+        "Users",
+        "Acceptance criteria"
+      ]
+    },
+    "deterministicChecks": [
+      {
+        "kind": "workflow-step",
+        "stepId": "handoff"
+      }
+    ],
+    "rubric": [
+      {
+        "id": "observable",
+        "criterion": "Acceptance criteria are testable without subjective prose."
+      }
+    ]
+  },
+  "risk": "low",
+  "provenance": {
+    "kind": "synthetic",
+    "source": "Redacted small product-spec for a single UI affordance.",
+    "notes": "Pattern-synthesized from representative completed runs; no single source task id archived.",
+    "redactions": [
+      "stakeholder names"
+    ]
+  }
+}

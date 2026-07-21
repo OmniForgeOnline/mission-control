@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 1,
+  "id": "synthetic-launch-post",
+  "workflowId": "blog-post",
+  "taskClass": "synthetic",
+  "inputs": {
+    "title": "Draft launch post for workflow maturity labels",
+    "description": "Write a short blog post announcing workflow maturity levels with links to evaluation gates."
+  },
+  "permittedTools": [
+    "claude",
+    "kiro"
+  ],
+  "outcome": {
+    "artifact": {
+      "kind": "blog-draft",
+      "requiredSections": [
+        "Hook",
+        "What changed",
+        "Next steps"
+      ]
+    },
+    "rubric": [
+      {
+        "id": "claims",
+        "criterion": "Claims map to documented evaluation gates without unverified metrics."
+      }
+    ]
+  },
+  "risk": "low",
+  "provenance": {
+    "kind": "synthetic",
+    "source": "Generated placeholder for unexercised blog-post workflow."
+  }
+}

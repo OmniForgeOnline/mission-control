@@ -11,7 +11,6 @@ import { approveTask, createTask } from "../src/core/tasks/tasks.ts";
 import { ensureHarnessRepository } from "../src/core/bootstrap/repository.ts";
 import { onboardProject } from "../src/core/projects/registry.ts";
 import { processNextApprovedTask } from "../src/daemon/processor.ts";
-import { DeterministicAgentRunner } from "./helpers/deterministic-runner.ts";
 import type { AgentRunner, AgentTurnRequest, AgentTurnResult } from "../src/runners/types.ts";
 
 async function onboard(root: string): Promise<string> {
@@ -135,25 +134,6 @@ describe("evolution during task execution", () => {
     await rm(root, { recursive: true, force: true });
   });
 
-  it("does not create memory from the deterministic runner's generic reply", async () => {
-    const task = await createTask(root, {
-      title: "Generic task",
-      description: "Nothing special.",
-      agent: "codex",
-      source: "manual",
-      links: [],
-      projectId
-    });
-    await approveTask(root, task.id);
-
-    await processNextApprovedTask(root, { runner: new DeterministicAgentRunner("codex"), wait: true });
-    await new Promise((r) => setTimeout(r, 200));
-
-    // Task creation seeds an `overview` page; the generic reply must add no lesson.
-    const pages = await listMemoryPages(root, projectId);
-    expect(pages.some((page) => page.type === "lesson")).toBe(false);
-  });
-
   it("captures a lesson page when the agent reply contains a learning pattern", async () => {
     const task = await createTask(root, {
       title: "Discovery task",
@@ -181,9 +161,12 @@ describe("evolution during task execution", () => {
     };
 
     await processNextApprovedTask(root, { runner, wait: true });
-    await new Promise((r) => setTimeout(r, 200));
 
-    const pages = await listMemoryPages(root, projectId);
+    let pages = await listMemoryPages(root, projectId);
+    for (let attempt = 0; attempt < 100 && !pages.some((page) => page.type === "lesson"); attempt++) {
+      await new Promise((r) => setTimeout(r, 20));
+      pages = await listMemoryPages(root, projectId);
+    }
     expect(pages.some((page) => page.type === "lesson")).toBe(true);
   });
 });

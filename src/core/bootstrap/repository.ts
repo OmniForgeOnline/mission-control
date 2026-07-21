@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 
 import { DEFAULT_KERNEL_FILES } from "./defaults/kernel.ts";
-import { DEFAULT_SKILLS } from "./defaults/skills.ts";
+import { migrateRuntimeAssets } from "./runtime-assets/index.ts";
 import { ensureDir, writeFileIfMissing } from "../infra/fs.ts";
 import { DEFAULT_HARNESS_SETTINGS } from "../settings.ts";
 
@@ -82,6 +82,7 @@ export async function ensureHarnessRepository(root = DEFAULT_HARNESS_ROOT): Prom
   for (const dir of [
     "kernel",
     "skills",
+    "workflows",
     "data/runs",
     "data/state",
     "data/state/memory-index",
@@ -96,9 +97,7 @@ export async function ensureHarnessRepository(root = DEFAULT_HARNESS_ROOT): Prom
   }
 
   await writeFileIfMissing(path.join(root, "skills", "README.md"), "# Mission Control Skills\n\nApproved reusable skills live here.\n");
-  for (const [fileName, content] of Object.entries(DEFAULT_SKILLS)) {
-    await writeFileIfMissing(path.join(root, "skills", fileName), content);
-  }
+  await migrateRuntimeAssets(root);
   await writeFileIfMissing(path.join(root, "data", "runs", ".gitkeep"), "");
   await writeFileIfMissing(path.join(root, "data", "state", "tasks.json"), "[]\n");
   await writeFileIfMissing(path.join(root, "data", "state", "runs.json"), "[]\n");

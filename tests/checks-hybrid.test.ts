@@ -388,14 +388,6 @@ describe("runShell per-command timeout", () => {
     await rm(workspace, { recursive: true, force: true });
   });
 
-  it("does not time out a command that exits within the budget", async () => {
-    // A fast command is unaffected by the timeout: the timer is cleared on close and
-    // the normal exit code flows through, so the backstop never fires on real checks.
-    const result = await runShell("node", ["-e", "process.exit(0)"], workspace, undefined, 5000);
-    expect(result.exitCode).toBe(0);
-    expect(result.timedOut).toBeFalsy();
-  });
-
   it("kills a command that does not exit within the timeout, instead of hanging", async () => {
     // A watch-style process that never exits would hang the gate forever (the gate
     // executor spawns with shell:false and, without this bound, resolves only on

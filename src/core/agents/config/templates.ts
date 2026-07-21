@@ -1,4 +1,7 @@
 import type { AgentConfigBundle, AgentToolConfig, ModelPoolConfig, RoutingProfileConfig } from "./types.ts";
+import { normalizeBundle } from "./normalize.ts";
+
+type PoolTemplate = Omit<ModelPoolConfig, "identity">;
 
 /**
  * Built-in tool/model templates. These preserve the bespoke launch behavior of
@@ -12,7 +15,6 @@ const CODEX_TOOL: AgentToolConfig = {
   enabled: true,
   builtin: true,
   supportsEffort: true,
-  effortLevels: ["low", "medium", "high"],
   cli: {
     outputFormat: "json",
     promptAsArg: false,
@@ -45,7 +47,6 @@ const CLAUDE_TOOL: AgentToolConfig = {
   enabled: true,
   builtin: true,
   supportsEffort: true,
-  effortLevels: ["low", "medium", "high", "xhigh", "max"],
   cli: {
     outputFormat: "stream-json",
     promptAsArg: false,
@@ -82,7 +83,6 @@ const GROK_TOOL: AgentToolConfig = {
   enabled: true,
   builtin: true,
   supportsEffort: false,
-  effortLevels: [],
   cli: {
     outputFormat: "streaming-json",
     promptAsArg: true,
@@ -110,7 +110,6 @@ const OPENCODE_TOOL: AgentToolConfig = {
   enabled: true,
   builtin: true,
   supportsEffort: true,
-  effortLevels: ["low", "medium", "high", "max"],
   cli: {
     outputFormat: "json",
     promptAsArg: true,
@@ -131,14 +130,13 @@ const OPENCODE_TOOL: AgentToolConfig = {
   usage: { kind: "unavailable" }
 };
 
-const CODEX_POOL: ModelPoolConfig = {
+const CODEX_POOL: PoolTemplate = {
   id: "codex-default",
   toolId: "codex",
   displayName: "Codex (default)",
   modelArgs: [],
   modelEnv: {},
   capabilities: ["author", "reviewer", "code", "plan", "review"],
-  qualityWeight: 80,
   tier: "paid",
   usage: { kind: "usage-only", softThresholdPercent: 80 },
   usageSource: "codex-app-server",
@@ -146,21 +144,21 @@ const CODEX_POOL: ModelPoolConfig = {
   builtin: true
 };
 
-const CLAUDE_MODELS: Array<[string, string, number]> = [
-  ["Fable", "claude-fable-5", 95],
-  ["Opus 4.8", "claude-opus-4-8", 90],
-  ["Sonnet 5", "claude-sonnet-5", 80],
-  ["Sonnet 4.5", "claude-sonnet-4-5", 70],
-  ["Haiku 4.5", "claude-haiku-4-5-20251001", 50]
+const CLAUDE_MODELS: Array<[string, string]> = [
+  ["Fable", "claude-fable-5"],
+  ["Opus 4.8", "claude-opus-4-8"],
+  ["Sonnet 5", "claude-sonnet-5"],
+  ["Sonnet 4.5", "claude-sonnet-4-5"],
+  ["Haiku 4.5", "claude-haiku-4-5-20251001"]
 ];
-const CLAUDE_POOLS: ModelPoolConfig[] = CLAUDE_MODELS.map(([displayName, modelId, qualityWeight]) => ({
+const CLAUDE_POOLS: PoolTemplate[] = CLAUDE_MODELS.map(([displayName, modelId]) => ({
   id: modelId,
   toolId: "claude",
   displayName,
   modelArgs: ["--model", modelId],
   modelEnv: {},
   capabilities: ["author", "reviewer", "code", "plan", "review"],
-  qualityWeight,
+  features: ["large-context"],
   tier: "paid",
   usage: { kind: "usage-only", softThresholdPercent: 80 },
   usageSource: "claude-oauth",
@@ -168,19 +166,19 @@ const CLAUDE_POOLS: ModelPoolConfig[] = CLAUDE_MODELS.map(([displayName, modelId
   builtin: true
 }));
 
-const GROK_MODELS: Array<[string, string, number]> = [
-  ["Grok Build 0.1", "grok-build-0.1", 80],
-  ["Composer 2.5", "grok-composer-2.5", 75],
-  ["Grok 4.5", "grok-4.5", 70]
+const GROK_MODELS: Array<[string, string]> = [
+  ["Grok Build 0.1", "grok-build-0.1"],
+  ["Composer 2.5", "grok-composer-2.5"],
+  ["Grok 4.5", "grok-4.5"]
 ];
-const GROK_POOLS: ModelPoolConfig[] = GROK_MODELS.map(([displayName, modelId, qualityWeight]) => ({
+const GROK_POOLS: PoolTemplate[] = GROK_MODELS.map(([displayName, modelId]) => ({
   id: modelId,
   toolId: "grok",
   displayName,
   modelArgs: ["--model", modelId],
   modelEnv: {},
   capabilities: ["author", "reviewer", "code", "plan", "review"],
-  qualityWeight,
+  features: ["large-context"],
   tier: "paid",
   usage: { kind: "unavailable" },
   usageSource: "none",
@@ -188,14 +186,13 @@ const GROK_POOLS: ModelPoolConfig[] = GROK_MODELS.map(([displayName, modelId, qu
   builtin: true
 }));
 
-const OPENCODE_POOL: ModelPoolConfig = {
+const OPENCODE_POOL: PoolTemplate = {
   id: "opencode-default",
   toolId: "opencode",
   displayName: "OpenCode (default)",
   modelArgs: [],
   modelEnv: {},
   capabilities: ["author", "reviewer", "code", "plan", "review"],
-  qualityWeight: 75,
   tier: "paid",
   usage: { kind: "unavailable" },
   usageSource: "none",
@@ -204,8 +201,8 @@ const OPENCODE_POOL: ModelPoolConfig = {
 };
 
 const DEFAULT_PROFILES: RoutingProfileConfig[] = [
-  { role: "author", requiredCapability: "author", minQuality: 0 },
-  { role: "reviewer", requiredCapability: "reviewer", minQuality: 0 }
+  { role: "author", requiredCapability: "author" },
+  { role: "reviewer", requiredCapability: "reviewer" }
 ];
 
 const KIRO_TOOL: AgentToolConfig = {
@@ -216,7 +213,6 @@ const KIRO_TOOL: AgentToolConfig = {
   enabled: true,
   builtin: true,
   supportsEffort: false,
-  effortLevels: [],
   // ACP is JSON-RPC over stdio (not flag-driven); live capabilities are filled
   // from the adapter defaults in normalize.ts.
   cli: {},
@@ -234,21 +230,21 @@ const KIRO_TOOL: AgentToolConfig = {
   usage: { kind: "unavailable" }
 };
 
-const KIRO_MODELS: Array<[string, string, number]> = [
-  ["Fable", "claude-fable-5", 95],
-  ["Opus 4.8", "claude-opus-4-8", 90],
-  ["Sonnet 5", "claude-sonnet-5", 80],
-  ["Sonnet 4.5", "claude-sonnet-4-5", 70],
-  ["Haiku 4.5", "claude-haiku-4-5-20251001", 50]
+const KIRO_MODELS: Array<[string, string]> = [
+  ["Fable", "claude-fable-5"],
+  ["Opus 4.8", "claude-opus-4-8"],
+  ["Sonnet 5", "claude-sonnet-5"],
+  ["Sonnet 4.5", "claude-sonnet-4-5"],
+  ["Haiku 4.5", "claude-haiku-4-5-20251001"]
 ];
-const KIRO_POOLS: ModelPoolConfig[] = KIRO_MODELS.map(([displayName, modelId, qualityWeight]) => ({
+const KIRO_POOLS: PoolTemplate[] = KIRO_MODELS.map(([displayName, modelId]) => ({
   id: `kiro-${modelId}`,
   toolId: "kiro",
   displayName,
   modelArgs: ["--model", modelId],
   modelEnv: {},
   capabilities: ["author", "reviewer", "code", "plan", "review"],
-  qualityWeight,
+  features: ["large-context"],
   tier: "paid",
   usage: { kind: "unavailable" },
   usageSource: "none",
@@ -259,14 +255,13 @@ const KIRO_POOLS: ModelPoolConfig[] = KIRO_MODELS.map(([displayName, modelId, qu
 // "Default" pools pass no --model, so the tool runs with whatever model it is
 // currently configured against (codex config.toml, claude/z.ai settings, etc.).
 // This is the safe default; the named pools below only apply when explicitly pinned.
-const CLAUDE_DEFAULT_POOL: ModelPoolConfig = {
+const CLAUDE_DEFAULT_POOL: PoolTemplate = {
   id: "claude-default",
   toolId: "claude",
   displayName: "Claude (default)",
   modelArgs: [],
   modelEnv: {},
   capabilities: ["author", "reviewer", "code", "plan", "review"],
-  qualityWeight: 50,
   tier: "paid",
   usage: { kind: "usage-only", softThresholdPercent: 80 },
   usageSource: "claude-oauth",
@@ -274,14 +269,13 @@ const CLAUDE_DEFAULT_POOL: ModelPoolConfig = {
   builtin: true
 };
 
-const GROK_DEFAULT_POOL: ModelPoolConfig = {
+const GROK_DEFAULT_POOL: PoolTemplate = {
   id: "grok-default",
   toolId: "grok",
   displayName: "Grok (default)",
   modelArgs: [],
   modelEnv: {},
   capabilities: ["author", "reviewer", "code", "plan", "review"],
-  qualityWeight: 50,
   tier: "paid",
   usage: { kind: "unavailable" },
   usageSource: "none",
@@ -289,14 +283,13 @@ const GROK_DEFAULT_POOL: ModelPoolConfig = {
   builtin: true
 };
 
-const KIRO_DEFAULT_POOL: ModelPoolConfig = {
+const KIRO_DEFAULT_POOL: PoolTemplate = {
   id: "kiro-default",
   toolId: "kiro",
   displayName: "Kiro (default)",
   modelArgs: [],
   modelEnv: {},
   capabilities: ["author", "reviewer", "code", "plan", "review"],
-  qualityWeight: 50,
   tier: "paid",
   usage: { kind: "unavailable" },
   usageSource: "none",
@@ -313,7 +306,6 @@ const CURSOR_TOOL: AgentToolConfig = {
   enabled: true,
   builtin: true,
   supportsEffort: false,
-  effortLevels: [],
   // ACP over stdio (`cursor-agent acp`); live capabilities come from adapter defaults.
   cli: {},
   promptTransport: "stdin",
@@ -335,14 +327,13 @@ const CURSOR_TOOL: AgentToolConfig = {
   usage: { kind: "unavailable" }
 };
 
-const CURSOR_DEFAULT_POOL: ModelPoolConfig = {
+const CURSOR_DEFAULT_POOL: PoolTemplate = {
   id: "cursor-default",
   toolId: "cursor",
   displayName: "Cursor (default)",
   modelArgs: [],
   modelEnv: {},
   capabilities: ["author", "reviewer", "code", "plan", "review"],
-  qualityWeight: 50,
   tier: "paid",
   usage: { kind: "unavailable" },
   usageSource: "none",
@@ -351,22 +342,22 @@ const CURSOR_DEFAULT_POOL: ModelPoolConfig = {
 };
 
 /** Curated defaults; full account list comes from Discover (`cursor-agent --list-models`). */
-const CURSOR_MODELS: Array<[string, string, number]> = [
-  ["Auto", "auto", 55],
-  ["Composer 2.5", "composer-2.5", 90],
-  ["Composer 2.5 Fast", "composer-2.5-fast", 85],
-  ["Opus 4.8", "claude-opus-4-8-high", 88],
-  ["Sonnet 5", "claude-sonnet-5-high", 80],
-  ["GPT-5.5", "gpt-5.5-medium", 78]
+const CURSOR_MODELS: Array<[string, string]> = [
+  ["Auto", "auto"],
+  ["Composer 2.5", "composer-2.5"],
+  ["Composer 2.5 Fast", "composer-2.5-fast"],
+  ["Opus 4.8", "claude-opus-4-8-high"],
+  ["Sonnet 5", "claude-sonnet-5-high"],
+  ["GPT-5.5", "gpt-5.5-medium"]
 ];
-const CURSOR_POOLS: ModelPoolConfig[] = CURSOR_MODELS.map(([displayName, modelId, qualityWeight]) => ({
+const CURSOR_POOLS: PoolTemplate[] = CURSOR_MODELS.map(([displayName, modelId]) => ({
   id: `cursor-${modelId}`,
   toolId: "cursor",
   displayName,
   modelArgs: ["--model", modelId],
   modelEnv: {},
   capabilities: ["author", "reviewer", "code", "plan", "review"],
-  qualityWeight,
+  features: ["large-context"],
   tier: "paid",
   usage: { kind: "unavailable" },
   usageSource: "none",
@@ -376,8 +367,8 @@ const CURSOR_POOLS: ModelPoolConfig[] = CURSOR_MODELS.map(([displayName, modelId
 }));
 
 export function builtinAgentConfigBundle(): AgentConfigBundle {
-  return {
-    tools: [CODEX_TOOL, CLAUDE_TOOL, GROK_TOOL, OPENCODE_TOOL, KIRO_TOOL, CURSOR_TOOL].map((tool) => ({ ...tool })),
+  return normalizeBundle({
+    tools: [CODEX_TOOL, CLAUDE_TOOL, GROK_TOOL, OPENCODE_TOOL, KIRO_TOOL, CURSOR_TOOL],
     pools: [
       CODEX_POOL,
       CLAUDE_DEFAULT_POOL,
@@ -389,7 +380,7 @@ export function builtinAgentConfigBundle(): AgentConfigBundle {
       ...KIRO_POOLS,
       CURSOR_DEFAULT_POOL,
       ...CURSOR_POOLS
-    ].map((pool) => ({ ...pool })),
-    profiles: DEFAULT_PROFILES.map((profile) => ({ ...profile }))
-  };
+    ],
+    profiles: DEFAULT_PROFILES
+  });
 }

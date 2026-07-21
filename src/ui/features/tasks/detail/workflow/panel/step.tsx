@@ -8,8 +8,10 @@ import {
   effectiveTaskEffort,
   isStepActive,
   modelPoolDisplayName,
+  preferredStepModelPool,
   resolvedStepAgent,
   stepAgentCapacityNote,
+  stepRunForStep,
   stepRunModelPoolId,
   ui,
   workflowStepAgent
@@ -18,10 +20,12 @@ import { StepChat } from "./step-chat.js";
 import { StepSettingMenu, type StepSettingOption } from "./step-setting-menu.js";
 import { agentVisual, effortBarSpec, type AgentVisual } from "./step-setting-visual.js";
 import { AgentLogo, isKnownAgentLogo } from "./agent-logo.js";
+import { EFFORT_OPTIONS } from "@ui/features/workflows/options.js";
 import { WorkflowEmptyState } from "./empty-state.js";
 import { MergeRequestChip } from "@ui/shared/components/task-chips.js";
 import { AttachmentChips } from "@ui/shared/components/attachments.js";
 import { TerminalPane } from "@ui/shared/components/terminal-pane.js";
+import { RoutingDecisionPanel } from "./routing-panel.js";
 import type { AgentSummary, HarnessTask, WorkflowSummary } from "@ui/app/types.js";
 
 function settingSwatch(visual: AgentVisual) {
@@ -121,10 +125,29 @@ async function setStepEffort(taskId: string, stepId: string, effort: string): Pr
 async function setStepModel(taskId: string, stepId: string, poolId: string): Promise<void> {
   try {
     if (poolId) {
-      await api(`/api/tasks/${taskId}/stage-model-pools/${encodeURIComponent(stepId)}`, {
-        method: "POST",
-        body: JSON.stringify({ poolId })
-      });
+      const preview = await api<{ warnings?: Array<{ message: string; requiresConfirmation: boolean }> }>(
+        `/api/tasks/${taskId}/stage-model-pools/${encodeURIComponent(stepId)}/preview`,
+        { method: "POST", body: JSON.stringify({ poolId }) }
+      );
+      const warnings = preview?.warnings?.filter((warning) => warning.requiresConfirmation) ?? [];
+      if (warnings.length) {
+        const ok = await confirm({
+          title: "Pin this model?",
+          message: warnings.map((warning) => warning.message).join(" "),
+          confirmLabel: "Pin anyway",
+          tone: "danger"
+        });
+        if (!ok) return;
+        await api(`/api/tasks/${taskId}/stage-model-pools/${encodeURIComponent(stepId)}`, {
+          method: "POST",
+          body: JSON.stringify({ poolId, acknowledgeWarnings: true })
+        });
+      } else {
+        await api(`/api/tasks/${taskId}/stage-model-pools/${encodeURIComponent(stepId)}`, {
+          method: "POST",
+          body: JSON.stringify({ poolId })
+        });
+      }
       toast("Model pinned for this step", { tone: "success" });
     } else {
       await api(`/api/tasks/${taskId}/stage-model-pools/${encodeURIComponent(stepId)}`, {
@@ -197,8 +220,8 @@ export function WorkflowStepPanel({
     }))
   ];
 
-  const effortLevels = effectiveAgent?.effortLevels ?? [];
-  const showEffort = hasAgent && Boolean(effectiveAgent?.supportsEffort) && effortLevels.length > 0;
+  const effortLevels = EFFORT_OPTIONS;
+  const showEffort = hasAgent && Boolean(effectiveAgent?.supportsEffort);
   const selectedEffort = task.stageEffortOverrides?.[stepId] ?? "";
   const effectiveEffort = effectiveTaskEffort(task, stepId) ?? "";
   const effortOptions: StepSettingOption[] = [
@@ -232,7 +255,9 @@ export function WorkflowStepPanel({
     (p) => p.toolId === effectiveAgentId && p.enabled && p.modelArgs.length > 0
   );
   const selectedModelPool = task.stageModelPoolOverrides?.[stepId] ?? "";
-  const chosenPool = stepModelPools.find((p) => p.id === selectedModelPool);
+  const workflowModelPool = preferredStepModelPool(task, stepId);
+  const effectiveModelPoolId = selectedModelPool || workflowModelPool || "";
+  const chosenPool = stepModelPools.find((p) => p.id === effectiveModelPoolId);
   const modelTriggerLabel = chosenPool?.displayName ?? stepModel ?? "default";
   const modelOptions: StepSettingOption[] = [
     {
@@ -251,10 +276,11 @@ export function WorkflowStepPanel({
     }))
   ];
   const showModelMenu = hasAgent && (stepModelPools.length > 0 || Boolean(selectedModelPool));
+  const stepRun = stepRunForStep(task, stepId);
   const interactiveStep = hasAgent && (step.kind === "agent_turn" || step.kind === "conversation");
   const interactiveSessionId = (ui.data?.interactiveSessions ?? []).find((s) => s.taskId === task.id)
     ?.terminalSessionId;
-  const showInteractiveComplete = interactiveStep && (Boolean(interactiveSessionId) || (isActive && isRunning));
+  const showInteractiveComplete = interactiveStep && Boolean(interactiveSessionId);
   const showSettingsActions =
     needsApproval || canRevertStep || showInteractiveComplete || Boolean(task.mergeRequest);
 
@@ -295,6 +321,14 @@ export function WorkflowStepPanel({
   return (
     <div class={`wf-pane${interactiveStep ? " is-terminal" : ""}`}>
       <div class="wf-details">
+        <div class="wf-detail wide wf-step-meta">
+          <span class="chip wf-step-kind">{step.kind.replace(/_/g, " ")}</span>
+          {step.kind === "review" && task.reviewState ? (
+            <span class="wf-review-verdict">
+              {`Reviewer: ${task.reviewState.replace(/_/g, " ")}${task.reviewRounds && task.reviewRounds > 0 ? ` · round ${task.reviewRounds}` : ""}`}
+            </span>
+          ) : null}
+        </div>
         <div class="wf-detail wide wf-settings-line">
           <div class="wf-settings-core" role="group" aria-label="Agent settings">
             <div class="wf-setting-cell">
@@ -372,7 +406,7 @@ export function WorkflowStepPanel({
                   <button
                     type="button"
                     class="btn btn-sm btn-primary"
-                    disabled={completeBusy || !interactiveSessionId}
+                    disabled={completeBusy}
                     onClick={() => void onInteractiveComplete("done")}
                   >
                     Done
@@ -380,7 +414,7 @@ export function WorkflowStepPanel({
                   <button
                     type="button"
                     class="btn btn-sm btn-danger"
-                    disabled={completeBusy || !interactiveSessionId}
+                    disabled={completeBusy}
                     onClick={() => void onInteractiveComplete("blocked")}
                   >
                     Block
@@ -408,6 +442,11 @@ export function WorkflowStepPanel({
             </span>
           </div>
         ) : null}
+        <RoutingDecisionPanel
+          taskId={task.id}
+          stepId={stepId}
+          {...(stepRun ? { run: stepRun } : {})}
+        />
       </div>
 
       {interactiveStep ? (

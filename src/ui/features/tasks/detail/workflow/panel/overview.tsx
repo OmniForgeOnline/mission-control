@@ -20,6 +20,19 @@ export function WorkflowOverviewPanel({ task }: { task: HarnessTask }) {
   const description = task.description?.trim() ?? "";
   const effort = effectiveTaskEffort(task);
 
+  const currentStepId = task.workflowRun?.currentStepId;
+  const currentStep = currentStepId ? workflow?.steps[currentStepId] : undefined;
+  const currentStepLabel = currentStepId ? currentStepId.replace(/_/g, " ") : null;
+  const currentStepApproved = currentStepId
+    ? task.workflowRun?.stepApprovals?.[currentStepId]?.status === "approved"
+    : false;
+  const needsApproval = currentStep?.approval === "required" && !currentStepApproved;
+  let stateHint = "";
+  if (currentStepId) {
+    if (needsApproval || task.blockedReason) stateHint = "awaiting approval";
+    else if (currentStep?.kind === "review") stateHint = "in review";
+  }
+
   return (
     <div class="wf-pane">
       <div class="wf-sec-title">Details</div>
@@ -28,6 +41,15 @@ export function WorkflowOverviewPanel({ task }: { task: HarnessTask }) {
           <span class="k">Workflow</span>
           <span class="v">{workflow?.name ?? task.workflowRun?.workflowId ?? "—"}</span>
         </div>
+        {currentStepLabel ? (
+          <div class="wf-detail">
+            <span class="k">Current step</span>
+            <span class="v">
+              {currentStepLabel}
+              {stateHint ? <span class="muted"> · {stateHint}</span> : null}
+            </span>
+          </div>
+        ) : null}
         <div class="wf-detail">
           <span class="k">Created</span>
           <span class="v">{relativeTime(task.createdAt)}</span>

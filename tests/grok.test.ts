@@ -17,7 +17,7 @@ function emptyPool(toolId: string): ModelPoolConfig {
     modelArgs: [],
     modelEnv: {},
     capabilities: [],
-    qualityWeight: 50,
+
     tier: "paid",
     usage: { kind: "usage-only" },
     usageSource: "none",

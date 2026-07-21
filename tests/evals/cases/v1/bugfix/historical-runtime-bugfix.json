@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "id": "historical-runtime-bugfix",
+  "workflowId": "bugfix",
+  "taskClass": "medium",
+  "inputs": {
+    "title": "Repair a production-facing state transition",
+    "description": "Reproduce a runtime failure, identify the root cause, add a regression test, and submit the smallest fix."
+  },
+  "permittedTools": ["claude", "codex"],
+  "outcome": {
+    "artifact": { "kind": "code-change" },
+    "deterministicChecks": [{ "kind": "workflow-step", "stepId": "handoff" }]
+  },
+  "risk": "high",
+  "provenance": {
+    "kind": "historical",
+    "source": "runtime-task-sha256:450abb3c9c702c8f",
+    "notes": "Privacy-reviewed summary of a completed local bugfix task; incident wording and external identifiers were removed.",
+    "redactions": ["task wording generalized", "transcript omitted", "repository and connector identifiers omitted"]
+  },
+  "replay": { "fixtures": { "artifactPaths": ["replay-artifacts/bugfix.txt"] } }
+}

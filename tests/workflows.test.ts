@@ -19,10 +19,12 @@ import {
   validateWorkflow,
   workflowFilePath
 } from "../src/core/workflows/index.ts";
+import { assertWorkflowSkillReferences, stepSkillReferenceError } from "../src/core/workflows/skill-validation.ts";
 import { advanceWorkflowStep, createWorkflowRun } from "../src/core/workflows/run.ts";
-import { buildResolvedStageAgents } from "../src/core/agents/stage-agents.ts";
+import { buildResolvedStageAgents, stageOverrideKey } from "../src/core/agents/stage-agents.ts";
+import { ensureHarnessRepository } from "../src/core/bootstrap/repository.ts";
 import type { ToolId } from "../src/core/types.ts";
-import { parse as parseYaml } from "yaml";
+import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 
 describe("workflow types", () => {
   let root: string;
@@ -63,6 +65,88 @@ describe("workflow types", () => {
     expect(run.workflowId).toBe("bugfix");
     expect(run.currentStepId).toBe("investigate");
     expect(run.completedSteps).toEqual([]);
+  });
+
+  it("parses optional step contract fields from workflow YAML", () => {
+    const workflow = validateWorkflow({
+      id: "contract-demo",
+      name: "Contract Demo",
+      initial: "start",
+      steps: {
+        start: {
+          kind: "agent_turn",
+          agent: "author",
+          approval: "none",
+          skill: "harness-turn-loop",
+          objective: "Ship the fix.",
+          required_artifact: "Pushed branch with tests.",
+          allowed_actions: ["read", "edit", "test"],
+          entry_context: "Operator approved the plan.",
+          exit_criteria: "Checks pass and branch is pushed.",
+          risk_class: "repo-mutation",
+          downstream_consumer: "review step",
+          next: "done"
+        },
+        done: { kind: "terminal", agent: "none", approval: "none" }
+      }
+    });
+    const step = workflow.steps["start"]!;
+    expect(step.objective).toBe("Ship the fix.");
+    expect(step.requiredArtifact).toBe("Pushed branch with tests.");
+    expect(step.allowedActions).toEqual(["read", "edit", "test"]);
+    expect(step.entryContext).toBe("Operator approved the plan.");
+    expect(step.exitCriteria).toBe("Checks pass and branch is pushed.");
+    expect(step.riskClass).toBe("repo-mutation");
+    expect(step.downstreamConsumer).toBe("review step");
+  });
+
+  it("rejects workflows that reference unknown skills when loading from harness root", async () => {
+    const isolatedRoot = await mkdtemp(path.join(tmpdir(), "harness-workflow-skill-"));
+    try {
+      await ensureHarnessRepository(isolatedRoot);
+      await ensureWorkflowFiles(isolatedRoot);
+      const broken = {
+        id: "broken-skill",
+        name: "Broken Skill",
+        initial: "start",
+        steps: {
+          start: {
+            kind: "agent_turn",
+            agent: "author",
+            approval: "none",
+            skill: "definitely-not-a-real-skill",
+            next: "done"
+          },
+          done: { kind: "terminal", agent: "none", approval: "none" }
+        }
+      };
+      await writeFile(workflowFilePath(isolatedRoot, "broken-skill"), stringifyYaml(broken));
+      resetWorkflowCache();
+      await expect(loadAllWorkflows(isolatedRoot)).rejects.toThrow(
+        "unknown skill(s): definitely-not-a-real-skill"
+      );
+    } finally {
+      resetWorkflowCache();
+      await rm(isolatedRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("assertWorkflowSkillReferences succeeds for bundled workflow skills", async () => {
+    await ensureHarnessRepository(root);
+    const workflow = await loadWorkflow(root, "code-feature");
+    await expect(assertWorkflowSkillReferences(root, workflow)).resolves.toBeUndefined();
+  });
+
+  it("stepSkillReferenceError reports missing skills before agent launch", async () => {
+    await ensureHarnessRepository(root);
+    const error = await stepSkillReferenceError(root, {
+      id: "implement",
+      kind: "agent_turn",
+      agent: "claude",
+      approval: "none",
+      skill: "definitely-not-a-real-skill"
+    });
+    expect(error).toContain('unknown skill "definitely-not-a-real-skill"');
   });
 
   it("rejects unknown next step references", () => {
@@ -128,7 +212,7 @@ describe("workflow types", () => {
 
     const blog = await loadWorkflow(root, "blog-post");
     expect(blog.steps['editorial_review']?.branch?.['changes_requested']).toBe("draft");
-    expect(blog.steps['seo_review']?.next).toBe("editorial_review");
+    expect(blog.steps['seo_pass']?.next).toBe("editorial_review");
 
     const debt = await loadWorkflow(root, "technical-debt");
     expect(debt.steps['review']?.branch?.['approved']).toBe("capture_followups");
@@ -231,7 +315,7 @@ describe("workflow types", () => {
 
     const resolved = buildResolvedStageAgents(
       workflow,
-      { overrides: { [stage]: overrideAgent } },
+      { overrides: { [stageOverrideKey(workflow.id, stage)]: overrideAgent } },
       "codex"
     );
     const entry = resolved.find((e) => e.stage === stage)!;

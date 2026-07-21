@@ -45,6 +45,7 @@ steps:
     agent: reviewer
     effort: medium
     skill: code-review
+    review_profile: code
     approval: none
     branch:
       approved: handoff

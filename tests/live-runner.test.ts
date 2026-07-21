@@ -167,7 +167,7 @@ function claudeTool(command: string, midTurnInput = true): AgentToolConfig {
     enabled: true,
     builtin: false,
     supportsEffort: false,
-    effortLevels: [],
+
     cli: { midTurnInput },
     usage: { kind: "usage-only" }
   };
@@ -181,7 +181,7 @@ function claudePool(): ModelPoolConfig {
     modelArgs: [],
     modelEnv: {},
     capabilities: [],
-    qualityWeight: 50,
+
     tier: "paid",
     usage: { kind: "usage-only" },
     usageSource: "none",
@@ -429,7 +429,7 @@ function structuredTool(id: "codex" | "opencode"): AgentToolConfig {
     enabled: true,
     builtin: false,
     supportsEffort: false,
-    effortLevels: [],
+
     cli: {},
     usage: { kind: "usage-only" }
   };
@@ -443,7 +443,7 @@ function poolFor(toolId: "codex" | "opencode"): ModelPoolConfig {
     modelArgs: [],
     modelEnv: {},
     capabilities: [],
-    qualityWeight: 50,
+
     tier: "paid",
     usage: { kind: "usage-only" },
     usageSource: "none",

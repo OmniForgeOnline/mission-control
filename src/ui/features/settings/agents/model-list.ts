@@ -9,7 +9,7 @@ export function isDefaultPool(pool: ModelPoolConfig): boolean {
 }
 
 /**
- * Default pool always first; then enabled, higher quality, then name.
+ * Default pool always first; then enabled, then display name.
  * Stable for card preview + modal.
  */
 export function sortPoolsForDisplay(pools: ModelPoolConfig[]): ModelPoolConfig[] {
@@ -18,7 +18,6 @@ export function sortPoolsForDisplay(pools: ModelPoolConfig[]): ModelPoolConfig[]
     const bDefault = isDefaultPool(b);
     if (aDefault !== bDefault) return aDefault ? -1 : 1;
     if (a.enabled !== b.enabled) return a.enabled ? -1 : 1;
-    if (a.qualityWeight !== b.qualityWeight) return b.qualityWeight - a.qualityWeight;
     return a.displayName.localeCompare(b.displayName);
   });
 }

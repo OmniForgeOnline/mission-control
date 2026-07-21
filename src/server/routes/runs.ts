@@ -3,6 +3,7 @@ import { Router } from "express";
 
 import { cleanRuns, listAllRuns } from "../../core/tasks/runs.ts";
 import { readRunEvents, subscribeRunEvents } from "../../core/runs/events.ts";
+import { inspectRunRoutingDecision } from "../../core/runs/routing-inspect.ts";
 import { deliverOperatorMessageToLiveTurn } from "../../runtime/sessions.ts";
 import { asyncRoute, param, type ServerOptions } from "./helpers.ts";
 import { stopRun } from "./run-control.ts";
@@ -117,6 +118,18 @@ export function createRunsRouter(options: ServerOptions): Router {
         }
         res.status(404).json({ error: error.message ?? "log not found" });
       }
+    })
+  );
+
+  router.get(
+    "/runs/:runId/routing",
+    asyncRoute(async (req, res) => {
+      const view = await inspectRunRoutingDecision(options.root, param(req.params["runId"], "runId"));
+      if (!view) {
+        res.status(404).json({ error: "Run routing not found." });
+        return;
+      }
+      res.json(view);
     })
   );
 

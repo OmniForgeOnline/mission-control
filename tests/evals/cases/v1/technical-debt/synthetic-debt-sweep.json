@@ -1,0 +1,42 @@
+{
+  "schemaVersion": 1,
+  "id": "synthetic-debt-sweep",
+  "workflowId": "technical-debt",
+  "taskClass": "synthetic",
+  "inputs": {
+    "title": "Reduce duplicate workflow validation helpers",
+    "description": "Consolidate overlapping workflow validation utilities without changing runtime behavior."
+  },
+  "permittedTools": [
+    "claude",
+    "codex"
+  ],
+  "outcome": {
+    "artifact": {
+      "kind": "code-change"
+    },
+    "deterministicChecks": [
+      {
+        "kind": "checks-outcome",
+        "outcome": "validated"
+      }
+    ],
+    "rubric": [
+      {
+        "id": "no-behavior-change",
+        "criterion": "Refactor preserves existing workflow validation semantics."
+      }
+    ]
+  },
+  "risk": "low",
+  "provenance": {
+    "kind": "synthetic",
+    "source": "Generated placeholder for unexercised technical-debt workflow.",
+    "notes": "Synthetic case — no historical Mission Control runs for this workflow yet."
+  },
+  "replay": {
+    "fixtures": {
+      "workspacePath": "tests/evals/fixtures/checks-validated"
+    }
+  }
+}

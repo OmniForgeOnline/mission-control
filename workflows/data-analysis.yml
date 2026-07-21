@@ -5,7 +5,7 @@ initial: question
 defaults:
   agents:
     author: claude
-    reviewer: claude
+    reviewer: codex
   effort: medium
 
 steps:
@@ -39,7 +39,18 @@ steps:
     effort: medium
     skill: data-analysis
     approval: none
-    next: handoff
+    next: review
+
+  review:
+    kind: review
+    agent: reviewer
+    effort: medium
+    skill: data-analysis
+    review_profile: data
+    approval: none
+    branch:
+      approved: handoff
+      changes_requested: recommend
 
   handoff:
     kind: terminal

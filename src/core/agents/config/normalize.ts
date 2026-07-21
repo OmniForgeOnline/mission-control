@@ -1,6 +1,10 @@
 import { asRecord } from "../../infra/record.ts";
-import type { EffortLevel } from "../../types.ts";
 import { CAPABILITY_KEYS, capabilitiesForAdapter } from "./capabilities.ts";
+import type { CapabilityFeature } from "../capability-profiles/types.ts";
+import {
+  finalizePoolIdentity,
+  normalizeModelPoolIdentity
+} from "./model-identity.ts";
 import type {
   AgentCliConfig,
   AgentConfigBundle,
@@ -27,7 +31,7 @@ const VALID_USAGE_KINDS = new Set<UsagePolicyKind>(["quota", "usage-only", "unav
 const VALID_USAGE_SOURCES = new Set<UsageSource>(["codex-app-server", "claude-oauth", "none"]);
 const VALID_PERIODS = new Set<QuotaPeriod>(["daily", "weekly", "monthly"]);
 const VALID_TIERS = new Set<ModelTier>(["free", "paid"]);
-const VALID_EFFORT_LEVELS = new Set<EffortLevel>(["low", "medium", "high", "xhigh", "max"]);
+const VALID_FEATURES = new Set<CapabilityFeature>(["vision", "tool-use", "large-context", "custom-provider"]);
 
 const DEFAULT_SOFT_THRESHOLD = 80;
 
@@ -89,14 +93,15 @@ export function normalizeUsagePolicy(raw: unknown, label: string): UsagePolicy {
   return { kind, period, limit, softThresholdPercent, ...(used !== undefined ? { used } : {}) };
 }
 
-function normalizeEffortLevels(value: unknown, label: string): EffortLevel[] {
-  const levels = stringArray(value);
-  for (const level of levels) {
-    if (!VALID_EFFORT_LEVELS.has(level as EffortLevel)) {
-      throw new Error(`${label} has invalid effort level "${level}".`);
+function normalizeFeatures(value: unknown, label: string): CapabilityFeature[] | undefined {
+  const features = stringArray(value);
+  if (!features.length) return undefined;
+  for (const feature of features) {
+    if (!VALID_FEATURES.has(feature as CapabilityFeature)) {
+      throw new Error(`${label} has invalid feature "${feature}".`);
     }
   }
-  return levels as EffortLevel[];
+  return features as CapabilityFeature[];
 }
 
 function normalizeCliConfig(raw: unknown): AgentCliConfig {
@@ -191,17 +196,9 @@ export function normalizeTool(raw: unknown): AgentToolConfig {
   if (!VALID_ADAPTERS.has(adapter)) {
     throw new Error(`tool "${id}" adapter must be codex, claude, grok, opencode, acp, or generic.`);
   }
-  const effortLevels = normalizeEffortLevels(record["effortLevels"], `tool "${id}"`);
-  const supportsEffort =
-    record["supportsEffort"] === true
-      ? true
-      : record["supportsEffort"] === false
-        ? false
-        : effortLevels.length > 0;
-  if (supportsEffort && effortLevels.length === 0) {
-    throw new Error(`tool "${id}" supports effort but declares no effortLevels.`);
-  }
+  const supportsEffort = record["supportsEffort"] === true;
   const commandTemplate = stringArray(record["commandTemplate"]);
+  const readOnlyCommandTemplate = stringArray(record["readOnlyCommandTemplate"]);
   const authProbe = normalizeAuthProbe(record["authProbe"], label);
   const setup = normalizeSetup(record["setup"], label);
   const transport = (str(record["promptTransport"]) ??
@@ -244,10 +241,10 @@ export function normalizeTool(raw: unknown): AgentToolConfig {
     enabled: record["enabled"] === undefined ? true : Boolean(record["enabled"]),
     builtin: record["builtin"] === true,
     supportsEffort,
-    effortLevels,
     cli: withCapabilityDefaults(adapter, normalizeCliConfig(record["cli"])),
     usage: normalizeUsagePolicy(record["usage"], `tool "${id}"`),
     ...(commandTemplate.length ? { commandTemplate } : {}),
+    ...(readOnlyCommandTemplate.length ? { readOnlyCommandTemplate } : {}),
     promptTransport: transport,
     ...(inputFormat !== undefined ? { promptInputFormat: inputFormat } : {}),
     ...(maxPromptArgBytes !== undefined ? { maxPromptArgBytes: Math.floor(maxPromptArgBytes) } : {}),
@@ -281,10 +278,6 @@ export function normalizeModelPool(raw: unknown): ModelPoolConfig {
   const record = asRecord(raw, "modelPool")!;
   const id = identifier(record["id"], "modelPool.id");
   const toolId = identifier(record["toolId"], `modelPool "${id}" toolId`);
-  const qualityRaw = Number(record["qualityWeight"] ?? 50);
-  if (!Number.isFinite(qualityRaw) || qualityRaw < 0 || qualityRaw > 100) {
-    throw new Error(`modelPool "${id}" qualityWeight must be between 0 and 100.`);
-  }
   const tier = (str(record["tier"]) ?? "paid") as ModelTier;
   if (!VALID_TIERS.has(tier)) {
     throw new Error(`modelPool "${id}" tier must be free or paid.`);
@@ -293,34 +286,34 @@ export function normalizeModelPool(raw: unknown): ModelPoolConfig {
   if (!VALID_USAGE_SOURCES.has(usageSource)) {
     throw new Error(`modelPool "${id}" usageSource must be codex-app-server, claude-oauth, or none.`);
   }
+  const modelArgs = stringArray(record["modelArgs"]);
+  const modelEnv = normalizeModelEnv(record["modelEnv"], `modelPool "${id}"`);
+  const identity = normalizeModelPoolIdentity(record["identity"], toolId, modelArgs, modelEnv, `modelPool "${id}"`);
+  const features = normalizeFeatures(record["features"], `modelPool "${id}"`);
   return {
     id,
     toolId,
     displayName: str(record["displayName"]) ?? id,
-    modelArgs: stringArray(record["modelArgs"]),
-    modelEnv: normalizeModelEnv(record["modelEnv"], `modelPool "${id}"`),
+    modelArgs,
+    modelEnv,
     capabilities: stringArray(record["capabilities"]),
-    qualityWeight: Math.floor(qualityRaw),
     tier,
     usage: normalizeUsagePolicy(record["usage"], `modelPool "${id}"`),
     usageSource,
     enabled: record["enabled"] === undefined ? true : Boolean(record["enabled"]),
-    builtin: record["builtin"] === true
+    builtin: record["builtin"] === true,
+    identity,
+    ...(features ? { features } : {})
   };
 }
 
 export function normalizeRoutingProfile(raw: unknown): RoutingProfileConfig {
   const record = asRecord(raw, "routingProfile")!;
   const role = identifier(record["role"], "routingProfile.role");
-  const minRaw = Number(record["minQuality"] ?? 0);
-  if (!Number.isFinite(minRaw) || minRaw < 0 || minRaw > 100) {
-    throw new Error(`routingProfile "${role}" minQuality must be between 0 and 100.`);
-  }
   const requiredCapability = str(record["requiredCapability"]);
   const preferToolIds = stringArray(record["preferToolIds"]);
   return {
     role,
-    minQuality: Math.floor(minRaw),
     ...(requiredCapability !== undefined ? { requiredCapability } : {}),
     ...(preferToolIds.length ? { preferToolIds } : {})
   };
@@ -341,12 +334,17 @@ export function normalizeBundle(raw: {
   assertUnique(profiles.map((profile) => profile.role), "routing profile role");
 
   const toolIds = new Set(tools.map((tool) => tool.id));
+  const toolsById = new Map(tools.map((tool) => [tool.id, tool]));
+  const finalizedPools: ModelPoolConfig[] = [];
   for (const pool of pools) {
     if (!toolIds.has(pool.toolId)) {
       throw new Error(`model pool "${pool.id}" references unknown tool "${pool.toolId}".`);
     }
+    const tool = toolsById.get(pool.toolId)!;
+    const finalized = finalizePoolIdentity(tool, pool);
+    finalizedPools.push(finalized);
   }
-  return { tools, pools, profiles };
+  return { tools, pools: finalizedPools, profiles };
 }
 
 function assertUnique(values: string[], label: string): void {

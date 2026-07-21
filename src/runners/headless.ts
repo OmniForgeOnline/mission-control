@@ -1,6 +1,7 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import path from "node:path";
 import { extractSessionIdFromStreamEvent, parseAgentOutput } from "../core/agents/output.ts";
+import { inferAgentFailureReason } from "../core/agents/provider-failure.ts";
 import { writeLaunchExtensions } from "../mcp/launcher.ts";
 import type { ToolId, EffortLevel } from "../core/types.ts";
 import type { AgentToolConfig, ModelPoolConfig } from "../core/agents/config/types.ts";
@@ -314,7 +315,10 @@ export class HeadlessAgentRunner implements AgentRunner {
     // stderr only when the agent printed nothing structured.
     const stderrReason =
       !hasStructuredReply && stderr ? stderr.split(/\r?\n/).slice(-3).join(" ").trim() : undefined;
-    const errorReason = parsed.errorReason ?? stderrReason;
+    const errorReason =
+      parsed.errorReason ??
+      stderrReason ??
+      inferAgentFailureReason(stdout, stderr, this.agent);
     return {
       reply: parsed.reply,
       ...(parsed.sessionId !== undefined ? { sessionId: parsed.sessionId } : {}),

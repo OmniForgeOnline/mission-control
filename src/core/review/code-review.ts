@@ -7,6 +7,13 @@ import type { ToolId } from "../types.ts";
 import { walkDir } from "../infra/walk-dir.ts";
 import type { HarnessTask, ReviewState } from "../types.ts";
 import { resolveComparisonBaseBranch, type PostTurnGitState, type PreparedWorkspace } from "../worktrees/worktrees.ts";
+import {
+  getReviewProfileDefinition,
+  resolveReviewerIndependence,
+  resolveReviewProfile
+} from "./profiles.ts";
+import type { ReviewProfileId } from "../workflows/types.ts";
+import type { WorkflowStep } from "../workflows/types.ts";
 
 export interface ReviewFinding {
   file_path?: string;
@@ -56,6 +63,10 @@ export interface ReviewPromptInput {
   authorAgent: ToolId;
   context: ReviewContext;
   memorySection?: string;
+  step?: WorkflowStep;
+  profile?: ReviewProfileId;
+  reviewerIndependence?: boolean;
+  supportingEvidence?: string;
 }
 
 const MAX_CHANGED_FILES = 40;
@@ -63,75 +74,25 @@ const MAX_PREFETCH_FILES = 10;
 const MAX_BYTES_PER_FILE = 8_000;
 const MAX_PREFETCH_TOTAL = 32_000;
 
-const REVIEW_STANDARDS = `## Review standards
-
-You are a senior engineer reviewing the author's work. The harness has already checked out their branch in the workspace above and attached diff summaries plus changed-file excerpts. Use that material first; read additional files in cwd only when you need surrounding context.
-
-Focus findings on **changed lines** in the diff. Use the worktree to validate integration impact, test claims, and caller/callee relationships.
-
-### Do not comment on
-
-- Import/module path verification (IDEs and compilers catch these)
-- Syntax or type errors (build and type checkers catch these)
-- Style, formatting, or naming (linters/formatters handle these)
-- Generic suggestions without concrete evidence ("consider adding error handling")
-- Logging/debug statements unless sensitive data (tokens, PII, secrets) is logged
-- Theoretical edge cases that assume broken system invariants without diff evidence
-
-### Distinguish bugs from improvements
-
-Flag as bugs: removals that break functionality, data loss, regressions, control-flow errors (unreachable code, double HTTP responses, missing return after response).
-
-Do not flag as bugs: new error handling, defensive checks, logging, or fallback logic.
-
-### Severity (only report confidence ≥ 0.85)
-
-- CRITICAL: SQL injection, auth bypass, data loss, system crash, feature breakage
-- HIGH: race conditions, memory leaks, breaking API changes, significant regressions
-- MEDIUM: logic errors, missing validation, measurable performance issues
-- LOW: minor edge cases with evident code improvement (use sparingly)
-
-### Evidence rules
-
-- Each finding must quote verbatim evidence from the diff or a changed-file excerpt above.
-- Comment only on lines present in the diff.
-- If you cannot point to exact evidence, skip the finding.
-- Cross-check the author's handoff and task description, but do not approve without reading the attached diff.`;
-
-const OUTPUT_SCHEMA = `## Output format
-
-Reply with a fenced JSON block first, then a brief prose explanation.
-
-\`\`\`json
-{
-  "decision": "approve" | "request_changes" | "comment",
-  "summary": "<one sentence overall assessment>",
-  "comments": [
-    {
-      "file_path": "path/from/repo/root",
-      "start_line": 0,
-      "end_line": 0,
-      "severity": "CRITICAL|HIGH|MEDIUM|LOW",
-      "category": "BUG|SECURITY|PERFORMANCE|ARCHITECTURE",
-      "confidence": 0.95,
-      "title": "short issue title",
-      "rationale": "specific impact in plain language",
-      "evidence": "verbatim snippet from the diff",
-      "fix_hint": "optional concrete fix"
-    }
-  ]
+function formatIndependenceSection(enabled: boolean): string {
+  if (!enabled) {
+    return "## Reviewer independence\n\nUse the author's handoff as helpful context, but verify claims against the attached artifact and evidence.";
+  }
+  return "## Reviewer independence\n\nReview independently of the author. Do not accept claims, metrics, or implementation details without verifying them in the attached artifact, diff, or bounded supporting evidence.";
 }
-\`\`\`
 
-Decision rules:
-- \`approve\`: no actionable issues and an empty \`comments\` array
-- \`request_changes\`: any finding, code smell, improvement, or bug the author should address, regardless of severity
-- \`comment\`: avoid this for code-review loops; if you include comments, the harness sends the task back to the author
+function formatArtifactSection(): string {
+  return `## Target artifact
 
-Only include comments with confidence ≥ 0.85 and verbatim diff evidence.
-- Escape newlines inside JSON string values as \\n (raw line breaks inside \`evidence\` break parsing).
+The author's final message and changed-file excerpts below are the primary artifact under review. Use bounded supporting evidence when supplied; read additional files in cwd only when excerpts are insufficient.`;
+}
 
-Do not modify files, commit, or push. Reviewers never change the workspace.`;
+function formatSupportingEvidenceSection(supportingEvidence?: string): string {
+  if (!supportingEvidence?.trim()) return "";
+  return `## Bounded supporting evidence
+
+${supportingEvidence.trim()}`;
+}
 
 async function readFileExcerpt(filePath: string, maxBytes: number): Promise<string> {
   try {
@@ -259,19 +220,44 @@ The diff and file excerpts below were gathered programmatically from this checko
 }
 
 export function buildReviewerPrompt(input: ReviewPromptInput): string {
-  const { task, authorAgent, context, memorySection = "" } = input;
+  const { task, authorAgent, context, memorySection = "", supportingEvidence } = input;
+  const profile = input.profile ?? (input.step ? resolveReviewProfile(input.step) : "code");
+  const profileDefinition = getReviewProfileDefinition(profile);
+  const reviewerIndependence =
+    input.reviewerIndependence ??
+    (input.step ? resolveReviewerIndependence(input.step, profile) : true);
   const commitSection = context.commitSubjects.length
     ? context.commitSubjects.map((subject) => `- ${subject}`).join("\n")
     : "- (none)";
   const changedFilesSection = context.changedFiles.length
     ? context.changedFiles.map((file) => `- ${file}`).join("\n")
     : "- (none)";
+  const diffSections = profileDefinition.includeDiffSections
+    ? `## Commits on branch
+${commitSection}
+
+## Changed files
+${changedFilesSection}
+
+## Diff stat
+${context.diffStat || "(no diff stat)"}
+
+## Diff against base branch
+${context.diff || "(no diff captured)"}${context.diffTruncated ? "\n\n[diff truncated — use changed-file excerpts and cwd reads for full context]" : ""}
+
+`
+    : `## Artifact files
+${changedFilesSection}
+
+`;
 
   return `You are the *reviewer* for a harness task. The author agent (${authorAgent}) finished their turn and the harness prepared this review context for you.
 
-The full \`code-review\` rubric is inlined below — do not depend on \`read_skill\` for it.
+Review profile: \`${profile}\` (${profileDefinition.label}). The full rubric is inlined below — do not depend on \`read_skill\` for it.
 
-${memorySection ? `${memorySection}\n` : ""}${formatWorkspaceSection(context)}
+${memorySection ? `${memorySection}\n` : ""}${formatIndependenceSection(reviewerIndependence)}
+
+${formatWorkspaceSection(context)}
 
 ## Task title
 ${task.title}
@@ -285,24 +271,14 @@ ${context.authorReply || "(no final message provided)"}
 ## Checks
 ${context.checksNote}
 
-## Commits on branch
-${commitSection}
-
-## Changed files
-${changedFilesSection}
-
-## Diff stat
-${context.diffStat || "(no diff stat)"}
-
-## Diff against base branch
-${context.diff || "(no diff captured)"}${context.diffTruncated ? "\n\n[diff truncated — use changed-file excerpts and cwd reads for full context]" : ""}
-
-## Changed-file excerpts
+${profileDefinition.emphasizeArtifact ? `${formatArtifactSection()}\n\n` : ""}${diffSections}## Changed-file excerpts
 ${context.prefetchedFiles}
 
-${REVIEW_STANDARDS}
+${formatSupportingEvidenceSection(supportingEvidence)}
 
-${OUTPUT_SCHEMA}`;
+${profileDefinition.standards}
+
+${profileDefinition.outputGuidance}`;
 }
 
 function parseStructuredComment(raw: unknown): ReviewFinding | null {

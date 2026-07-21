@@ -1,0 +1,41 @@
+{
+  "schemaVersion": 1,
+  "id": "synthetic-ticket-triage",
+  "workflowId": "customer-support",
+  "taskClass": "synthetic",
+  "inputs": {
+    "title": "Triage connector sync failure report",
+    "description": "Operator reports tasks not syncing to ClickUp after upgrade; produce a support response with repro checklist and escalation criteria.",
+    "context": {
+      "channel": "email",
+      "severity": "medium"
+    }
+  },
+  "permittedTools": [
+    "claude"
+  ],
+  "outcome": {
+    "artifact": {
+      "kind": "support-response",
+      "requiredSections": [
+        "Summary",
+        "Repro steps",
+        "Next actions"
+      ]
+    },
+    "rubric": [
+      {
+        "id": "no-secrets",
+        "criterion": "Response does not request or echo live API tokens."
+      }
+    ]
+  },
+  "risk": "low",
+  "provenance": {
+    "kind": "synthetic",
+    "source": "Generated placeholder for unexercised customer-support workflow.",
+    "redactions": [
+      "customer email addresses"
+    ]
+  }
+}

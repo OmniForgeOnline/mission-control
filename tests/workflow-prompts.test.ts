@@ -13,6 +13,8 @@ import {
   normalizeReplyForPlanExtraction,
   splitPlanningMessage
 } from "../src/core/workflows/prompts.ts";
+import { buildStableAgentPrefix, buildInitialPrompt } from "../src/daemon/prompts.ts";
+import { buildStepContractSection } from "../src/core/workflows/step-contract.ts";
 import type { WorkflowStep } from "../src/core/workflows/index.ts";
 import type { HarnessAttachment, HarnessTask } from "../src/core/types.ts";
 
@@ -203,6 +205,74 @@ describe("workflow prompts", () => {
     expect(prompt).toContain('filename "clickup-spec.md"');
   });
 
+  it("buildStepContractSection identifies the configured skill loaded in the prompt", () => {
+    const section = buildStepContractSection("code-feature", {
+      id: "implement",
+      kind: "agent_turn",
+      agent: "claude",
+      skill: "pr-driven-execution",
+      approval: "required",
+      modifiesRepo: true
+    });
+    expect(section).toContain("Workflow: `code-feature`");
+    expect(section).toContain("Step: `implement`");
+    expect(section).toContain("is loaded below");
+    expect(section).toContain("`pr-driven-execution`");
+    expect(section).not.toContain("if it helps");
+    expect(section).not.toContain("# Mission Control");
+  });
+
+  it("buildStepContractSection omits read_skill when no skill is configured", () => {
+    const section = buildStepContractSection("bugfix", {
+      id: "investigate",
+      kind: "agent_turn",
+      agent: "claude",
+      approval: "none"
+    });
+    expect(section).toContain("Workflow: `bugfix`");
+    expect(section).not.toContain("read_skill");
+  });
+
+  it("buildConversationPrompt identifies the configured skill loaded in the header", () => {
+    const step: WorkflowStep = {
+      id: "plan",
+      kind: "conversation",
+      agent: "codex",
+      skill: "product-discovery",
+      approval: "none"
+    };
+    const stablePrefix = buildStableAgentPrefix("/tmp/root", stubTask([]), "- skills", "code-feature", step);
+    const prompt = buildConversationPrompt(stubTask([]), step, "/tmp/workspace", "/tmp/root", stablePrefix);
+    expect(prompt).toContain("loaded in the prompt header");
+    expect(prompt).not.toContain("if it helps");
+    expect(prompt).toContain("Workflow step contract");
+  });
+
+  it("initial and follow-up agent prompts share the same workflow and step contract", () => {
+    const step: WorkflowStep = {
+      id: "implement",
+      kind: "agent_turn",
+      agent: "claude",
+      skill: "pr-driven-execution",
+      approval: "required",
+      modifiesRepo: true
+    };
+    const task = stubTask([
+      { id: "1", author: "agent", body: "Working.", createdAt: "2026-01-01T00:00:00.000Z" },
+      { id: "2", author: "operator", body: "Also cover edge cases.", createdAt: "2026-01-01T00:01:00.000Z" }
+    ]);
+    const skills = "- pr-driven-execution: execute (skills/pr-driven-execution/SKILL.md)";
+    const stablePrefix = buildStableAgentPrefix("/tmp/root", task, skills, "code-feature", step);
+    const initial = buildInitialPrompt("/tmp/root", task, skills, { cwd: "/tmp/ws", isRepo: true, created: true, repoPath: "/repo", branch: "feat/x" }, "code-feature", step);
+    const followup = buildFollowupPrompt(task, "/tmp/root", stablePrefix);
+    expect(initial).toContain("Workflow: `code-feature`");
+    expect(initial).toContain("Step: `implement`");
+    expect(followup).toContain("Workflow: `code-feature`");
+    expect(followup).toContain("Step: `implement`");
+    expect(followup).toContain("Also cover edge cases.");
+    expect(initial).not.toMatch(/description:\s*.+\n[\s\S]*---[\s\S]*# /);
+  });
+
   it("buildFollowupPrompt surfaces attachment refs on the latest operator message", () => {
     const attachment: HarnessAttachment = {
       id: "33333333-3333-4333-8333-333333333333",
@@ -216,7 +286,7 @@ describe("workflow prompts", () => {
       { id: "1", author: "operator", body: "Look at this log.", createdAt: "2026-01-01T00:00:00.000Z", attachments: [attachment] }
     ]);
 
-    const prompt = buildFollowupPrompt(task, "/tmp/root");
+    const prompt = buildFollowupPrompt(task, "/tmp/root", "## Stable prefix");
     expect(prompt).toContain("/tmp/root/data/state/attachments/files/33333333-3333-4333-8333-333333333333");
     expect(prompt).toContain('filename "error.log"');
   });
@@ -236,7 +306,7 @@ describe("workflow prompts", () => {
     ]);
     task.attachments = [attachment];
 
-    const prompt = buildFollowupPrompt(task, "/tmp/root");
+    const prompt = buildFollowupPrompt(task, "/tmp/root", "## Stable prefix");
     expect(prompt).toContain("/tmp/root/data/state/attachments/files/66666666-6666-4666-8666-666666666666");
     expect(prompt).toContain('filename "clickup-brief.pdf"');
     expect(prompt).toContain("4096 bytes");
@@ -256,7 +326,7 @@ describe("workflow prompts", () => {
     ]);
     task.attachments = [shared];
 
-    const prompt = buildFollowupPrompt(task, "/tmp/root");
+    const prompt = buildFollowupPrompt(task, "/tmp/root", "## Stable prefix");
     const occurrences = prompt.split("77777777-7777-4777-8777-777777777777").length - 1;
     expect(occurrences).toBe(1);
   });

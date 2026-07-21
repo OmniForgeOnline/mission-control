@@ -130,7 +130,7 @@ function kiroTool(command: string): AgentToolConfig {
     enabled: true,
     builtin: false,
     supportsEffort: false,
-    effortLevels: [],
+
     cli: {},
     usage: { kind: "usage-only" }
   };
@@ -144,7 +144,7 @@ function kiroPool(): ModelPoolConfig {
     modelArgs: [],
     modelEnv: {},
     capabilities: [],
-    qualityWeight: 50,
+
     tier: "paid",
     usage: { kind: "usage-only" },
     usageSource: "none",

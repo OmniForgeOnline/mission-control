@@ -7,6 +7,7 @@ import { createRun, listAllRuns, updateRun } from "../core/tasks/runs.ts";
 import { resolveHarnessDefaultRouting } from "../core/agents/stage-agents.ts";
 import { loadAgentConfig } from "../core/agents/config/store.ts";
 import { resolveLaunchByIds } from "../core/agents/config/launch.ts";
+import { resolveRunIdentityFromRouting } from "../core/agents/config/run-identity.ts";
 import { markPoolExhaustedFromFailure } from "../core/agents/config/usage-store.ts";
 import { formatNoRouteMessage } from "../core/agents/config/optimizer.ts";
 import type { ModelPoolId, ToolId, HarnessTask } from "../core/types.ts";
@@ -155,6 +156,8 @@ export async function runAutonomyAgentTurn(
     const modelPool: ModelPoolId = routing.modelPoolId;
     console.log(`autonomy: ${spec.taskId} -> ${agent}/${modelPool} (turn ${turnNumber})`);
 
+    const resolvedIdentity = await resolveRunIdentityFromRouting(root, agent, modelPool);
+
     const run = await createRun(root, {
       taskId: spec.taskId,
       taskTitle: spec.taskTitle,
@@ -163,7 +166,8 @@ export async function runAutonomyAgentTurn(
       status: "running",
       startedAt,
       artifacts: ["prompt.md", "summary.md", "log.txt"],
-      modelPoolId: modelPool
+      modelPoolId: modelPool,
+      ...(resolvedIdentity ? { resolvedIdentity } : {})
     });
 
     const runDir = path.join(root, "data", "runs", run.id);

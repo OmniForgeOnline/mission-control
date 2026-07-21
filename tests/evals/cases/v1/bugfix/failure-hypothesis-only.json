@@ -1,0 +1,48 @@
+{
+  "schemaVersion": 1,
+  "id": "failure-hypothesis-only",
+  "workflowId": "bugfix",
+  "taskClass": "failure",
+  "inputs": {
+    "title": "Tasks stuck in running state",
+    "description": "Sometimes tasks never finish. Probably a daemon bug.",
+    "context": {
+      "failureMode": "Investigation ends with unsupported hypothesis and no reproduction."
+    }
+  },
+  "permittedTools": [
+    "codex",
+    "claude"
+  ],
+  "outcome": {
+    "artifact": {
+      "kind": "investigation-note"
+    },
+    "deterministicChecks": [
+      {
+        "kind": "workflow-step",
+        "stepId": "plan_gate"
+      }
+    ],
+    "rubric": [
+      {
+        "id": "block-fix",
+        "criterion": "Implementation does not start without reproduction, affected surface, and confidence."
+      },
+      {
+        "id": "evidence",
+        "criterion": "Investigation records attempted repro steps even when inconclusive."
+      }
+    ]
+  },
+  "risk": "medium",
+  "provenance": {
+    "kind": "synthetic",
+    "source": "Failure pattern from bugfix tickets advanced without evidence.",
+    "notes": "Pattern-synthesized failure mode; no single source task id archived.",
+    "redactions": [
+      "operator screenshots",
+      "production hostnames"
+    ]
+  }
+}

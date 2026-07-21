@@ -18,11 +18,18 @@ steps:
     next: implementation_plan
 
   implementation_plan:
-    kind: conversation
+    kind: agent_turn
     agent: codex
     effort: high
     skill: technical-investigation
+    modifies_repo: false
     approval: none
+    next: plan_gate
+
+  plan_gate:
+    kind: agent_turn
+    agent: none
+    approval: required
     next: apply_change
 
   apply_change:
@@ -52,6 +59,7 @@ steps:
     agent: reviewer
     effort: high
     skill: code-review
+    review_profile: code
     approval: none
     branch:
       approved: handoff

@@ -147,6 +147,12 @@ function timelineEntries(task: HarnessTask): Array<{ title: string; at?: string 
       at: task.updatedAt
     });
   }
+  if (task.reviewState && task.reviewRounds && task.reviewRounds > 0) {
+    entries.push({
+      title: `Reviewer: ${task.reviewState.replace(/_/g, " ")}`,
+      at: task.lastProgressAt ?? task.updatedAt
+    });
+  }
 
   const run = task.workflowRun;
   if (run) {

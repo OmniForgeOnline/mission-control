@@ -126,6 +126,20 @@ describe("harness settings", () => {
       .send({ activityThresholds: { staleMs: 1000, longRunMs: 1000 } })
       .expect(400);
   });
+
+  it("sets and clears a workflow-scoped agent default via settings", async () => {
+    const app = createServer({ root, testMode: true });
+    await request(app)
+      .post("/api/settings/stage-agents/review")
+      .send({ workflowId: "code-feature", agent: "claude" })
+      .expect(200);
+    expect(await resolveAgentForStep(root, "code-feature", "review")).toBe("claude");
+
+    await request(app)
+      .delete("/api/settings/stage-agents/review?workflowId=code-feature")
+      .expect(200);
+    expect(await resolveAgentForStep(root, "code-feature", "review")).toBe("codex");
+  });
 });
 
 describe("workflow effort defaults", () => {

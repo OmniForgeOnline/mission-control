@@ -2,16 +2,20 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import {
+  adoptAmbiguousLegacyOverride,
   bulkSetStageAgentOverrides,
   clearStageAgentOverride,
   loadStageAgentOverrides,
   resolveAgentForStep,
   resolveStepRouting,
-  setStageAgentOverride
+  setStageAgentOverride,
+  stageOverrideKey
 } from "../src/core/agents/stage-agents.ts";
 import { ensureHarnessRepository } from "../src/core/bootstrap/repository.ts";
+import { writeJsonFile } from "../src/core/infra/fs.ts";
 import { upsertExtension } from "../src/core/agents/extensions/store.ts";
 import { resolveStepExtensions } from "../src/core/agents/extensions/launch.ts";
+import { loadAgentConfig, saveAgentConfig } from "../src/core/agents/config/store.ts";
 import {
   BUNDLED_WORKFLOW_IDS,
   isWorkflowAgentTool,
@@ -87,8 +91,8 @@ describe("stage agents", () => {
   it("supports bulk overrides for multiple steps", async () => {
     await bulkSetStageAgentOverrides(root, ["implement", "plan"], "codex");
     const config = await loadStageAgentOverrides(root);
-    expect(config.overrides['implement']).toBe("codex");
-    expect(config.overrides['plan']).toBe("codex");
+    expect(config.overrides[stageOverrideKey("code-feature", "implement")]).toBe("codex");
+    expect(config.overrides[stageOverrideKey("code-feature", "plan")]).toBe("codex");
     expect(await resolveAgentForStep(root, "code-feature", "implement")).toBe("codex");
     expect(await resolveAgentForStep(root, "code-feature", "plan")).toBe("codex");
   });
@@ -102,7 +106,7 @@ describe("stage agents", () => {
     await setStageAgentOverride(root, "review", overrideAgent);
     expect(await resolveAgentForStep(root, "code-feature", "review")).toBe(overrideAgent);
 
-    await clearStageAgentOverride(root, "review");
+    await clearStageAgentOverride(root, "review", "code-feature");
     expect(await resolveAgentForStep(root, "code-feature", "review")).toBe(baseline);
   });
 
@@ -120,11 +124,106 @@ describe("stage agents", () => {
     expect(await resolveAgentForStep(root, "bugfix", "fix")).toBe("grok");
   });
 
+  it("rejects clearing overrides for unknown workflow steps", async () => {
+    await expect(clearStageAgentOverride(root, "implement", "bugfix")).rejects.toThrow(
+      'Unknown workflow step: implement'
+    );
+  });
+
   it("persists workflow-specific stage agent overrides on disk", async () => {
     await setStageAgentOverride(root, "fix", "grok", "bugfix");
     const config = await loadStageAgentOverrides(root);
-    expect(config.overrides['fix']).toBe("grok");
+    expect(config.overrides[stageOverrideKey("bugfix", "fix")]).toBe("grok");
     expect(await resolveAgentForStep(root, "bugfix", "fix")).toBe("grok");
+  });
+
+  it("keeps distinct overrides for the same step id across workflows", async () => {
+    const codeFeatureBaseline = await resolveAgentForStep(root, "code-feature", "review");
+    const bugfixBaseline = await resolveAgentForStep(root, "bugfix", "review");
+    const codeFeatureOverride: ToolId = codeFeatureBaseline === "claude" ? "codex" : "claude";
+    const bugfixOverride: ToolId = bugfixBaseline === "claude" ? "codex" : "claude";
+
+    await setStageAgentOverride(root, "review", codeFeatureOverride, "code-feature");
+    await setStageAgentOverride(root, "review", bugfixOverride, "bugfix");
+
+    expect(await resolveAgentForStep(root, "code-feature", "review")).toBe(codeFeatureOverride);
+    expect(await resolveAgentForStep(root, "bugfix", "review")).toBe(bugfixOverride);
+
+    await clearStageAgentOverride(root, "review", "code-feature");
+    expect(await resolveAgentForStep(root, "code-feature", "review")).toBe(codeFeatureBaseline);
+    expect(await resolveAgentForStep(root, "bugfix", "review")).toBe(bugfixOverride);
+  });
+
+  it("rejects unknown workflow ids", async () => {
+    await expect(setStageAgentOverride(root, "review", "claude", "no-such-workflow")).rejects.toThrow(
+      "Unknown workflow: no-such-workflow"
+    );
+  });
+
+  it("migrates unambiguous legacy overrides to scoped keys", async () => {
+    await writeJsonFile(path.join(root, "data", "state", "stage-agents.json"), {
+      overrides: { fix: "grok" }
+    });
+    const config = await loadStageAgentOverrides(root);
+    expect(config.overrides).toEqual({ [stageOverrideKey("bugfix", "fix")]: "grok" });
+    expect(config.ambiguousLegacy).toBeUndefined();
+    expect(await resolveAgentForStep(root, "bugfix", "fix")).toBe("grok");
+  });
+
+  it("preserves orphan legacy overrides in ambiguousLegacy", async () => {
+    await writeJsonFile(path.join(root, "data", "state", "stage-agents.json"), {
+      overrides: { deleted_step: "grok" }
+    });
+    const config = await loadStageAgentOverrides(root);
+    expect(config.overrides).toEqual({});
+    expect(config.ambiguousLegacy).toEqual({ deleted_step: "grok" });
+  });
+
+  it("surfaces ambiguous legacy overrides without applying them", async () => {
+    const codeFeatureBaseline = await resolveAgentForStep(root, "code-feature", "review");
+    const bugfixBaseline = await resolveAgentForStep(root, "bugfix", "review");
+    const legacyAgent: ToolId = codeFeatureBaseline === "claude" ? "codex" : "claude";
+    await writeJsonFile(path.join(root, "data", "state", "stage-agents.json"), {
+      overrides: { review: legacyAgent }
+    });
+    const config = await loadStageAgentOverrides(root);
+    expect(config.overrides).toEqual({});
+    expect(config.ambiguousLegacy).toEqual({ review: legacyAgent });
+    expect(await resolveAgentForStep(root, "code-feature", "review")).toBe(codeFeatureBaseline);
+    expect(await resolveAgentForStep(root, "bugfix", "review")).toBe(bugfixBaseline);
+  });
+
+  it("adopts an ambiguous legacy override for a chosen workflow", async () => {
+    const bugfixBaseline = await resolveAgentForStep(root, "bugfix", "review");
+    const legacyAgent: ToolId = bugfixBaseline === "claude" ? "codex" : "claude";
+    await writeJsonFile(path.join(root, "data", "state", "stage-agents.json"), {
+      overrides: { review: legacyAgent }
+    });
+    await loadStageAgentOverrides(root);
+
+    await adoptAmbiguousLegacyOverride(root, "review", "code-feature");
+    const config = await loadStageAgentOverrides(root);
+    expect(config.overrides).toEqual({ [stageOverrideKey("code-feature", "review")]: legacyAgent });
+    expect(config.ambiguousLegacy).toBeUndefined();
+    expect(await resolveAgentForStep(root, "code-feature", "review")).toBe(legacyAgent);
+    expect(await resolveAgentForStep(root, "bugfix", "review")).toBe(bugfixBaseline);
+  });
+
+  it("refuses to adopt a legacy override for a disabled agent", async () => {
+    const bundle = await loadAgentConfig(root);
+    await saveAgentConfig(root, {
+      ...bundle,
+      tools: bundle.tools.map((tool) => tool.id === "claude" ? { ...tool, enabled: false } : tool)
+    });
+    await writeJsonFile(path.join(root, "data", "state", "stage-agents.json"), {
+      overrides: { review: "claude" }
+    });
+    await loadStageAgentOverrides(root);
+
+    await expect(adoptAmbiguousLegacyOverride(root, "review", "code-feature")).rejects.toThrow(
+      'Agent "claude" is disabled.'
+    );
+    expect((await loadStageAgentOverrides(root)).ambiguousLegacy).toEqual({ review: "claude" });
   });
 
   it("resolveStepExtensions honors workflow step extension facet", async () => {

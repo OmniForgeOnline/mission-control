@@ -27,6 +27,7 @@ The harness has prepared a workspace cwd, an MCP server (\`gbrain\`), optional c
 | Durable lesson | \`proposal-first\` |
 | Out-of-scope debt | \`tech-debt-capture\` |
 | Mechanical checks failed | \`harness-checks\` |
+| Look up grades or decide if work is ready to push | \`harness-quality\` |
 | Picking up a stalled task | \`debug-prior-runs\` |
 | Authoring a new skill | \`harness-skill-author\` |
 | Final message | \`operator-handoff\` |
@@ -330,5 +331,34 @@ For non-repo tasks, replace \`**Pushed**\` with \`**Changed.** <files touched>\`
 ## Programmatic surface
 
 \`tech_debt_capture(...)\`.
+`,
+  "harness-quality/SKILL.md": `---
+name: harness-quality
+description: Interpret harness quality grades and decide whether work is ready to push.
+---
+
+# Harness Quality
+
+## When to use
+
+You need to understand quality grades, quality-gate expectations, or whether the current turn is ready to push.
+
+## How
+
+1. Read the task record for workflow id, risk class, and any check/remediation rounds.
+2. When the workspace has \`.harness/checks.yml\`, treat those commands as the push gate and run them locally first.
+3. Search recalled memory and \`gbrain_search(query)\` for prior quality decisions on this project or workflow.
+4. If checks failed and the harness re-prompted you, fix failures before attempting another push.
+5. Hand off with explicit verification so reviewers can trust the push.
+
+## Anti-patterns
+
+- Pushing while mechanical checks are failing or unrun.
+- Treating quality grades as optional when the task is repo-scoped.
+- Skipping \`harness-checks\` when remediation instructions are present.
+
+## Programmatic surface
+
+\`read_task(id)\`, \`list_runs(taskId)\`, \`read_run(runId, "summary.md")\`, \`gbrain_search(query)\`.
 `
 };

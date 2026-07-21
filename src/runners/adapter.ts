@@ -150,7 +150,17 @@ function substituteToken(token: string, pool: ModelPoolConfig, request: LaunchRe
 
 /** Generic adapter: expand the tool's command template, injecting model args/env. */
 function genericArgs(tool: AgentToolConfig, pool: ModelPoolConfig, request: LaunchRequest): LaunchSpec {
-  const template = tool.commandTemplate ?? [];
+  const isReadOnly = request.mode !== "execute";
+  const template = isReadOnly ? tool.readOnlyCommandTemplate ?? tool.commandTemplate : tool.commandTemplate;
+  if (isReadOnly && !tool.readOnlyCommandTemplate && !tool.cli.permissionModes?.plan) {
+    throw new Error(
+      `Tool "${tool.id}" cannot enforce read-only ${request.mode} mode: configure readOnlyCommandTemplate or cli.permissionModes.plan.`
+    );
+  }
+
+  if (!template?.length) {
+    throw new Error(`Tool "${tool.id}" has no command template for ${request.mode} mode.`);
+  }
   const args: string[] = [];
   for (const token of template) {
     args.push(...substituteToken(token, pool, request));
@@ -158,8 +168,13 @@ function genericArgs(tool: AgentToolConfig, pool: ModelPoolConfig, request: Laun
   // If the template never consumes {model}, still inject model args so model
   // selection is honored for tools that don't template it explicitly.
   if (!template.includes("{model}")) args.push(...pool.modelArgs);
+
+  const executeOnlyFlags = new Set(["--dangerously-skip-permissions", "--always-approve"]);
+  const filtered = isReadOnly ? args.filter((arg) => !executeOnlyFlags.has(arg)) : args;
+  if (isReadOnly && !tool.readOnlyCommandTemplate) filtered.push("--permission-mode", tool.cli.permissionModes!.plan!);
+
   const promptOnStdin = !template.includes("{prompt}");
-  return { args, env: { ...pool.modelEnv }, promptOnStdin };
+  return { args: filtered, env: { ...pool.modelEnv }, promptOnStdin };
 }
 
 /**

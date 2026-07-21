@@ -1,0 +1,37 @@
+{
+  "schemaVersion": 1,
+  "id": "synthetic-readme-update",
+  "workflowId": "docs-update",
+  "taskClass": "synthetic",
+  "inputs": {
+    "title": "Document evaluation corpus dry-run",
+    "description": "Add README section explaining how to validate eval fixtures offline."
+  },
+  "permittedTools": [
+    "claude"
+  ],
+  "outcome": {
+    "artifact": {
+      "kind": "documentation",
+      "pathPattern": "README.md"
+    },
+    "deterministicChecks": [
+      {
+        "kind": "artifact-present",
+        "pathPattern": "README.md"
+      }
+    ]
+  },
+  "risk": "low",
+  "provenance": {
+    "kind": "synthetic",
+    "source": "Generated placeholder for unexercised docs-update workflow."
+  },
+  "replay": {
+    "fixtures": {
+      "artifactPaths": [
+        "README.md"
+      ]
+    }
+  }
+}

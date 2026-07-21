@@ -22,14 +22,16 @@ steps:
     agent: author
     effort: medium
     skill: data-analysis
+    modifies_repo: false
     approval: none
     next: root_cause
 
   root_cause:
-    kind: conversation
+    kind: agent_turn
     agent: codex
     effort: high
     skill: technical-investigation
+    modifies_repo: false
     approval: none
     next: remediation_plan
 
@@ -39,7 +41,18 @@ steps:
     effort: medium
     skill: seo-growth
     approval: none
-    next: handoff
+    next: review
+
+  review:
+    kind: review
+    agent: reviewer
+    effort: high
+    skill: data-analysis
+    review_profile: data
+    approval: none
+    branch:
+      approved: handoff
+      changes_requested: remediation_plan
 
   handoff:
     kind: terminal

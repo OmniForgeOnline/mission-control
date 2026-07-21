@@ -3,6 +3,7 @@ import { appendFile, readFile } from "node:fs/promises";
 import path from "node:path";
 
 import { ensureDir } from "../infra/fs.ts";
+import type { NormalizedUsage, UsageReportingMode } from "./usage-types.ts";
 
 /**
  * Canonical, agent-agnostic event model for a single run. Agent CLIs emit
@@ -21,6 +22,7 @@ export type RunEventType =
   | "session_id"
   | "stderr"
   | "raw"
+  | "usage"
   | "done"
   | "error";
 
@@ -42,6 +44,12 @@ export interface RunEvent {
   sessionId?: string;
   /** Process exit code for done / error. */
   exitCode?: number;
+  /** Normalized provider usage counters for `usage` events. */
+  usage?: NormalizedUsage;
+  /** Whether `usage` is incremental or a cumulative provider snapshot. */
+  usageMode?: UsageReportingMode;
+  /** Raw provider usage payload preserved for debugging. */
+  usageRaw?: unknown;
 }
 
 export type RunEventInput = Omit<RunEvent, "seq" | "at"> & { at?: string };

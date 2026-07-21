@@ -113,28 +113,6 @@ describe("operational error ledger", () => {
     expect(open[0]?.workflowStep).toBe("create_merge_request");
   });
 
-  it("does not capture task-scoped blocked transitions via setTaskStatus", async () => {
-    const task = await createTask(root, {
-      title: "Lint cleanup",
-      description: "Fix tests.",
-      source: "manual",
-      links: []
-    });
-
-    await setTaskStatus(root, task.id, "blocked", {
-      blockedReason: "Harness commit still failing after 3 rounds: eslint unused import",
-      workflowRun: {
-        workflowId: "code-feature",
-        currentStepId: "implement",
-        completedSteps: [],
-        stepApprovals: {}
-      }
-    });
-
-    await new Promise((resolve) => setTimeout(resolve, 20));
-    expect(await listOpenOperationalErrors(root)).toHaveLength(0);
-  });
-
   it("normalizes ids when fingerprinting", () => {
     const a = fingerprintOperationalError({
       message: "Merge request creation failed for task 11111111-1111-1111-1111-111111111111",

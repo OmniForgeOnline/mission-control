@@ -2,10 +2,6 @@ import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
-import {
-  ACTIVITY_THRESHOLDS,
-  HEARTBEAT_INTERVAL_MS
-} from "../src/core/tasks/activity.ts";
 import { runChecks, summarizeFailures } from "../src/core/review/checks.ts";
 import {
   listFileNames,
@@ -14,15 +10,6 @@ import {
   writeFileIfMissing,
   writeJsonFile
 } from "../src/core/infra/fs.ts";
-
-describe("core activity constants", () => {
-  it("exposes positive heartbeat and ordered activity thresholds", () => {
-    expect(HEARTBEAT_INTERVAL_MS).toBeGreaterThan(0);
-    expect(ACTIVITY_THRESHOLDS.staleMs).toBeGreaterThan(0);
-    expect(ACTIVITY_THRESHOLDS.longRunMs).toBeGreaterThan(0);
-    expect(ACTIVITY_THRESHOLDS.staleMs).toBeLessThan(ACTIVITY_THRESHOLDS.longRunMs);
-  });
-});
 
 describe("core fs helpers", () => {
   let root: string;

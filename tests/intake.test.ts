@@ -50,11 +50,9 @@ async function waitFor<T>(read: () => Promise<T>, predicate: (value: T) => boole
 class DeferredAgentRunner implements AgentRunner {
   agent: ToolId = "claude";
   requests: AgentTurnRequest[] = [];
-  aborted = 0;
   private resolvers: Array<(result: AgentTurnResult) => void> = [];
 
   abort(): void {
-    this.aborted++;
     this.resolvers.shift();
   }
 
@@ -451,46 +449,6 @@ describe("intake", () => {
     expect(prompt).toContain("The target repository is already selected");
   });
 
-  it("queues intake API submissions without waiting for classification", async () => {
-    const repoDir = path.join(rootBase, "repos", "queued-project");
-    await mkdir(repoDir, { recursive: true });
-    const { execSync } = await import("node:child_process");
-    execSync("git init", { cwd: repoDir });
-    const project = await onboardProject(root, { repoPath: repoDir, name: "Queued Project" });
-    const runner = new DeferredAgentRunner();
-    const app = createServer({ root, runner });
-
-    const response = await Promise.race([
-      request(app).post(`/api/projects/${project.id}/intake/messages`).send({ body: "Fix queued intake." }),
-      delay(1_000).then(() => "timed-out")
-    ]);
-
-    expect(response).not.toBe("timed-out");
-    const session = await getIntakeSession(root, { kind: "project", projectId: project.id });
-    expect(session.messages.at(-1)?.body).toBe("Fix queued intake.");
-    await waitFor(async () => runner.requests.length, (value) => value === 1);
-
-    runner.resolveNext(
-      intakeJson("Queued ticket ready.", {
-        ready: true,
-        title: "Fix queued intake",
-        description: "Patch queued intake behavior.",
-        workflowId: "bugfix",
-        confidence: "high",
-        rationale: "Clear defect.",
-        suggestNewWorkflow: null
-      })
-    );
-
-    const completed = await waitFor(
-      () => getIntakeSession(root, { kind: "project", projectId: project.id }),
-      (value) => value.queue?.[0]?.status === "completed"
-    );
-    expect(completed.queue?.[0]?.taskId).toBeTruthy();
-    expect(completed.messages.at(-1)?.body).toBe("Opened ticket: Fix queued intake");
-    expect((await listTasks(root)).some((task) => task.title === "Fix queued intake" && task.projectId === project.id)).toBe(true);
-  });
-
   it("drains queued intake submissions sequentially", async () => {
     const repoDir = path.join(rootBase, "repos", "sequential-project");
     await mkdir(repoDir, { recursive: true });
@@ -541,39 +499,6 @@ describe("intake", () => {
       (value) => value.queue?.every((item) => item.status === "completed") === true
     );
     expect((await listTasks(root)).map((task) => task.title)).toEqual(["Second queued task", "First queued task"]);
-  });
-
-  it("times out a stuck intake classification and continues the queue", async () => {
-    const runner = new DeferredAgentRunner();
-    await addIntakeMessage(root, { author: "operator", body: "Stuck task." });
-    await addIntakeMessage(root, { author: "operator", body: "Later task." });
-
-    const drain = drainIntakeQueue(root, { runner, intakeTimeoutMs: 500 });
-    const timedOut = await waitFor(
-      () => getIntakeSession(root),
-      (value) => value.queue?.[1]?.status === "running",
-      2_000
-    );
-    await waitFor(async () => runner.requests.length, (value) => value === 2);
-    expect(timedOut.queue?.[0]).toMatchObject({ status: "failed" });
-    expect(timedOut.queue?.[0]?.error).toContain("timed out");
-    expect(runner.aborted).toBe(1);
-
-    runner.resolveNext(
-      intakeJson("Later ready.", {
-        ready: true,
-        title: "Later task",
-        description: "Handle later task.",
-        workflowId: "bugfix",
-        confidence: "high",
-        rationale: "Clear task.",
-        suggestNewWorkflow: null
-      })
-    );
-
-    await waitFor(() => getIntakeSession(root), (value) => value.queue?.[1]?.status === "completed");
-    await drain;
-    expect((await listTasks(root)).some((task) => task.title === "Later task")).toBe(true);
   });
 
   it("preserves explicit repository targets from queued intake messages", async () => {

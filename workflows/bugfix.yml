@@ -10,10 +10,11 @@ defaults:
 
 steps:
   investigate:
-    kind: conversation
+    kind: agent_turn
     agent: codex
     effort: high
     skill: technical-investigation
+    modifies_repo: false
     approval: none
     next: plan_gate
 
@@ -50,6 +51,7 @@ steps:
     agent: reviewer
     effort: high
     skill: code-review
+    review_profile: code
     approval: none
     branch:
       approved: handoff

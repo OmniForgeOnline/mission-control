@@ -66,7 +66,7 @@ function minimalAppState(overrides: Partial<AppState> = {}): AppState {
     autonomyJobs: [],
     workflows: [workflow],
     settings: { defaultAgent: "grok", activityThresholds: { staleMs: 240_000, longRunMs: 1_200_000 }, theme: "dark", projectsRoot: "/tmp" },
-    agents: [{ id: "grok", displayName: "Grok", supportsEffort: true, effortLevels: ["low", "medium", "high"] }],
+    agents: [{ id: "grok", displayName: "Grok", supportsEffort: true }],
     activityThresholds: { staleMs: 240_000, longRunMs: 1_200_000 },
     ...overrides
   };
@@ -242,6 +242,15 @@ describe("ui blocked reason formatting", () => {
     expect(formatted.message).toContain("does not support reasoning effort");
   });
 
+  it("maps provider usage limits to recoverable guidance", () => {
+    const formatted = formatBlockedReason(
+      "claude exited with code 1: You've hit your usage limit for glm-5.2. Upgrade to Pro or try again later."
+    );
+    expect(formatted.recoverable).toBe(true);
+    expect(formatted.message).toContain("exhausted usage or billing limits");
+    expect(formatted.hint).toContain("Settings → Agents");
+  });
+
   it("passes through unknown errors unchanged", () => {
     const formatted = formatBlockedReason("Mechanical checks failed: lint");
     expect(formatted).toEqual({
@@ -339,7 +348,7 @@ describe("ui state helpers", () => {
   });
 
   it("resolvedStepAgent uses overrides and default harness agent", () => {
-    state.ui.data = minimalAppState({ stageAgentOverrides: { author: "custom-agent" } });
+    state.ui.data = minimalAppState({ stageAgentOverrides: { "default:author": "custom-agent" } });
     const task = minimalTask({
       workflowRun: { workflowId: "default", currentStepId: "author", completedSteps: [], stepApprovals: {} }
     });
@@ -350,12 +359,23 @@ describe("ui state helpers", () => {
   });
 
   it("resolvedStepAgent prefers task overrides over global overrides", () => {
-    state.ui.data = minimalAppState({ stageAgentOverrides: { author: "codex" } });
+    state.ui.data = minimalAppState({ stageAgentOverrides: { "default:author": "codex" } });
     const task = minimalTask({
       stageAgentOverrides: { author: "claude" },
       workflowRun: { workflowId: "default", currentStepId: "author", completedSteps: [], stepApprovals: {} }
     });
     expect(state.resolvedStepAgent(task)).toBe("claude");
+  });
+
+  it("preferredStepModelPool prefers task overrides over workflow defaults", () => {
+    state.ui.data = minimalAppState({
+      stageModelPoolOverrides: { "default:author": "workflow-pool" }
+    });
+    const task = minimalTask({
+      stageModelPoolOverrides: { author: "task-pool" },
+      workflowRun: { workflowId: "default", currentStepId: "author", completedSteps: [], stepApprovals: {} }
+    });
+    expect(state.preferredStepModelPool(task)).toBe("task-pool");
   });
 
   it("liveness reports active, stale, and long-running tasks", () => {
@@ -1118,6 +1138,28 @@ describe("ui task actions", () => {
     expect(source).not.toContain("/api/settings/stage-agents/${encodeURIComponent(stepId)}");
     expect(source).not.toContain("/api/tasks/${task.id}/requeue");
   });
+
+  it("workflow defaults expose scoped agent and model controls with working clear paths", () => {
+    const source = readFileSync(
+      path.join(process.cwd(), "src/ui/features/settings/agents/workflow-defaults.tsx"),
+      "utf8"
+    );
+    expect(source).toContain("/api/settings/stage-agents/${encodeURIComponent(stepId)}");
+    expect(source).toContain("ambiguousStageAgentOverrides");
+    expect(source).toContain("event.currentTarget.value ? saveAgent(event.currentTarget.value) : clearAgent()");
+    expect(source).toContain("event.currentTarget.value ? save(event.currentTarget.value) : clear()");
+  });
+
+  it("model pool rows surface harness identity routes and verification state", () => {
+    const source = readFileSync(
+      path.join(process.cwd(), "src/ui/features/settings/agents/model-pools.tsx"),
+      "utf8"
+    );
+    expect(source).toContain("pool-identity-route");
+    expect(source).toContain("pool-verification");
+    expect(source).toContain("verificationState");
+    expect(source).toContain("→");
+  });
 });
 
 describe("ui router and navigation state", () => {
@@ -1323,6 +1365,24 @@ describe("ui slice 1 safety and theme", () => {
     expect(lightBlock).not.toMatch(/--ink-faint:\s*#8b95a4/);
     expect(canvas).toContain('[data-theme="light"] .wf-edge-path');
     expect(canvas).toContain('[data-theme="light"] .wf-node');
+  });
+
+  it("exposes routing decisions with accessible warnings and on-demand rejected candidates", async () => {
+    const tree = await readClientTree();
+    const canvasCss = await readFile(
+      path.join(process.cwd(), "src/ui/styles/workflow-canvas.css"),
+      "utf8"
+    );
+    expect(tree).toContain("RoutingDecisionPanel");
+    expect(tree).toContain("wf-routing-panel");
+    expect(tree).toContain('role="region"');
+    expect(tree).toContain("rejected candidate");
+    expect(tree).toContain("acknowledgeWarnings");
+    expect(tree).toContain("stepRunForStep");
+    expect(tree).toContain("effort ${effort}");
+    expect(canvasCss).toContain(".wf-routing-panel > summary");
+    expect(canvasCss).toContain("flex-wrap: wrap");
+    expect(canvasCss).not.toMatch(/@media \(max-width: 1080px\)[\s\S]*\.wf-routing-panel[\s\S]*height:\s*100%/);
   });
 
   it("uses a dialog-based confirm helper instead of window.confirm", async () => {
@@ -1936,6 +1996,20 @@ describe("ui navigation restructure", () => {
     expect(settings).toContain("WorkflowsPanel");
     expect(settings).toContain("MaintenancePanel");
     expect(settings).not.toContain('kind: "view"');
+
+    const maintenance = await readFile(
+      path.join(process.cwd(), "src/ui/features/system/page.tsx"),
+      "utf8"
+    );
+    expect(maintenance).toContain("RuntimeAssetsPanel");
+
+    const runtimeAssets = await readFile(
+      path.join(process.cwd(), "src/ui/features/system/runtime-assets.tsx"),
+      "utf8"
+    );
+    expect(runtimeAssets).toContain("/api/runtime-assets");
+    expect(runtimeAssets).toContain("Keep");
+    expect(runtimeAssets).toContain("Reset");
 
     const home = await readFile(path.join(process.cwd(), "src/ui/features/home/page.tsx"), "utf8");
     expect(home).toContain("Needs attention");

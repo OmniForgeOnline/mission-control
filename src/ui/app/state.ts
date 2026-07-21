@@ -154,10 +154,6 @@ export function agentSupportsEffort(agent: string): boolean {
   return agentSummary(agent)?.supportsEffort ?? false;
 }
 
-export function effortLevelsForAgent(agent: string): string[] {
-  return agentSummary(agent)?.effortLevels ?? [];
-}
-
 function resolvedStepEffort(task: HarnessTask, stepId?: string): string | null {
   const stage = stepId ?? task.workflowRun?.currentStepId;
   if (!stage) return null;
@@ -198,9 +194,25 @@ export function preferredStepAgent(task: HarnessTask, stepId?: string): string |
   if (!stage) return null;
   const taskOverride = task.stageAgentOverrides?.[stage];
   if (taskOverride) return taskOverride;
-  const override = ui.data?.stageAgentOverrides?.[stage];
-  if (override) return override;
+  const workflowId = task.workflowRun?.workflowId;
+  if (workflowId) {
+    const override = ui.data?.stageAgentOverrides?.[`${workflowId}:${stage}`];
+    if (override) return override;
+  }
   return workflowStepAgentWithoutOverrides(task, stage);
+}
+
+export function preferredStepModelPool(task: HarnessTask, stepId?: string): string | undefined {
+  const stage = stepId ?? task.workflowRun?.currentStepId;
+  if (!stage) return undefined;
+  const taskOverride = task.stageModelPoolOverrides?.[stage];
+  if (taskOverride) return taskOverride;
+  const workflowId = task.workflowRun?.workflowId;
+  if (workflowId) {
+    const override = ui.data?.stageModelPoolOverrides?.[`${workflowId}:${stage}`];
+    if (override) return override;
+  }
+  return undefined;
 }
 
 export function resolvedStepAgent(task: HarnessTask, stepId?: string): string | null {
@@ -267,6 +279,23 @@ export function stepRunModelPoolId(
   }
   if (isStepActive(task, stepId) && task.runId) {
     return taskRuns.find((run) => run.id === task.runId)?.modelPoolId;
+  }
+  return undefined;
+}
+
+/** Run that executed `stepId`, preferring the newest stamped run. */
+export function stepRunForStep(
+  task: HarnessTask,
+  stepId: string,
+  runs: readonly HarnessRun[] = ui.data?.runs ?? []
+): HarnessRun | undefined {
+  const taskRuns = runs.filter((run) => run.taskId === task.id);
+  const forStep = taskRuns.filter((run) => run.stepId === stepId);
+  if (forStep.length > 0) {
+    return forStep.reduce((latest, run) => (run.startedAt > latest.startedAt ? run : latest));
+  }
+  if (isStepActive(task, stepId) && task.runId) {
+    return taskRuns.find((run) => run.id === task.runId);
   }
   return undefined;
 }

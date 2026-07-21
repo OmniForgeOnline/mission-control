@@ -33,6 +33,7 @@ import {
   migrateLegacyTaskStatus
 } from "./status.ts";
 import { loadHarnessSettings } from "../settings.ts";
+import { stepIsReadOnlyInvestigation } from "../workflows/graph.ts";
 import {
   assertValidWorkflowStep,
   DEFAULT_WORKFLOW_ID,
@@ -248,7 +249,10 @@ export async function preparePlanRefinementTurn(root: string, taskId: string): P
   if (!canRefinePlan(task, workflow)) return null;
 
   const step = getCurrentStep(workflow, task.workflowRun);
-  if (isAwaitingOperator(task, workflow) && step.kind === "conversation") {
+  if (
+    isAwaitingOperator(task, workflow) &&
+    (step.kind === "conversation" || stepIsReadOnlyInvestigation(step))
+  ) {
     return task;
   }
 

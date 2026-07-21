@@ -1,0 +1,70 @@
+{
+  "schemaVersion": 1,
+  "id": "medium-responsive-rail",
+  "workflowId": "frontend-ui-change",
+  "taskClass": "medium",
+  "inputs": {
+    "title": "Fix catalog rail/detail gap on desktop",
+    "description": "Settings embedded connectors view shows dead space between rail and detail above 1081px; align with catalog-shell desktop fill rules.",
+    "targets": [
+      {
+        "path": "src/ui/styles/responsive.css",
+        "kind": "file"
+      },
+      {
+        "path": "src/ui/styles/settings.css",
+        "kind": "file"
+      },
+      {
+        "path": "tests/ui.test.ts",
+        "kind": "file"
+      }
+    ]
+  },
+  "permittedTools": [
+    "kiro",
+    "claude",
+    "codex"
+  ],
+  "outcome": {
+    "artifact": {
+      "kind": "css-layout",
+      "pathPattern": "src/ui/styles/**"
+    },
+    "deterministicChecks": [
+      {
+        "kind": "checks-outcome",
+        "outcome": "validated"
+      },
+      {
+        "kind": "reviewer-verdict",
+        "decision": "approved"
+      }
+    ],
+    "rubric": [
+      {
+        "id": "breakpoint",
+        "criterion": "Mobile-first base rules remain intact; desktop fill only inside min-width 1081px."
+      },
+      {
+        "id": "audit",
+        "criterion": "Mobile overflow audit passes for Settings connectors route."
+      }
+    ]
+  },
+  "risk": "medium",
+  "provenance": {
+    "kind": "synthetic",
+    "source": "Redacted responsive layout fix from frontend-ui-change history.",
+    "notes": "Pattern-synthesized from representative completed runs; no single source task id archived.",
+    "redactions": [
+      "operator viewport recordings"
+    ]
+  },
+  "replay": {
+    "fixtures": {
+      "workspacePath": "tests/evals/fixtures/checks-validated",
+      "reviewerReply": "tests/evals/fixtures/reviewer-approved.json"
+    }
+  }
+}

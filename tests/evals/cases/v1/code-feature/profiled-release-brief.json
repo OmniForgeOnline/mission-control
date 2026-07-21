@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "id": "profiled-release-brief-code",
+  "workflowId": "code-feature",
+  "taskClass": "acceptance-contract",
+  "inputs": {
+    "title": "Review the release brief as a code artifact",
+    "description": "Produce the shared release brief artifact and review it using code-change standards.",
+    "targets": [{ "path": "reports/release-brief.md", "kind": "file" }],
+    "context": { "artifact": "reports/release-brief.md", "profile": "code" }
+  },
+  "permittedTools": ["claude", "codex"],
+  "outcome": {
+    "artifact": { "kind": "release-brief", "pathPattern": "reports/release-brief.md" },
+    "deterministicChecks": [
+      { "kind": "artifact-present", "pathPattern": "reports/release-brief.md" },
+      { "kind": "reviewer-verdict", "decision": "approved" }
+    ]
+  },
+  "risk": "medium",
+  "provenance": { "kind": "synthetic", "source": "Shared-artifact review-profile acceptance corpus." },
+  "replay": {
+    "fixtures": {
+      "artifactPaths": ["reports/release-brief.md"]
+    }
+  }
+}

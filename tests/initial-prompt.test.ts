@@ -2,6 +2,7 @@ import { buildInitialPrompt } from "../src/daemon/prompts.ts";
 import { attachmentFilePath } from "../src/core/attachments/paths.ts";
 import type { HarnessAttachment, HarnessTask } from "../src/core/types.ts";
 import type { PreparedWorkspace } from "../src/core/worktrees/worktrees.ts";
+import type { WorkflowStep } from "../src/core/workflows/types.ts";
 
 function baseTask(overrides: Partial<HarnessTask> = {}): HarnessTask {
   return {
@@ -20,6 +21,14 @@ function baseTask(overrides: Partial<HarnessTask> = {}): HarnessTask {
 }
 
 const workspace: PreparedWorkspace = { cwd: "/tmp/worktree", isRepo: false, created: false };
+const implementStep: WorkflowStep = {
+  id: "implement",
+  kind: "agent_turn",
+  agent: "claude",
+  skill: "pr-driven-execution",
+  approval: "required",
+  modifiesRepo: true
+};
 
 describe("buildInitialPrompt task-level attachments", () => {
   const root = "/harness";
@@ -49,7 +58,9 @@ describe("buildInitialPrompt task-level attachments", () => {
       root,
       baseTask({ attachments }),
       "",
-      workspace
+      workspace,
+      "code-feature",
+      implementStep
     );
 
     for (const attachment of attachments) {
@@ -61,7 +72,7 @@ describe("buildInitialPrompt task-level attachments", () => {
   });
 
   it("omits any attachment block when the ticket has no attachments", () => {
-    const prompt = buildInitialPrompt(root, baseTask(), "", workspace);
+    const prompt = buildInitialPrompt(root, baseTask(), "", workspace, "code-feature", implementStep);
     expect(prompt).not.toContain("Attachments:");
   });
 });

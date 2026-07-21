@@ -11,7 +11,17 @@ export interface PlanApprovalTask {
 
 /** Minimal workflow shape for plan-approval checks (browser-safe; no filesystem deps). */
 export interface WorkflowPlanApprovalLookup {
-  steps: Record<string, { kind: string; agent?: string; skill?: string; next?: string; approval?: string }>;
+  steps: Record<
+    string,
+    {
+      kind: string;
+      agent?: string;
+      skill?: string;
+      next?: string;
+      approval?: string;
+      modifiesRepo?: boolean;
+    }
+  >;
 }
 
 function findImplementationStepId(workflow: WorkflowPlanApprovalLookup): string | null {
@@ -21,15 +31,18 @@ function findImplementationStepId(workflow: WorkflowPlanApprovalLookup): string 
   return workflow.steps["implement"] ? "implement" : null;
 }
 
-/** Extract plan text from description or the latest agent message. */
+/** Extract plan text from the latest agent message, then the description section. */
 export function extractPlanFromTask(task: PlanApprovalTask): string | undefined {
+  const lastAgent = (task.messages ?? []).filter((m) => m.author === "agent").at(-1);
+  if (lastAgent) {
+    const fromMessage = extractFinalPlan(lastAgent.body);
+    if (fromMessage) return fromMessage;
+  }
   if (task.description?.includes("## Plan")) {
     const section = task.description.split("## Plan").slice(1).join("## Plan").trim();
     if (section) return section;
   }
-  const lastAgent = (task.messages ?? []).filter((m) => m.author === "agent").at(-1);
-  if (!lastAgent) return undefined;
-  return extractFinalPlan(lastAgent.body);
+  return undefined;
 }
 
 function hasPlanReady(task: PlanApprovalTask): boolean {
@@ -56,6 +69,10 @@ export function canApprovePlan(task: PlanApprovalTask, workflow: WorkflowPlanApp
   if (!step) return false;
 
   if (agentTurns > 0 && step.kind === "conversation") {
+    return true;
+  }
+
+  if (agentTurns > 0 && step.kind === "agent_turn" && step.modifiesRepo === false) {
     return true;
   }
 

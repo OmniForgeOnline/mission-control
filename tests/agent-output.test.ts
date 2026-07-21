@@ -345,4 +345,49 @@ describe("agent output normalization", () => {
       "Model grok-composer-2.5-fast does not support parameter reasoningEffort."
     );
   });
+
+  it("extracts claude result is_error as errorReason", () => {
+    const stdout = [
+      JSON.stringify({
+        type: "system",
+        subtype: "init",
+        session_id: "claude-sess-limit",
+        model: "glm-5.2"
+      }),
+      JSON.stringify({
+        type: "result",
+        subtype: "success",
+        session_id: "claude-sess-limit",
+        is_error: true,
+        api_error_status: 429,
+        result:
+          "You've hit your usage limit for glm-5.2. Upgrade to Pro or try again later."
+      })
+    ].join("\n");
+
+    expect(parseAgentOutput(stdout, "claude").errorReason).toContain("usage limit");
+  });
+
+  it("prefers claude result text over empty errors[] and misleading subtype", () => {
+    const stdout = JSON.stringify({
+      type: "result",
+      subtype: "success",
+      is_error: true,
+      errors: [],
+      result: "There's an issue with the selected model (glm-5.2). You may not have access to it."
+    });
+
+    expect(parseAgentOutput(stdout, "claude").errorReason).toContain("glm-5.2");
+  });
+
+  it("maps claude error_max_budget_usd subtype to a readable failure", () => {
+    const stdout = JSON.stringify({
+      type: "result",
+      subtype: "error_max_budget_usd",
+      is_error: true,
+      result: "Budget exceeded: the request cost more than the allowed $0.05"
+    });
+
+    expect(parseAgentOutput(stdout, "claude").errorReason).toContain("Budget exceeded");
+  });
 });

@@ -36,10 +36,12 @@ import {
   normalizeReplyForPlanExtraction
 } from "../core/workflows/prompts.ts";
 import {
+  effortForRunner,
   findRepoRemediationStepId,
   getStep,
-  effortForRunner,
+  stepIsReadOnlyInvestigation,
   stepModifiesRepo,
+  stepRunnerMode,
   type WorkflowDefinition
 } from "../core/workflows/index.ts";
 import type { HarnessMessage, HarnessRun, HarnessTask } from "../core/types.ts";
@@ -49,6 +51,7 @@ import { captureLessonFromReply } from "../memory/auto-capture.ts";
 import { captureTaskCompletion } from "../memory/auto-capture.ts";
 import { markPoolExhaustedFromFailure } from "../core/agents/config/usage-store.ts";
 import { looksLikeFinalAnswer } from "./final-answer.ts";
+import { mergeInvestigationPlanIntoDescription } from "../core/prompts/investigation.ts";
 import { advanceAuthorTurnWorkflow, scheduleAuthorRerun, scheduleReviewerTurn } from "./agent-turn.ts";
 import {
   runInlineChecksRemediationLoop
@@ -87,28 +90,43 @@ export interface CompleteAgentTurnParams {
   onSessionId: (sessionId: string) => void;
 }
 
+// ponytail: a run torn down mid-turn (test teardown, concurrent removal) makes late
+// log/event appends reject ENOENT. Dropping those chunks is correct, nothing reads them.
+// Swallow ENOENT only; every other error still rejects the chain.
+export async function tolerateMissingRun<T>(pending: Promise<T>): Promise<T | undefined> {
+  try {
+    return await pending;
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") return undefined;
+    throw err;
+  }
+}
+
 export async function completeAgentTurn(params: CompleteAgentTurnParams): Promise<TurnSummary> {
   const { root, internal, workflow, run, runDir, logPath, resolvedRunner, heartbeat, onActivity, onSessionId } = params;
   let { task, prompt, workspace, options, turnNumber, step } = internal;
 
   let logWrite = Promise.resolve();
   const onOutput = (chunk: string) => {
-    logWrite = logWrite.then(() => appendFile(logPath, chunk, "utf8"));
+    logWrite = logWrite.then(() => tolerateMissingRun(appendFile(logPath, chunk, "utf8")));
   };
 
-  let eventWrite = Promise.resolve();
+  let eventWrite: Promise<unknown> = Promise.resolve();
   const onEvent = (input: RunEventInput) => {
-    eventWrite = eventWrite.then(() => appendRunEvent(root, run.id, input).then(() => undefined));
+    eventWrite = eventWrite.then(() => tolerateMissingRun(appendRunEvent(root, run.id, input)));
   };
 
   const effort = internal.supportsEffort
     ? effortForRunner(workflow, step.id, {
-        stageOverride: task.stageEffortOverrides?.[step.id],
-        taskEffort: task.effort
+        ...(task.stageEffortOverrides?.[step.id] ? { stageOverride: task.stageEffortOverrides[step.id] } : {}),
+        ...(task.effort ? { taskEffort: task.effort } : {})
       })
     : undefined;
-  const runnerTask: HarnessTask =
-    internal.supportsEffort && effort ? { ...task, effort } : task;
+  const runnerTask: HarnessTask = effort ? { ...task, effort } : task;
+
+  if (effort) {
+    await updateRun(root, run.id, { effort });
+  }
 
   const stableHash = hashStableInstructions(prompt);
   const sessionContext = {
@@ -127,13 +145,14 @@ export async function completeAgentTurn(params: CompleteAgentTurnParams): Promis
   const liveStep = !internal.reviewer && (step.kind === "agent_turn" || step.kind === "conversation");
   const live = liveStep && isLiveRunner(resolvedRunner);
 
+  const runnerMode = stepRunnerMode(step);
   const result = await resolvedRunner.runTurn({
     task: runnerTask,
     prompt,
     cwd: workspace.cwd,
     ...(sessionId !== undefined ? { sessionId } : {}),
     turnNumber,
-    ...(internal.conversation ? { mode: "plan" as const } : {}),
+    ...(runnerMode !== "execute" ? { mode: runnerMode } : {}),
     ...(live ? { live: true } : {}),
     onOutput,
     onActivity,
@@ -202,6 +221,8 @@ export async function completeAgentTurn(params: CompleteAgentTurnParams): Promis
       ? `### Checks remediation round ${internal.checksRemediation.round}\n\n`
       : internal.conversation
       ? `### Planning turn ${turnNumber}\n\n`
+      : stepIsReadOnlyInvestigation(step)
+      ? `### Investigation turn ${turnNumber}\n\n`
       : "";
     const messageBody = sanitizeAgentMessageBody(`${prefix}${replyBody}`).trim();
     if (messageBody) {
@@ -228,6 +249,7 @@ export async function completeAgentTurn(params: CompleteAgentTurnParams): Promis
     command: result.command,
     exitCode: result.exitCode,
     ...(result.blockedReason !== undefined ? { blockedReason: result.blockedReason } : {}),
+    ...(effort ? { effort } : {}),
     artifacts: ["prompt.md", "summary.md", "log.txt"]
   });
 
@@ -252,8 +274,6 @@ export async function completeAgentTurn(params: CompleteAgentTurnParams): Promis
 
   if (internal.conversation) {
     const plan = extractFinalPlan(normalizeReplyForPlanExtraction(replyBody, internal.agent));
-    // Operator Done in interactive mode advances even without a parseable plan
-    // block — the human is the completion signal.
     if ((plan || interactiveDone) && turnSucceeded && !isAborted) {
       await advanceTaskWorkflowStep(root, task.id);
       const updated = await patchTaskExecution(
@@ -276,6 +296,53 @@ export async function completeAgentTurn(params: CompleteAgentTurnParams): Promis
           root,
           task.id,
           { blockedReason: null, completedAt: null },
+          baseUpdates,
+          { clear: baseClear }
+        )
+      : await markTaskBlocked(root, task.id, result.blockedReason ?? "Turn failed", {
+          ...baseUpdates,
+          completedAt
+        });
+    void captureLessonFromReply(root, task, run, replyBody).catch(() => {});
+    return turnResult(run.id, updated);
+  }
+
+  if (stepIsReadOnlyInvestigation(step)) {
+    const plan = extractFinalPlan(normalizeReplyForPlanExtraction(replyBody, internal.agent));
+    if (plan && turnSucceeded && !isAborted) {
+      const descriptionWithPlan = mergeInvestigationPlanIntoDescription(task.description, plan);
+      await advanceTaskWorkflowStep(root, task.id);
+      const updated = await patchTaskExecution(
+        root,
+        task.id,
+        { blockedReason: null },
+        {
+          ...baseUpdates,
+          ...(descriptionWithPlan !== undefined && descriptionWithPlan !== task.description
+            ? { description: descriptionWithPlan }
+            : {})
+        },
+        { clear: baseClear }
+      );
+      void captureLessonFromReply(root, task, run, replyBody).catch(() => {});
+      return turnResult(run.id, updated);
+    }
+    const updated = isAborted
+      ? await markTaskPaused(root, task.id, {
+          ...baseUpdates,
+          blockedReason: result.blockedReason ?? "Stopped by operator"
+        })
+      : turnSucceeded
+      ? await patchTaskExecution(
+          root,
+          task.id,
+          {
+            blockedReason:
+              interactiveDone && !plan
+                ? "Investigation step requires a <proposed_plan> or FINAL_PLAN: artifact before advancing."
+                : null,
+            completedAt: null
+          },
           baseUpdates,
           { clear: baseClear }
         )
