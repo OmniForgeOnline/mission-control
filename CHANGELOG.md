@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.9.0
+
+### Minor Changes
+
+- 924a2c5: Phase 1 execution contracts: step-aware prompts with required skills, read-only investigation steps, safe runtime asset migration, artifact-specific review profiles, and workflow-scoped stage agent overrides.
+- 924a2c5: Phase 2 observability and routing: normalized usage events, model identity and cost modes, capability profiles, quality-first routing with transparency, effort policy, and operator-facing routing/usage surfaces on workflow steps and runs.
+
+### Patch Changes
+
+- 924a2c5: Establish Phase 0 measurement foundation for workflow/agent optimization: read-only runtime inventory, versioned eval corpus v1, and baseline metrics/report CLI with stable IDs and honest unknown token/cost fields.
+- 924a2c5: Review fixes: workflow pool pins fail loudly like task pins, legacy stage overrides preserved in ambiguousLegacy, and stage model pool setup uses migrated agent overrides.
+- 924a2c5: Surface Claude Code usage/billing limit failures in task blocked reasons instead of a generic exit-code retry.
+
 ## 0.8.0
 
 ### Minor Changes
