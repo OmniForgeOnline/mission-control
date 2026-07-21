@@ -21,13 +21,8 @@ export default defineConfig({
     // loaded/single-core CI, so a tight cap flakes under contention. 30s gives
     // the headroom those tests need without masking genuine hangs.
     testTimeout: 30_000,
-    // Integration tests drive real git worktrees and multi-step daemon turns, so high
-    // parallelism oversubscribes the host: loopback HTTP resets (ECONNRESET) and
-    // timing-sensitive assertions flake under CPU/IO contention. CI runners (often
-    // low-core or loaded) stay capped at 2; local dev on a multicore machine uses 4,
-    // which is verified green and roughly halves wall-clock. Raise locally only if a
-    // run stays green across repeats.
-    maxWorkers: process.env.CI ? 2 : 4,
+    // Sharded CI jobs each get a full runner; 4 workers matches ubuntu-latest vCPUs.
+    maxWorkers: 4,
     restoreMocks: true,
     setupFiles: ["./tests/setup.ts"],
     exclude: ["**/node_modules/**", "**/dist/**", "**/data/**"]

@@ -11,11 +11,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  check:
-    # Full quality gate on the active Node LTS. This package ships compiled JS,
-    # so a single lane on Node 22 (Ubuntu) covers the real risk surface; the
-    # cross-platform paths are unit-tested.
-    name: check
+  lint-typecheck:
+    name: lint & typecheck
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -28,5 +25,49 @@ jobs:
           cache: npm
       - name: Install dependencies
         run: npm ci
-      - name: Quality gate (lint, typecheck, test, knip, build)
-        run: npm run check
+      - name: Lint
+        run: npm run lint
+      - name: Typecheck
+        run: npm run typecheck
+
+  test:
+    name: test (${{ matrix.shard }}/${{ strategy.job-total }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: true
+      matrix:
+        shard: [1, 2]
+    steps:
+      - uses: actions/checkout@v7
+      - name: Suppress git defaultBranchName advice
+        run: git config --global init.defaultBranch main
+      - name: Setup Node 22
+        uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Test shard
+        run: npx vitest run --shard=${{ matrix.shard }}/${{ strategy.job-total }}
+
+  build:
+    name: knip & build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Suppress git defaultBranchName advice
+        run: git config --global init.defaultBranch main
+      - name: Setup Node 22
+        uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Knip
+        run: npm run knip
+      - name: Build client
+        run: npm run build
+      - name: Build server
+        run: npm run build:server

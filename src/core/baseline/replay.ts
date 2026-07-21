@@ -139,6 +139,11 @@ class DeterministicReplayRunner implements AgentRunner {
   }
 }
 
+/** Clone workflows/skills/state from a harness root for reuse across eval replays. */
+export async function createReplayTemplateRoot(root: string): Promise<string> {
+  return replayRootFromRuntime(root);
+}
+
 async function replayRootFromRuntime(root: string): Promise<string> {
   const replayRoot = await mkdtemp(path.join(os.tmpdir(), "mission-control-replay-"));
   await ensureHarnessRepository(replayRoot);

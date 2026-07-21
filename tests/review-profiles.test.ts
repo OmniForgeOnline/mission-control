@@ -21,7 +21,8 @@ import type { HarnessTask } from "../src/core/types.ts";
 import type { WorkflowStep } from "../src/core/workflows/types.ts";
 import { loadEvalCorpus } from "../src/core/evals/load.ts";
 import { inventoryWorkflows } from "../src/core/inventory/workflows.ts";
-import { replayEvalCase } from "../src/core/baseline/replay.ts";
+import { resetWorkflowCache } from "../src/core/workflows/cache.ts";
+import { createReplayTemplateRoot, replayEvalCase } from "../src/core/baseline/replay.ts";
 
 const CORPUS_ARTIFACT = `## Workflow maturity launch
 
@@ -272,15 +273,22 @@ describe("review profiles", () => {
     expect(cases.every(Boolean)).toBe(true);
     expect(new Set(cases.map((entry) => entry!.inputs.targets?.[0]?.path)).size).toBe(1);
     const { runtimeDefinitions } = await inventoryWorkflows(root);
-    const results = [];
-    for (const entry of cases) results.push(await replayEvalCase(entry!, runtimeDefinitions, root));
-    expect(results.every((result) => result.passed)).toBe(true);
-    expect(results.map((result) => result.runtime?.reviewerDecisions[0])).toEqual([
-      "approved",
-      "approved",
-      "changes_requested"
-    ]);
-  });
+    const templateRoot = await createReplayTemplateRoot(root);
+    try {
+      const results = await Promise.all(
+        cases.map((entry) => replayEvalCase(entry!, runtimeDefinitions, root, templateRoot))
+      );
+      expect(results.every((result) => result.passed)).toBe(true);
+      expect(results.map((result) => result.runtime?.reviewerDecisions[0])).toEqual([
+        "approved",
+        "approved",
+        "changes_requested"
+      ]);
+    } finally {
+      resetWorkflowCache(templateRoot);
+      await rm(templateRoot, { recursive: true, force: true });
+    }
+  }, 60_000);
 
   it("gathers bounded supporting evidence for non-repo review workspaces", async () => {
     const scratch = await mkdtemp(path.join(tmpdir(), "harness-review-scratch-"));

@@ -37,6 +37,7 @@ export { provisionalQualityFloors } from "./floors.ts";
 export { computeBaselineId, fingerprintModelIdentities } from "./id.ts";
 export type { BaselineIdInput, ModelIdentityFingerprint } from "./id.ts";
 export {
+  createReplayTemplateRoot,
   observeHistoricalCase,
   observeHistoricalCases,
   replayEvalCase,
