@@ -21,7 +21,7 @@ steps:
     kind: agent_turn
     agent: author
     effort: medium
-    skill: harness-memory
+    skill: data-analysis
     approval: none
     next: write_spec
 
@@ -37,7 +37,8 @@ steps:
     kind: review
     agent: reviewer
     effort: high
-    skill: code-review
+    skill: product-discovery
+    review_profile: decision
     approval: none
     branch:
       approved: handoff

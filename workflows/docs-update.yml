@@ -29,7 +29,8 @@ steps:
     kind: review
     agent: reviewer
     effort: high
-    skill: code-review
+    skill: content-production
+    review_profile: technical-doc
     approval: none
     branch:
       approved: handoff

@@ -1,0 +1,47 @@
+{
+  "schemaVersion": 1,
+  "id": "failure-mobile-overflow",
+  "workflowId": "frontend-ui-change",
+  "taskClass": "failure",
+  "inputs": {
+    "title": "Refresh workflows canvas styling",
+    "description": "Make the workflow editor look better on mobile.",
+    "context": {
+      "failureMode": "Implementation ships desktop-only flex fill after a max-width media block, causing empty panes on narrow viewports."
+    }
+  },
+  "permittedTools": [
+    "kiro",
+    "claude"
+  ],
+  "outcome": {
+    "artifact": {
+      "kind": "css-layout"
+    },
+    "deterministicChecks": [
+      {
+        "kind": "workflow-step",
+        "stepId": "review"
+      }
+    ],
+    "rubric": [
+      {
+        "id": "overflow",
+        "criterion": "Reviewer or harness flags horizontal overflow outside intentional scrollports."
+      },
+      {
+        "id": "narrow",
+        "criterion": "Settings embed shows both list and detail at <=1080px after fix."
+      }
+    ]
+  },
+  "risk": "medium",
+  "provenance": {
+    "kind": "synthetic",
+    "source": "Failure pattern from CSS cascade regressions in catalog layouts.",
+    "notes": "Pattern-synthesized failure mode; no single source task id archived.",
+    "redactions": [
+      "before/after screenshots with PII"
+    ]
+  }
+}

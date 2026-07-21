@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-01-15T12:00:00.000Z",
+  "workflowUsage": [
+    { "workflowId": "code-feature", "taskCount": 42, "completedCount": 38, "totalTurns": 210, "totalReviewRounds": 55 },
+    { "workflowId": "bugfix", "taskCount": 28, "completedCount": 26, "totalTurns": 84, "totalReviewRounds": 12 },
+    { "workflowId": "frontend-ui-change", "taskCount": 19, "completedCount": 17, "totalTurns": 76, "totalReviewRounds": 18 },
+    { "workflowId": "product-spec", "taskCount": 11, "completedCount": 10, "totalTurns": 33, "totalReviewRounds": 4 },
+    { "workflowId": "data-analysis", "taskCount": 2, "completedCount": 1, "totalTurns": 6, "totalReviewRounds": 0 }
+  ],
+  "redactions": ["operator names", "repo paths", "live task ids", "HARNESS_ROOT paths"]
+}

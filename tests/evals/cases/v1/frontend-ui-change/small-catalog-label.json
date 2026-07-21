@@ -1,0 +1,56 @@
+{
+  "schemaVersion": 1,
+  "id": "small-catalog-label",
+  "workflowId": "frontend-ui-change",
+  "taskClass": "small",
+  "inputs": {
+    "title": "Rename Connectors rail empty state label",
+    "description": "Update the catalog rail empty state copy to match the Settings terminology without changing layout breakpoints.",
+    "targets": [
+      {
+        "path": "src/ui",
+        "kind": "directory"
+      }
+    ]
+  },
+  "permittedTools": [
+    "kiro",
+    "claude"
+  ],
+  "outcome": {
+    "artifact": {
+      "kind": "ui-copy",
+      "pathPattern": "src/ui/**"
+    },
+    "deterministicChecks": [
+      {
+        "kind": "checks-outcome",
+        "outcome": "validated"
+      },
+      {
+        "kind": "workflow-step",
+        "stepId": "handoff"
+      }
+    ],
+    "rubric": [
+      {
+        "id": "mobile",
+        "criterion": "Copy change does not introduce horizontal overflow at 390px width."
+      }
+    ]
+  },
+  "risk": "low",
+  "provenance": {
+    "kind": "synthetic",
+    "source": "Redacted small UI copy change in catalog shell.",
+    "notes": "Pattern-synthesized from representative completed runs; no single source task id archived.",
+    "redactions": [
+      "screenshots with account data"
+    ]
+  },
+  "replay": {
+    "fixtures": {
+      "workspacePath": "tests/evals/fixtures/checks-validated"
+    }
+  }
+}

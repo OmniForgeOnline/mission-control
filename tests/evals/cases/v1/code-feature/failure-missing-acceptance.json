@@ -1,0 +1,50 @@
+{
+  "schemaVersion": 1,
+  "id": "failure-missing-acceptance",
+  "workflowId": "code-feature",
+  "taskClass": "failure",
+  "inputs": {
+    "title": "Improve dashboard performance",
+    "description": "Make the dashboard faster.",
+    "context": {
+      "failureMode": "Plan approved without measurable acceptance criteria or verification strategy."
+    }
+  },
+  "permittedTools": [
+    "claude",
+    "codex"
+  ],
+  "outcome": {
+    "artifact": {
+      "kind": "plan",
+      "requiredSections": [
+        "Goal"
+      ]
+    },
+    "deterministicChecks": [
+      {
+        "kind": "workflow-step",
+        "stepId": "plan_gate"
+      }
+    ],
+    "rubric": [
+      {
+        "id": "reject-vague",
+        "criterion": "Operator or harness blocks implementation until acceptance criteria and verification are defined."
+      },
+      {
+        "id": "no-code",
+        "criterion": "No repository mutation occurs before plan_gate approval with concrete criteria."
+      }
+    ]
+  },
+  "risk": "medium",
+  "provenance": {
+    "kind": "synthetic",
+    "source": "Failure pattern from vague feature requests lacking observable completion.",
+    "notes": "Pattern-synthesized failure mode; no single source task id archived.",
+    "redactions": [
+      "operator chat excerpts"
+    ]
+  }
+}

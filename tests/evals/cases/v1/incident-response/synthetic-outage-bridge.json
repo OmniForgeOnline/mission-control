@@ -1,0 +1,40 @@
+{
+  "schemaVersion": 1,
+  "id": "synthetic-outage-bridge",
+  "workflowId": "incident-response",
+  "taskClass": "synthetic",
+  "inputs": {
+    "title": "Respond to daemon heartbeat loss",
+    "description": "Active turns stopped updating progress; draft incident timeline, customer impact statement, and mitigation steps.",
+    "context": {
+      "severity": "sev2",
+      "startedAt": "2026-01-15T08:00:00.000Z"
+    }
+  },
+  "permittedTools": [
+    "claude",
+    "codex"
+  ],
+  "outcome": {
+    "artifact": {
+      "kind": "incident-record",
+      "requiredSections": [
+        "Impact",
+        "Timeline",
+        "Mitigation",
+        "Follow-ups"
+      ]
+    },
+    "rubric": [
+      {
+        "id": "timestamps",
+        "criterion": "Timeline entries use ISO timestamps and distinguish detection vs mitigation."
+      }
+    ]
+  },
+  "risk": "medium",
+  "provenance": {
+    "kind": "synthetic",
+    "source": "Generated placeholder for unexercised incident-response workflow."
+  }
+}

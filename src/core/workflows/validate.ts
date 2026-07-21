@@ -4,6 +4,8 @@ import {
   VALID_APPROVALS,
   VALID_EFFORT_LEVELS,
   VALID_KINDS,
+  VALID_REVIEW_PROFILE_IDS,
+  type ReviewProfileId,
   type WorkflowDefinition,
   type WorkflowStep,
   type WorkflowStepApproval,
@@ -52,6 +54,34 @@ export function validateWorkflow(raw: unknown): WorkflowDefinition {
       throw new Error(`Workflow step "${stepId}" has invalid approval "${String(step["approval"])}".`);
     }
     const skill = typeof step["skill"] === "string" ? step["skill"].trim() || undefined : undefined;
+    const objective = typeof step["objective"] === "string" ? step["objective"].trim() || undefined : undefined;
+    const requiredArtifact =
+      typeof step["required_artifact"] === "string"
+        ? step["required_artifact"].trim() || undefined
+        : undefined;
+    let allowedActions: string[] | undefined;
+    if (step["allowed_actions"] !== undefined) {
+      if (!Array.isArray(step["allowed_actions"])) {
+        throw new Error(`Workflow step "${stepId}" allowed_actions must be an array.`);
+      }
+      allowedActions = [];
+      for (const value of step["allowed_actions"]) {
+        if (typeof value !== "string" || !value.trim()) {
+          throw new Error(`Workflow step "${stepId}" allowed_actions entries must be non-empty strings.`);
+        }
+        allowedActions.push(value.trim());
+      }
+      if (allowedActions.length === 0) allowedActions = undefined;
+    }
+    const entryContext =
+      typeof step["entry_context"] === "string" ? step["entry_context"].trim() || undefined : undefined;
+    const exitCriteria =
+      typeof step["exit_criteria"] === "string" ? step["exit_criteria"].trim() || undefined : undefined;
+    const riskClass = typeof step["risk_class"] === "string" ? step["risk_class"].trim() || undefined : undefined;
+    const downstreamConsumer =
+      typeof step["downstream_consumer"] === "string"
+        ? step["downstream_consumer"].trim() || undefined
+        : undefined;
     let extensions: string[] | undefined;
     if (step["extensions"] !== undefined) {
       if (!Array.isArray(step["extensions"])) {
@@ -75,6 +105,18 @@ export function validateWorkflow(raw: unknown): WorkflowDefinition {
       typeof step["merge_request_description"] === "string"
         ? step["merge_request_description"].trim() || undefined
         : undefined;
+    const reviewProfileRaw =
+      typeof step["review_profile"] === "string" ? step["review_profile"].trim() : undefined;
+    if (reviewProfileRaw && !VALID_REVIEW_PROFILE_IDS.has(reviewProfileRaw as ReviewProfileId)) {
+      throw new Error(`Workflow step "${stepId}" has invalid review_profile "${reviewProfileRaw}".`);
+    }
+    const reviewProfile = reviewProfileRaw as ReviewProfileId | undefined;
+    const reviewerIndependence =
+      step["reviewer_independence"] === true
+        ? true
+        : step["reviewer_independence"] === false
+          ? false
+          : undefined;
     const next = typeof step["next"] === "string" ? step["next"].trim() || undefined : undefined;
     let parallel: string[] | undefined;
     if (step["parallel"] !== undefined) {
@@ -123,11 +165,20 @@ export function validateWorkflow(raw: unknown): WorkflowDefinition {
       agent,
       approval,
       ...(skill !== undefined ? { skill } : {}),
+      ...(objective !== undefined ? { objective } : {}),
+      ...(requiredArtifact !== undefined ? { requiredArtifact } : {}),
+      ...(allowedActions !== undefined ? { allowedActions } : {}),
+      ...(entryContext !== undefined ? { entryContext } : {}),
+      ...(exitCriteria !== undefined ? { exitCriteria } : {}),
+      ...(riskClass !== undefined ? { riskClass } : {}),
+      ...(downstreamConsumer !== undefined ? { downstreamConsumer } : {}),
       ...(extensions !== undefined ? { extensions } : {}),
       ...(modifiesRepo !== undefined ? { modifiesRepo } : {}),
       ...(effort !== undefined ? { effort } : {}),
       ...(mergeRequestTitle ? { mergeRequestTitle } : {}),
       ...(mergeRequestDescription ? { mergeRequestDescription } : {}),
+      ...(reviewProfile !== undefined ? { reviewProfile } : {}),
+      ...(reviewerIndependence !== undefined ? { reviewerIndependence } : {}),
       ...(next !== undefined ? { next } : {}),
       ...(parallel !== undefined ? { parallel } : {}),
       ...(join !== undefined ? { join } : {}),

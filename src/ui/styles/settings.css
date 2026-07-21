@@ -883,6 +883,31 @@
   white-space: nowrap;
 }
 
+.pool-identity-route {
+  font-size: 10px;
+  color: var(--ink-muted);
+  font-family: var(--font-mono);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pool-verification {
+  font-size: 10px;
+  font-weight: var(--w-medium);
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  width: fit-content;
+}
+
+.pool-verification.is-unverified {
+  color: var(--warn);
+}
+
+.pool-verification.is-unknown {
+  color: var(--ink-faint);
+}
+
 .usage-bar {
   flex: 1;
   height: 5px;

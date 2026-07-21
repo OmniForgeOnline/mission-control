@@ -16,10 +16,11 @@ steps:
     approval: none
     next: implementation_plan
   implementation_plan:
-    kind: conversation
+    kind: agent_turn
     agent: kiro
     effort: high
     skill: technical-investigation
+    modifies_repo: false
     approval: none
     next: implement_ui
   implement_ui:
@@ -46,6 +47,7 @@ steps:
     agent: reviewer
     effort: medium
     skill: code-review
+    review_profile: frontend
     approval: none
     branch:
       approved: handoff

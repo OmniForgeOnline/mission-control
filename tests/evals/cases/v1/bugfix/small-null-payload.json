@@ -1,0 +1,59 @@
+{
+  "schemaVersion": 1,
+  "id": "small-null-payload",
+  "workflowId": "bugfix",
+  "taskClass": "small",
+  "inputs": {
+    "title": "Fix crash on empty webhook payload",
+    "description": "Connector webhook handler throws when body is empty; return 400 and log a structured skip reason.",
+    "targets": [
+      {
+        "path": "src/connectors",
+        "kind": "directory"
+      }
+    ]
+  },
+  "permittedTools": [
+    "claude",
+    "codex"
+  ],
+  "outcome": {
+    "artifact": {
+      "kind": "code-change"
+    },
+    "deterministicChecks": [
+      {
+        "kind": "checks-outcome",
+        "outcome": "validated"
+      },
+      {
+        "kind": "workflow-step",
+        "stepId": "handoff"
+      }
+    ],
+    "rubric": [
+      {
+        "id": "repro",
+        "criterion": "Documents reproduction with empty payload and expected HTTP status."
+      },
+      {
+        "id": "root-cause",
+        "criterion": "Identifies parse/site of failure before code change."
+      }
+    ]
+  },
+  "risk": "low",
+  "provenance": {
+    "kind": "synthetic",
+    "source": "Redacted single-file bugfix with clear reproduction.",
+    "notes": "Pattern-synthesized from representative completed runs; no single source task id archived.",
+    "redactions": [
+      "connector account ids"
+    ]
+  },
+  "replay": {
+    "fixtures": {
+      "workspacePath": "tests/evals/fixtures/checks-validated"
+    }
+  }
+}

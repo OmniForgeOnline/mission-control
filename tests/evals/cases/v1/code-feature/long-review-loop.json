@@ -1,0 +1,83 @@
+{
+  "schemaVersion": 1,
+  "id": "long-review-loop",
+  "workflowId": "code-feature",
+  "taskClass": "decomposition",
+  "inputs": {
+    "title": "Add localization coverage for new navigation strings",
+    "description": "Wire i18n for newly added side-nav entitlement prompts across supported locales without breaking reconnect status handling.",
+    "targets": [
+      {
+        "path": "src/ui",
+        "kind": "directory"
+      },
+      {
+        "path": "tests/ui.test.ts",
+        "kind": "file"
+      }
+    ],
+    "context": {
+      "reviewRounds": "3",
+      "priorFindings": "Incomplete locale dictionaries; reconnect sentinel compared to translated text."
+    }
+  },
+  "permittedTools": [
+    "claude",
+    "codex",
+    "kiro"
+  ],
+  "outcome": {
+    "artifact": {
+      "kind": "code-change",
+      "pathPattern": "src/ui/**",
+      "requiredSections": [
+        "locale parity",
+        "stable status codes"
+      ]
+    },
+    "deterministicChecks": [
+      {
+        "kind": "workflow-step",
+        "stepId": "implement"
+      },
+      {
+        "kind": "reviewer-verdict",
+        "decision": "approved"
+      },
+      {
+        "kind": "workflow-step",
+        "stepId": "review"
+      }
+    ],
+    "rubric": [
+      {
+        "id": "decompose",
+        "criterion": "Large surface is split into independently verifiable locale and status-handling deliverables before another full review round."
+      },
+      {
+        "id": "acceptance-contract",
+        "criterion": "Acceptance contract names locale completeness criteria and forbids comparing reconnect logic to translated strings."
+      },
+      {
+        "id": "finding-ledger",
+        "criterion": "Resolved reviewer findings are not reintroduced in later rounds."
+      }
+    ]
+  },
+  "risk": "high",
+  "provenance": {
+    "kind": "synthetic",
+    "source": "Pattern-synthesized from multi-round code-feature review using tests/fixtures/reviewer-verdict-multiline-evidence.md patterns.",
+    "notes": "Synthetic decomposition case shaped by multi-round review patterns. Uses tests/fixtures/reviewer-verdict-multiline-evidence.md for offline replay only — not a captured transcript and not linked to a live task/run id. Pairs with locale-acceptance-contract.",
+    "redactions": [
+      "external repo paths",
+      "customer-facing product names",
+      "reviewer raw logs"
+    ]
+  },
+  "replay": {
+    "fixtures": {
+      "reviewerReply": "tests/evals/fixtures/reviewer-approved.json"
+    }
+  }
+}

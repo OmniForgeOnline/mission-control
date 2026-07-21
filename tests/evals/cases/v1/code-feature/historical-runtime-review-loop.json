@@ -1,0 +1,36 @@
+{
+  "schemaVersion": 1,
+  "id": "historical-runtime-review-loop",
+  "workflowId": "code-feature",
+  "taskClass": "decomposition",
+  "inputs": {
+    "title": "Harden a cross-cutting Mission Control feature",
+    "description": "Implement a repository-scoped feature with explicit acceptance criteria, checks, and review remediation.",
+    "context": { "reviewRounds": "19", "sourceRecord": "redacted runtime task" }
+  },
+  "permittedTools": ["claude", "codex", "kiro"],
+  "outcome": {
+    "artifact": { "kind": "code-change" },
+    "rubric": [
+      { "id": "decomposition", "criterion": "The work is split into verifiable implementation and review contracts." },
+      { "id": "remediation", "criterion": "Review findings result in bounded author remediation." }
+    ],
+    "deterministicChecks": [
+      { "kind": "workflow-step", "stepId": "review" },
+      { "kind": "reviewer-verdict", "decision": "approved" }
+    ]
+  },
+  "risk": "high",
+  "provenance": {
+    "kind": "historical",
+    "source": "runtime-task-sha256:59123436283e6ac6",
+    "notes": "Privacy-reviewed summary of a completed local runtime task with a long review loop; transcript, repository paths, credentials, and external URLs were excluded.",
+    "redactions": ["title and description generalized", "transcript omitted", "repository and connector identifiers omitted"]
+  },
+  "replay": {
+    "fixtures": {
+      "reviewerReply": "{\"decision\":\"approve\",\"summary\":\"Historical review loop reached its accepted outcome.\",\"comments\":[]}",
+      "artifactPaths": ["replay-artifacts/review-loop.txt"]
+    }
+  }
+}

@@ -363,6 +363,11 @@
   font-variant-numeric: tabular-nums;
 }
 
+.run-routing {
+  flex: 1 1 100%;
+  font-size: var(--t-xs);
+}
+
 .run-item-end {
   display: flex;
   align-items: center;

@@ -17,6 +17,7 @@ import {
 } from "../core/workflows/index.ts";
 import type { PreparedWorkspace } from "../core/worktrees/worktrees.ts";
 import { addTaskMessage, markTaskBlocked, markTaskRunning, updateTask } from "../core/tasks/tasks.ts";
+import { updateRun } from "../core/tasks/runs.ts";
 import type { HarnessRun, HarnessTask } from "../core/types.ts";
 import type { AgentActivity, AgentRunner, AgentTurnResult } from "../runners/types.ts";
 import { now, type RunTurnInternal, type TurnSummary } from "./types.ts";
@@ -85,12 +86,15 @@ export async function runInlineRemediationTurn(params: InlineRemediationParams):
   const turnNumber = (task.turnCount ?? 0) + 1;
   const effort = internal.supportsEffort
     ? effortForRunner(params.workflow, step.id, {
-        stageOverride: task.stageEffortOverrides?.[step.id],
-        taskEffort: task.effort
+        ...(task.stageEffortOverrides?.[step.id] ? { stageOverride: task.stageEffortOverrides[step.id] } : {}),
+        ...(task.effort ? { taskEffort: task.effort } : {})
       })
     : undefined;
-  const runnerTask: HarnessTask =
-    internal.supportsEffort && effort ? { ...task, effort } : task;
+  const runnerTask: HarnessTask = effort ? { ...task, effort } : task;
+
+  if (effort) {
+    await updateRun(root, run.id, { effort });
+  }
 
   const stableHash = hashStableInstructions(params.prompt);
   const sessionContext = { agent: internal.agent, modelPool: internal.modelPoolId, conversation: false, stableHash };

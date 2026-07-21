@@ -1,3 +1,6 @@
+import type { ResolvedModelIdentity } from "./agents/identity-types.ts";
+import type { RoutingDecisionRecord } from "./runs/routing-decision.ts";
+
 /** Identity of a configurable CLI tool. Open set; validated against agent-config.json. */
 export type ToolId = string;
 /** Identity of a model pool bound to a tool. */
@@ -242,6 +245,12 @@ export interface HarnessRun {
   modelPoolId?: ModelPoolId;
   /** Workflow step this turn executed. Absent on historical and non-step (autonomy) runs. */
   stepId?: string;
+  /** Harness → provider/model identity captured at run start. Absent on historical runs. */
+  resolvedIdentity?: ResolvedModelIdentity;
+  /** Resolved reasoning effort for this turn. Absent when the tool does not support effort. */
+  effort?: EffortLevel;
+  /** Routing audit captured at run start for operator transparency. */
+  routingDecision?: RoutingDecisionRecord;
 }
 
 export interface HarnessProposal {

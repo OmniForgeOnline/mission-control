@@ -111,7 +111,8 @@ describe("code review", () => {
         authorReply: "**Pushed.** harness/abc · 1 commit(s) · fix branch naming.",
         checksNote: "Mechanical checks passed before this review (workflow advanced past checks).",
         mergeRequestNote: ""
-      }
+      },
+      profile: "code"
     });
 
     expect(prompt).toContain("author branch checked out");
@@ -122,7 +123,7 @@ describe("code review", () => {
     expect(prompt).toContain("export const value = 1;");
     expect(prompt).toContain("fix branch naming");
     expect(prompt).toContain("request_changes");
-    expect(prompt).toContain("code-review");
+    expect(prompt).toContain("Review profile: `code`");
     expect(prompt).toContain("inlined below");
     expect(prompt).not.toContain("Load the `code-review` skill with `read_skill`");
   });

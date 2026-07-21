@@ -1,7 +1,8 @@
 import type { ToolId } from "../../types.ts";
+import { enrichRouteRequest } from "../stage-routing.ts";
 import { loadAgentConfig } from "./store.ts";
 import { loadUsageSnapshots } from "./usage-store.ts";
-import { bestPoolForTool } from "./optimizer.ts";
+import { routeAgent } from "./optimizer.ts";
 import type { AgentToolConfig, ModelPoolConfig } from "./types.ts";
 
 export interface ResolvedLaunch {
@@ -22,14 +23,14 @@ export async function resolveRunnerLaunch(
   const [bundle, usage] = await Promise.all([loadAgentConfig(root), loadUsageSnapshots(root)]);
   const tool = bundle.tools.find((entry) => entry.id === toolId);
   if (!tool) return null;
-  // Default: the tool's no-arg pool, so the tool runs with whatever model it is
-  // configured against (don't force a specific model by default). The optimizer
-  // is only a fallback when no no-arg pool exists.
-  const defaultPool = bundle.pools.find(
-    (pool) => pool.toolId === toolId && pool.enabled && pool.modelArgs.length === 0
-  );
-  if (defaultPool) return { tool, pool: defaultPool };
-  const pool = bestPoolForTool(bundle, usage, toolId, role);
+  const routeRequest = await enrichRouteRequest(root, bundle, {
+    role,
+    capability: role,
+    preferredToolId: toolId
+  });
+  const routed = routeAgent(bundle, usage, routeRequest);
+  if (!routed || routed.toolId !== toolId) return null;
+  const pool = bundle.pools.find((entry) => entry.id === routed.modelPoolId);
   if (!pool) return null;
   return { tool, pool };
 }

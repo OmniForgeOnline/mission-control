@@ -5,7 +5,20 @@ import { listAutonomyJobs } from "../../autonomy/jobs.ts";
 import { attachAutonomyJobRuntime } from "../../autonomy/runtime.ts";
 import { listProjects } from "../../core/projects/registry.ts";
 import { listProjectJobs } from "../../core/projects/scoped-autonomy.ts";
-import { loadStageAgentOverrides, setStageAgentOverride } from "../../core/agents/stage-agents.ts";
+import {
+  adoptAmbiguousLegacyOverride,
+  clearStageAgentOverride,
+  isRegisteredModelPool,
+  loadStageAgentOverrides,
+  setStageAgentOverride,
+  unregisteredModelPoolMessage
+} from "../../core/agents/stage-agents.ts";
+import {
+  adoptAmbiguousLegacyModelPoolOverride,
+  clearStageModelPoolOverride,
+  loadStageModelPoolOverrides,
+  setStageModelPoolOverride
+} from "../../core/agents/stage-model-pools.ts";
 import { loadAgentConfig } from "../../core/agents/config/store.ts";
 import { loadAllMergedExtensions } from "../../core/agents/extensions/launch.ts";
 import { loadUsageSnapshots } from "../../core/agents/config/usage-store.ts";
@@ -46,8 +59,7 @@ export function createSettingsRouter(options: ServerOptions): Router {
       const agents = agentConfig.tools.map((tool) => ({
         id: tool.id,
         displayName: tool.displayName,
-        supportsEffort: tool.supportsEffort,
-        effortLevels: [...tool.effortLevels]
+        supportsEffort: tool.supportsEffort
       }));
       const autonomyJobs = await attachAutonomyJobRuntime(options.root, autonomyJobList);
 
@@ -88,7 +100,22 @@ export function createSettingsRouter(options: ServerOptions): Router {
         projects,
         workflows,
         workflow: await toWorkflowMetadata(options.root, defaultWorkflow),
-        stageAgentOverrides: (await loadStageAgentOverrides(options.root)).overrides,
+        ...(await (async () => {
+          const [stageAgents, stageModelPools] = await Promise.all([
+            loadStageAgentOverrides(options.root),
+            loadStageModelPoolOverrides(options.root)
+          ]);
+          return {
+            stageAgentOverrides: stageAgents.overrides,
+            stageModelPoolOverrides: stageModelPools.overrides,
+            ...(stageAgents.ambiguousLegacy
+              ? { ambiguousStageAgentOverrides: stageAgents.ambiguousLegacy }
+              : {}),
+            ...(stageModelPools.ambiguousLegacy
+              ? { ambiguousStageModelPoolOverrides: stageModelPools.ambiguousLegacy }
+              : {})
+          };
+        })()),
         inflightTaskIds: listInflightTaskIds(),
         interactiveSessions: listInteractiveWaits(),
         editors: editorSummaries(),
@@ -107,14 +134,82 @@ export function createSettingsRouter(options: ServerOptions): Router {
     "/settings/stage-agents/:stage",
     asyncRoute(async (req, res) => {
       const stage = param(req.params["stage"], "stage");
-      const agent = (req.body as { agent?: string }).agent;
+      const body = req.body as { agent?: string; workflowId?: string };
+      const workflowId = body.workflowId ?? "code-feature";
+      const agent = body.agent;
       const config = await loadAgentConfig(options.root);
       if (!agent || !config.tools.some((tool) => tool.id === agent)) {
         res.status(400).json({ error: "agent must be a configured tool id." });
         return;
       }
-      const updated = await setStageAgentOverride(options.root, stage, agent);
+      const updated = await setStageAgentOverride(options.root, stage, agent, workflowId);
       res.json(updated);
+    })
+  );
+
+  router.delete(
+    "/settings/stage-agents/:stage",
+    asyncRoute(async (req, res) => {
+      const stage = param(req.params["stage"], "stage");
+      const workflowId =
+        typeof req.query["workflowId"] === "string" ? req.query["workflowId"] : DEFAULT_WORKFLOW_ID;
+      res.json(await clearStageAgentOverride(options.root, stage, workflowId));
+    })
+  );
+
+  router.post(
+    "/settings/stage-agents/:stage/adopt-legacy",
+    asyncRoute(async (req, res) => {
+      const stage = param(req.params["stage"], "stage");
+      const workflowId = (req.body as { workflowId?: string }).workflowId;
+      if (!workflowId) {
+        res.status(400).json({ error: "workflowId is required." });
+        return;
+      }
+      const updated = await adoptAmbiguousLegacyOverride(options.root, stage, workflowId);
+      res.json(updated);
+    })
+  );
+
+  router.post(
+    "/settings/stage-model-pools/:stage",
+    asyncRoute(async (req, res) => {
+      const stage = param(req.params["stage"], "stage");
+      const body = req.body as { poolId?: string; workflowId?: string };
+      const workflowId = body.workflowId ?? "code-feature";
+      const poolId = body.poolId;
+      if (!poolId || !(await isRegisteredModelPool(options.root, poolId))) {
+        res.status(400).json({
+          error: poolId ? unregisteredModelPoolMessage(poolId) : "poolId must be a configured model pool id."
+        });
+        return;
+      }
+      const updated = await setStageModelPoolOverride(options.root, stage, poolId, workflowId);
+      res.json(updated);
+    })
+  );
+
+  router.delete(
+    "/settings/stage-model-pools/:stage",
+    asyncRoute(async (req, res) => {
+      const stage = param(req.params["stage"], "stage");
+      const workflowId =
+        typeof req.query["workflowId"] === "string" ? req.query["workflowId"] : "code-feature";
+      const updated = await clearStageModelPoolOverride(options.root, stage, workflowId);
+      res.json(updated);
+    })
+  );
+
+  router.post(
+    "/settings/stage-model-pools/:stage/adopt-legacy",
+    asyncRoute(async (req, res) => {
+      const stage = param(req.params["stage"], "stage");
+      const workflowId = (req.body as { workflowId?: string }).workflowId;
+      if (!workflowId) {
+        res.status(400).json({ error: "workflowId is required." });
+        return;
+      }
+      res.json(await adoptAmbiguousLegacyModelPoolOverride(options.root, stage, workflowId));
     })
   );
 

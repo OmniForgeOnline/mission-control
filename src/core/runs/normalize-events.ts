@@ -1,6 +1,7 @@
 import type { ToolId } from "../types.ts";
 import { extractSessionIdFromStreamEvent } from "../agents/output.ts";
 import type { RunEventInput } from "./events.ts";
+import { parseUsageFromStreamEvent } from "./usage-parsers.ts";
 
 /**
  * Map one parsed agent stream event into zero or more canonical RunEvents.
@@ -22,6 +23,9 @@ export function runEventsFromStreamEvent(agent: ToolId, event: unknown): RunEven
   } else {
     events.push(...codexEvents(record));
   }
+
+  const usage = parseUsageFromStreamEvent(agent, event);
+  if (usage) events.push(usage);
   return events;
 }
 

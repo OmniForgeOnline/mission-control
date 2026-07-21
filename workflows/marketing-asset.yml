@@ -26,12 +26,15 @@ steps:
     next: brand_review
 
   brand_review:
-    kind: conversation
-    agent: author
-    effort: medium
-    skill: product-discovery
+    kind: review
+    agent: reviewer
+    effort: high
+    skill: content-production
+    review_profile: content
     approval: none
-    next: handoff
+    branch:
+      approved: handoff
+      changes_requested: draft_asset
 
   handoff:
     kind: terminal

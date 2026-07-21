@@ -1,0 +1,75 @@
+{
+  "schemaVersion": 1,
+  "id": "locale-acceptance-contract",
+  "workflowId": "code-feature",
+  "taskClass": "acceptance-contract",
+  "inputs": {
+    "title": "Define acceptance contract for navigation i18n",
+    "description": "Specify measurable locale completeness criteria and stable reconnect status handling before another implementation round.",
+    "targets": [
+      {
+        "path": "src/ui",
+        "kind": "directory"
+      },
+      {
+        "path": "tests/ui.test.ts",
+        "kind": "file"
+      }
+    ],
+    "context": {
+      "pairsWith": "long-review-loop",
+      "reviewRounds": "3"
+    }
+  },
+  "permittedTools": [
+    "claude",
+    "codex"
+  ],
+  "outcome": {
+    "artifact": {
+      "kind": "acceptance-spec",
+      "requiredSections": [
+        "locale parity",
+        "status codes",
+        "out of scope"
+      ]
+    },
+    "deterministicChecks": [
+      {
+        "kind": "workflow-step",
+        "stepId": "plan_gate"
+      },
+      {
+        "kind": "artifact-present",
+        "pathPattern": "tests/ui.test.ts"
+      }
+    ],
+    "rubric": [
+      {
+        "id": "measurable",
+        "criterion": "Names explicit locale coverage criteria per supported language, not a vague 'translate everything' goal."
+      },
+      {
+        "id": "forbidden",
+        "criterion": "Forbids comparing reconnect sentinel logic to translated user-facing strings."
+      },
+      {
+        "id": "verifiable",
+        "criterion": "Each criterion maps to an automated or manual check the reviewer can apply without re-reading the full diff."
+      }
+    ]
+  },
+  "risk": "medium",
+  "provenance": {
+    "kind": "synthetic",
+    "source": "Acceptance-contract slice paired with long-review-loop decomposition case.",
+    "notes": "Pattern-synthesized from multi-round code-feature review patterns; no live transcript archived."
+  },
+  "replay": {
+    "fixtures": {
+      "artifactPaths": [
+        "tests/ui.test.ts"
+      ]
+    }
+  }
+}

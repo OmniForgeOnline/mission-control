@@ -1279,6 +1279,73 @@ button.status-badge-btn:focus-visible {
   height: var(--s-4);
 }
 
+.wf-routing-panel {
+  grid-column: 1 / -1;
+  border-top: 1px solid var(--line);
+  padding-top: var(--s-2);
+}
+
+.wf-routing-panel > summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2) var(--s-3);
+  align-items: baseline;
+  cursor: pointer;
+  list-style: none;
+}
+
+.wf-routing-panel > summary::-webkit-details-marker {
+  display: none;
+}
+
+.wf-routing-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-1) var(--s-2);
+  margin: 0;
+  font-size: var(--t-sm);
+}
+
+.wf-routing-source {
+  font-size: var(--t-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.wf-routing-source.is-pin {
+  color: var(--tone-warn);
+}
+
+.wf-routing-source.is-optimizer-fallback {
+  color: var(--tone-info);
+}
+
+.wf-routing-body {
+  display: grid;
+  gap: var(--s-2);
+  margin-top: var(--s-2);
+  font-size: var(--t-sm);
+}
+
+.wf-routing-warning {
+  margin: 0;
+  color: var(--tone-warn);
+}
+
+.wf-routing-usage-unknown {
+  margin: 0;
+  color: var(--ink-muted);
+}
+
+.wf-routing-rejected > summary {
+  cursor: pointer;
+}
+
+.wf-routing-rejected ul {
+  margin: var(--s-2) 0 0;
+  padding-left: 1.1rem;
+}
+
 .wf-step-actions {
   display: flex;
   flex-wrap: wrap;

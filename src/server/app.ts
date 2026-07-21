@@ -14,6 +14,7 @@ import { createMemoryRouter } from "./routes/memory.ts";
 import { createProposalsRouter } from "./routes/proposals.ts";
 import { createProjectsRouter } from "./routes/projects.ts";
 import { createRunsRouter } from "./routes/runs.ts";
+import { createRuntimeAssetsRouter } from "./routes/runtime-assets.ts";
 import { createSettingsRouter } from "./routes/settings.ts";
 import { createTasksRouter } from "./routes/tasks.ts";
 import { createVersionRouter } from "./routes/version.ts";
@@ -65,6 +66,7 @@ export function createServer(options: ServerOptions): express.Express {
   app.use("/api", createProjectsRouter(options));
   app.use("/api", createConnectorsRouter(options));
   app.use("/api", createWorkflowsRouter(options));
+  app.use("/api", createRuntimeAssetsRouter(options));
   app.use("/api", createVersionRouter(options));
   app.use("/api", createTerminalRouter(options));
 

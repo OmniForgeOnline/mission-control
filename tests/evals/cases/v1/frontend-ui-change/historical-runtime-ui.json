@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "id": "historical-runtime-ui",
+  "workflowId": "frontend-ui-change",
+  "taskClass": "medium",
+  "inputs": {
+    "title": "Adjust a responsive application surface",
+    "description": "Change a frontend surface while preserving narrow and wide viewport behavior and reviewing the rendered artifact."
+  },
+  "permittedTools": ["claude", "codex"],
+  "outcome": {
+    "artifact": { "kind": "frontend-change" },
+    "deterministicChecks": [{ "kind": "workflow-step", "stepId": "review" }]
+  },
+  "risk": "medium",
+  "provenance": {
+    "kind": "historical",
+    "source": "runtime-task-sha256:5848aa1879f8cc86",
+    "notes": "Privacy-reviewed summary of a completed local frontend task; screenshots, URLs, and repository-specific details were excluded.",
+    "redactions": ["task wording generalized", "visual artifacts omitted", "repository identifiers omitted"]
+  },
+  "replay": { "fixtures": { "artifactPaths": ["replay-artifacts/frontend.txt"] } }
+}

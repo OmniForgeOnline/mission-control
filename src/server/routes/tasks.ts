@@ -40,6 +40,10 @@ import {
 import { isAwaitingOperator, isTaskRunning } from "../../core/tasks/status.ts";
 import { loadWorkflow } from "../../core/workflows/index.ts";
 import { isRegisteredAgent, isRegisteredModelPool, unregisteredAgentMessage, unregisteredModelPoolMessage } from "../../core/agents/stage-agents.ts";
+import {
+  inspectStepRoutingDecision,
+  previewTaskStageModelPoolPin
+} from "../../core/runs/routing-inspect.ts";
 import { abortInflightTurn, deliverOperatorMessageToLiveTurn, listInflightTaskIds } from "../../runtime/sessions.ts";
 import {
   completeInteractiveTurn,
@@ -356,14 +360,81 @@ export function createTasksRouter(options: ServerOptions): Router {
     })
   );
 
+  router.get(
+    "/tasks/:id/steps/:stepId/routing",
+    asyncRoute(async (req, res) => {
+      const task = await getTask(options.root, param(req.params["id"], "id"));
+      if (!task) {
+        res.status(404).json({ error: "Task not found." });
+        return;
+      }
+      const view = await inspectStepRoutingDecision(
+        options.root,
+        task,
+        param(req.params["stepId"], "stepId")
+      );
+      if (!view) {
+        res.status(404).json({ error: "No routing decision available for this step." });
+        return;
+      }
+      res.json(view);
+    })
+  );
+
+  router.post(
+    "/tasks/:id/stage-model-pools/:stage/preview",
+    asyncRoute(async (req, res) => {
+      const task = await getTask(options.root, param(req.params["id"], "id"));
+      if (!task) {
+        res.status(404).json({ error: "Task not found." });
+        return;
+      }
+      const poolId = (req.body as { poolId?: string }).poolId;
+      if (!poolId) {
+        res.status(400).json({ error: "poolId is required." });
+        return;
+      }
+      const preview = await previewTaskStageModelPoolPin(
+        options.root,
+        task,
+        param(req.params["stage"], "stage"),
+        poolId
+      );
+      if (!preview.ok) {
+        res.status(400).json({ error: preview.error });
+        return;
+      }
+      res.json(preview);
+    })
+  );
+
   router.post(
     "/tasks/:id/stage-model-pools/:stage",
     asyncRoute(async (req, res) => {
       const id = param(req.params["id"], "id");
       const stage = param(req.params["stage"], "stage");
-      const poolId = (req.body as { poolId?: string }).poolId;
+      const body = req.body as { poolId?: string; acknowledgeWarnings?: boolean };
+      const poolId = body.poolId;
       if (!poolId || !(await isRegisteredModelPool(options.root, poolId))) {
         res.status(400).json({ error: unregisteredModelPoolMessage(poolId ?? "") });
+        return;
+      }
+      const task = await getTask(options.root, id);
+      if (!task) {
+        res.status(404).json({ error: "Task not found." });
+        return;
+      }
+      const preview = await previewTaskStageModelPoolPin(options.root, task, stage, poolId);
+      if (!preview.ok) {
+        res.status(400).json({ error: preview.error });
+        return;
+      }
+      const needsConfirm = preview.warnings.some((warning) => warning.requiresConfirmation);
+      if (needsConfirm && body.acknowledgeWarnings !== true) {
+        res.status(409).json({
+          error: "Pin requires confirmation.",
+          warnings: preview.warnings
+        });
         return;
       }
       res.json(await setTaskStageModelPoolOverride(options.root, id, stage, poolId));

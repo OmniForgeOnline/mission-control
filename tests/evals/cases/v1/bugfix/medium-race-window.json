@@ -1,0 +1,68 @@
+{
+  "schemaVersion": 1,
+  "id": "medium-race-window",
+  "workflowId": "bugfix",
+  "taskClass": "medium",
+  "inputs": {
+    "title": "Fix duplicate task creation on webhook retry",
+    "description": "ClickUp webhook retries can create duplicate harness tasks when delivery idempotency is missing across daemon ticks.",
+    "targets": [
+      {
+        "path": "src/connectors/providers/clickup-client.ts",
+        "kind": "file"
+      },
+      {
+        "path": "src/daemon",
+        "kind": "directory"
+      }
+    ],
+    "context": {
+      "evidence": "Two tasks share the same external id after a transient 502."
+    }
+  },
+  "permittedTools": [
+    "claude",
+    "codex"
+  ],
+  "outcome": {
+    "artifact": {
+      "kind": "code-change"
+    },
+    "deterministicChecks": [
+      {
+        "kind": "checks-outcome",
+        "outcome": "validated"
+      },
+      {
+        "kind": "reviewer-verdict",
+        "decision": "approved"
+      }
+    ],
+    "rubric": [
+      {
+        "id": "repro",
+        "criterion": "Investigation cites retry behavior and duplicate task evidence."
+      },
+      {
+        "id": "tests",
+        "criterion": "Adds regression coverage for idempotent ingest on repeated delivery."
+      }
+    ]
+  },
+  "risk": "medium",
+  "provenance": {
+    "kind": "synthetic",
+    "source": "Redacted multi-file bugfix with connector and daemon interaction.",
+    "notes": "Pattern-synthesized from representative completed runs; no single source task id archived.",
+    "redactions": [
+      "ClickUp workspace ids",
+      "live webhook secrets"
+    ]
+  },
+  "replay": {
+    "fixtures": {
+      "workspacePath": "tests/evals/fixtures/checks-validated",
+      "reviewerReply": "tests/evals/fixtures/reviewer-approved.json"
+    }
+  }
+}

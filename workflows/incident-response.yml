@@ -33,9 +33,19 @@ steps:
     kind: agent_turn
     agent: claude
     effort: medium
-    skill: content-production
+    skill: incident-response
     approval: none
-    next: handoff
+    next: review
+  review:
+    kind: review
+    agent: reviewer
+    effort: medium
+    skill: incident-response
+    review_profile: incident
+    approval: none
+    branch:
+      approved: handoff
+      changes_requested: postmortem
   handoff:
     kind: terminal
     agent: none

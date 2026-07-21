@@ -1,0 +1,71 @@
+{
+  "schemaVersion": 1,
+  "id": "medium-integration-spec",
+  "workflowId": "product-spec",
+  "taskClass": "medium",
+  "inputs": {
+    "title": "Spec: connector write-back permissions",
+    "description": "Document how Mission Control syncs task status to ClickUp with explicit permission boundaries, failure handling, and operator overrides.",
+    "targets": [
+      {
+        "path": "docs",
+        "kind": "directory"
+      }
+    ],
+    "context": {
+      "dependencies": "connectors store, daemon tick, ClickUp client"
+    }
+  },
+  "permittedTools": [
+    "kiro",
+    "claude",
+    "codex"
+  ],
+  "outcome": {
+    "artifact": {
+      "kind": "spec-document",
+      "requiredSections": [
+        "Problem",
+        "Scope",
+        "Acceptance criteria",
+        "Risks",
+        "Rollout"
+      ]
+    },
+    "deterministicChecks": [
+      {
+        "kind": "workflow-step",
+        "stepId": "review_spec"
+      },
+      {
+        "kind": "reviewer-verdict",
+        "decision": "approved"
+      }
+    ],
+    "rubric": [
+      {
+        "id": "memory",
+        "criterion": "Spec references harness memory or prior decisions where relevant."
+      },
+      {
+        "id": "verification",
+        "criterion": "Defines how operators validate sync behavior without production secrets."
+      }
+    ]
+  },
+  "risk": "medium",
+  "provenance": {
+    "kind": "synthetic",
+    "source": "Redacted multi-section product spec derived from connector workflows.",
+    "notes": "Pattern-synthesized from representative completed runs; no single source task id archived.",
+    "redactions": [
+      "customer workspace names",
+      "API tokens"
+    ]
+  },
+  "replay": {
+    "fixtures": {
+      "reviewerReply": "tests/evals/fixtures/reviewer-approved.json"
+    }
+  }
+}

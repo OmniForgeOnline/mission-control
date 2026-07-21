@@ -1,4 +1,6 @@
-import type { EffortLevel, ModelPoolId, ToolId } from "../../types.ts";
+import type { ModelPoolId, ToolId } from "../../types.ts";
+import type { CapabilityFeature } from "../capability-profiles/types.ts";
+import type { ModelPoolIdentity } from "../identity-types.ts";
 
 export type { ModelPoolId, ToolId };
 
@@ -52,6 +54,12 @@ export type Capability = string;
  */
 export type UsageSource = "codex-app-server" | "claude-oauth" | "none";
 
+export type {
+  ModelPoolIdentity,
+  ModelProviderId,
+  VerificationState
+} from "../identity-types.ts";
+
 export interface UsagePolicy {
   kind: UsagePolicyKind;
   /** Quota window. Required when kind === "quota". */
@@ -84,13 +92,14 @@ export interface AgentToolConfig {
   /** Seeded templates are builtin; user-defined tools are not. */
   builtin: boolean;
   supportsEffort: boolean;
-  effortLevels: EffortLevel[];
   cli: AgentCliConfig;
   /**
    * Argument template for the `generic` adapter. Tokens: {prompt}, {model}, {effort}, {cwd}.
    * Ignored by built-in adapters.
    */
   commandTemplate?: string[];
+  /** Complete generic-adapter argument template for read-only launches. */
+  readOnlyCommandTemplate?: string[];
   promptTransport?: PromptTransport;
   promptInputFormat?: PromptInputFormat;
   maxPromptArgBytes?: number;
@@ -123,8 +132,8 @@ export interface ModelPoolConfig {
   /** Env vars injected when launching this model (e.g. base URL / API key var names). */
   modelEnv: Record<string, string>;
   capabilities: Capability[];
-  /** Quality weight 0..100 used by the optimizer's primary score. */
-  qualityWeight: number;
+  /** Explicit routing features (vision/tool-use/large-context/custom-provider). */
+  features?: CapabilityFeature[];
   tier: ModelTier;
   /** Per-pool usage policy. May differ from the owning tool (e.g. capless GLM-5.1). */
   usage: UsagePolicy;
@@ -132,6 +141,8 @@ export interface ModelPoolConfig {
   usageSource: UsageSource;
   enabled: boolean;
   builtin: boolean;
+  /** Verified provider/model identity for this pool. Populated by normalization. */
+  identity?: ModelPoolIdentity;
 }
 
 /**
@@ -143,8 +154,6 @@ export interface RoutingProfileConfig {
   role: string;
   /** Required capability a model pool must advertise. Defaults to `role`. */
   requiredCapability?: Capability;
-  /** Minimum acceptable quality weight; cheaper/free pools below this are skipped. */
-  minQuality: number;
   /** Optional explicit preference order of tool ids (still subject to hard filters). */
   preferToolIds?: ToolId[];
 }

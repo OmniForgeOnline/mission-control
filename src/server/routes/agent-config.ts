@@ -217,7 +217,7 @@ export function createAgentConfigRouter(options: ServerOptions): Router {
         for (const model of models) {
           const poolId = tool.id === "codex" ? model.id : cursorPoolIdForModel(model.id);
           const existing = bundle.pools.find((pool) => pool.id === poolId);
-          // Keep curated builtins (display name / quality) when rediscovering.
+          // Keep curated builtins (display name / features) when rediscovering.
           if (existing?.builtin) {
             discovered += 1;
             continue;
@@ -229,7 +229,7 @@ export function createAgentConfigRouter(options: ServerOptions): Router {
             modelArgs: ["--model", model.id],
             modelEnv: {},
             capabilities: ["author", "reviewer", "code", "plan", "review"],
-            qualityWeight: existing?.qualityWeight ?? 50,
+            features: ["large-context"],
             tier: "paid",
             usage: tool.id === "codex" ? { kind: "usage-only" } : { kind: "unavailable" },
             usageSource: tool.id === "codex" ? "codex-app-server" : "none",

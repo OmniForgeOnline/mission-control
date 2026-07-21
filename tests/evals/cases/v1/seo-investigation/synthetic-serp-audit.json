@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 1,
+  "id": "synthetic-serp-audit",
+  "workflowId": "seo-investigation",
+  "taskClass": "synthetic",
+  "inputs": {
+    "title": "Investigate landing page indexation drop",
+    "description": "Analyze likely causes for a sudden organic traffic decline on the marketing homepage using public crawl signals only."
+  },
+  "permittedTools": [
+    "claude",
+    "codex"
+  ],
+  "outcome": {
+    "artifact": {
+      "kind": "seo-report",
+      "requiredSections": [
+        "Findings",
+        "Evidence",
+        "Recommendations"
+      ]
+    },
+    "rubric": [
+      {
+        "id": "sources",
+        "criterion": "Each finding cites a source URL or crawl artifact, not live API secrets."
+      }
+    ]
+  },
+  "risk": "low",
+  "provenance": {
+    "kind": "synthetic",
+    "source": "Generated placeholder for unexercised seo-investigation workflow."
+  }
+}

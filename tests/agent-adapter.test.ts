@@ -52,6 +52,77 @@ describe("generic runner adapter", () => {
     expect(spec.args).toEqual(["exec", "--model", "claude-sonnet"]);
     expect(spec.promptOnStdin).toBe(true);
   });
+
+  it("injects read-only permission mode for generic tools in plan mode", () => {
+    const tool = normalizeTool({
+      id: "kilo-cli",
+      command: "kilo",
+      adapter: "generic",
+      commandTemplate: ["run", "--dangerously-skip-permissions", "--prompt", "{prompt}"],
+      cli: { permissionModes: { plan: "plan", execute: "bypassPermissions" } }
+    });
+    const pool = normalizeModelPool({
+      id: "kilo-free",
+      toolId: "kilo-cli",
+      modelArgs: ["glm-5.1"],
+      tier: "free",
+      capabilities: ["author"]
+    });
+    const spec = buildLaunchArgs(tool, pool, { ...request, mode: "plan" });
+    expect(spec.args).toEqual(["run", "--prompt", "do it", "glm-5.1", "--permission-mode", "plan"]);
+    expect(spec.args).not.toContain("--dangerously-skip-permissions");
+  });
+
+  it("refuses generic launch in plan mode when the tool cannot enforce read-only", () => {
+    const tool = normalizeTool({
+      id: "warp",
+      command: "warp",
+      adapter: "generic",
+      commandTemplate: ["exec"]
+    });
+    const pool = normalizeModelPool({
+      id: "warp-pro",
+      toolId: "warp",
+      modelArgs: [],
+      tier: "paid",
+      capabilities: ["author"]
+    });
+    expect(() => buildLaunchArgs(tool, pool, { ...request, mode: "plan" })).toThrow(
+      /cannot enforce read-only plan mode/
+    );
+  });
+
+  it("uses tool-specific read-only templates for different CLI syntaxes", () => {
+    const pool = normalizeModelPool({
+      id: "read-only-pool",
+      toolId: "inspect-a",
+      modelArgs: ["model-a"],
+      tier: "paid",
+      capabilities: ["author"]
+    });
+    const flagTool = normalizeTool({
+      id: "inspect-a",
+      command: "inspect-a",
+      adapter: "generic",
+      commandTemplate: ["run", "{prompt}"],
+      readOnlyCommandTemplate: ["check", "--read-only", "{cwd}"]
+    });
+    expect(buildLaunchArgs(flagTool, pool, { ...request, mode: "plan" }).args).toEqual([
+      "check", "--read-only", "/work", "model-a"
+    ]);
+
+    const modeTool = normalizeTool({
+      id: "inspect-b",
+      command: "inspect-b",
+      adapter: "generic",
+      commandTemplate: ["run", "{prompt}"],
+      readOnlyCommandTemplate: ["query", "--permission", "readonly", "{prompt}"]
+    });
+    const modePool = { ...pool, id: "read-only-mode-pool", toolId: "inspect-b" };
+    expect(buildLaunchArgs(modeTool, modePool, { ...request, mode: "plan" }).args).toEqual([
+      "query", "--permission", "readonly", "do it", "model-a"
+    ]);
+  });
 });
 
 describe("opencode runner adapter", () => {

@@ -1,6 +1,8 @@
 import type { AgentRunner } from "../runners/types.ts";
 import type { ExecutionState, HarnessTask } from "../core/types.ts";
 import type { ModelPoolId, ToolId } from "../core/types.ts";
+import type { RouteRequest, RoutingExplanation } from "../core/agents/config/optimizer.ts";
+import type { ResolvedRouting } from "../core/agents/stage-agents.ts";
 import type { PreparedWorkspace } from "../core/worktrees/worktrees.ts";
 import type { WorkflowStep } from "../core/workflows/index.ts";
 import type { createRun } from "../core/tasks/runs.ts";
@@ -11,6 +13,8 @@ export interface ProcessOptions {
   runner?: AgentRunner;
   reviewerRunner?: AgentRunner;
   wait?: boolean;
+  /** Internal deterministic eval hook; skips forge/conflict side effects. */
+  replayExternalSteps?: boolean;
 }
 
 export interface TurnSummary {
@@ -35,6 +39,11 @@ export interface RunTurnInternal {
   reviewer?: { round: number };
   checksRemediation?: { round: number };
   conversation?: boolean;
+  routingContext?: {
+    routing: ResolvedRouting;
+    routeRequest: RouteRequest;
+    explanation: RoutingExplanation | null;
+  };
 }
 
 export interface AdvanceAuthorTurnContext {

@@ -13,15 +13,16 @@ steps:
     kind: agent_turn
     agent: codex
     effort: medium
-    skill: harness-quality
+    skill: tech-debt-capture
     approval: none
     next: plan
 
   plan:
-    kind: conversation
+    kind: agent_turn
     agent: codex
     effort: high
     skill: technical-investigation
+    modifies_repo: false
     approval: none
     next: implement
 
@@ -52,6 +53,7 @@ steps:
     agent: reviewer
     effort: high
     skill: code-review
+    review_profile: code
     approval: none
     branch:
       approved: capture_followups

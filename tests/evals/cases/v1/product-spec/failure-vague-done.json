@@ -1,0 +1,47 @@
+{
+  "schemaVersion": 1,
+  "id": "failure-vague-done",
+  "workflowId": "product-spec",
+  "taskClass": "failure",
+  "inputs": {
+    "title": "Spec: better workflows",
+    "description": "Improve workflows so they work better for teams.",
+    "context": {
+      "failureMode": "Spec lacks measurable acceptance criteria and verification plan."
+    }
+  },
+  "permittedTools": [
+    "kiro",
+    "claude"
+  ],
+  "outcome": {
+    "artifact": {
+      "kind": "spec-document"
+    },
+    "deterministicChecks": [
+      {
+        "kind": "workflow-step",
+        "stepId": "review_spec"
+      }
+    ],
+    "rubric": [
+      {
+        "id": "reject",
+        "criterion": "Reviewer requests changes until acceptance criteria and verification are concrete."
+      },
+      {
+        "id": "no-handoff",
+        "criterion": "Terminal handoff does not occur while criteria remain subjective."
+      }
+    ]
+  },
+  "risk": "low",
+  "provenance": {
+    "kind": "synthetic",
+    "source": "Failure pattern from vague product-spec drafts.",
+    "notes": "Pattern-synthesized failure mode; no single source task id archived.",
+    "redactions": [
+      "workshop notes with customer names"
+    ]
+  }
+}

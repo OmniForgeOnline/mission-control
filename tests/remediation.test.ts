@@ -1,3 +1,5 @@
+import { describe, expect, it } from "vitest";
+
 import {
   fingerprintRemediationError,
   REMEDIATION_STAGNATION_LIMIT,
@@ -19,5 +21,4 @@ describe("task-scoped remediation", () => {
     const b = fingerprintRemediationError("tests/foo.ts:12:8 error unused var");
     expect(a).toBe(b);
   });
-
 });

@@ -1,9 +1,6 @@
 import type { WorkflowRun } from "../types.ts";
-import {
-  extractPlanFromTask,
-  type PlanApprovalTask,
-  type WorkflowPlanApprovalLookup
-} from "./plan-approval.ts";
+import { stepIsReadOnlyInvestigation } from "../workflows/graph.ts";
+import { extractPlanFromTask, type PlanApprovalTask, type WorkflowPlanApprovalLookup } from "./plan-approval.ts";
 
 export type { PlanApprovalTask, WorkflowPlanApprovalLookup };
 
@@ -48,7 +45,7 @@ export interface PlanRefinementTask extends PlanApprovalTask {
   mergeRequest?: { number: number };
 }
 
-/** Walk upstream from the current step until a conversation step is found. */
+/** Walk upstream from the current step until a planning or read-only investigation step is found. */
 export function findPlanningConversationStepId(
   workflow: WorkflowPlanApprovalLookup,
   run: WorkflowRun
@@ -60,7 +57,7 @@ export function findPlanningConversationStepId(
     seen.add(stepId);
     const step = workflow.steps[stepId];
     if (!step) return null;
-    if (step.kind === "conversation") return stepId;
+    if (step.kind === "conversation" || stepIsReadOnlyInvestigation(step)) return stepId;
     stepId = findUpstreamStepId(workflow, stepId);
   }
 
@@ -80,6 +77,10 @@ export function canRefinePlan(task: PlanRefinementTask, workflow: WorkflowPlanAp
   if (!step) return false;
 
   if (agentTurns > 0 && step.kind === "conversation") {
+    return true;
+  }
+
+  if (agentTurns > 0 && stepIsReadOnlyInvestigation(step)) {
     return true;
   }
 

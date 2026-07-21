@@ -26,7 +26,9 @@ export async function listWorkflowSummaries(root: string): Promise<WorkflowSumma
               ...(step.next ? { next: step.next } : {}),
               ...(step.parallel ? { parallel: step.parallel } : {}),
               ...(step.join ? { join: step.join } : {}),
-              ...(step.branch ? { branch: step.branch } : {})
+              ...(step.branch ? { branch: step.branch } : {}),
+              ...(step.reviewProfile ? { reviewProfile: step.reviewProfile } : {}),
+              ...(step.modifiesRepo !== undefined ? { modifiesRepo: step.modifiesRepo } : {})
             }
           ])
         ),

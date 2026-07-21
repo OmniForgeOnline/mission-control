@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 1,
+  "id": "synthetic-interview-plan",
+  "workflowId": "ux-research",
+  "taskClass": "synthetic",
+  "inputs": {
+    "title": "Plan operator interviews for intake friction",
+    "description": "Draft a lightweight interview guide for operators who abandon intake before ticket creation."
+  },
+  "permittedTools": [
+    "kiro",
+    "claude"
+  ],
+  "outcome": {
+    "artifact": {
+      "kind": "research-brief",
+      "requiredSections": [
+        "Goals",
+        "Participants",
+        "Questions"
+      ]
+    },
+    "rubric": [
+      {
+        "id": "ethics",
+        "criterion": "Guide avoids collecting PII beyond what the study needs."
+      }
+    ]
+  },
+  "risk": "low",
+  "provenance": {
+    "kind": "synthetic",
+    "source": "Generated placeholder for unexercised ux-research workflow."
+  }
+}

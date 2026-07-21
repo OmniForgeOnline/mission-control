@@ -4,6 +4,18 @@ import path from "node:path";
 import { ensureDir } from "../core/infra/fs.ts";
 import { runHooks } from "../core/review/hooks.ts";
 import { claimRunForTask, updateRun } from "../core/tasks/runs.ts";
+import { resolveRunIdentityFromRouting } from "../core/agents/config/run-identity.ts";
+import { loadAgentConfig } from "../core/agents/config/store.ts";
+import { loadUsageSnapshots } from "../core/agents/config/usage-store.ts";
+import {
+  buildRoutingDecisionRecord,
+  type RoutingDecisionRecord
+} from "../core/runs/routing-decision.ts";
+import {
+  quotaStateForPool,
+  resolveStepRoutingContext,
+  type StepRoutingContext
+} from "../core/runs/routing-inspect.ts";
 import { EntityNotFoundError } from "../core/tasks/errors.ts";
 import { HEARTBEAT_INTERVAL_MS } from "../core/tasks/activity.ts";
 import {
@@ -45,6 +57,7 @@ import {
   type RunTurnInternal,
   type TurnSummary
 } from "./types.ts";
+import { roleCapability } from "../core/agents/stage-routing.ts";
 
 async function refreshRunningTask(
   root: string,
@@ -74,7 +87,11 @@ export async function requireStepAgent(root: string, task: HarnessTask, stepId: 
     task.workflowRun.workflowId,
     stepId,
     task.stageAgentOverrides,
-    task.stageModelPoolOverrides
+    task.stageModelPoolOverrides,
+    undefined,
+    task.agentSessionId && task.agentSessionAgent && task.agentSessionModelPool
+      ? { agent: task.agentSessionAgent, modelPoolId: task.agentSessionModelPool }
+      : undefined
   );
   if (!routing) {
     const preferred = await resolveAgentForStep(
@@ -87,7 +104,13 @@ export async function requireStepAgent(root: string, task: HarnessTask, stepId: 
       throw new Error(`No agent configured for workflow step "${stepId}".`);
     }
     throw new AgentCapacityError(
-      await formatStepNoRouteMessage(root, task.workflowRun.workflowId, stepId)
+      await formatStepNoRouteMessage(
+        root,
+        task.workflowRun.workflowId,
+        stepId,
+        task.stageAgentOverrides,
+        task.stageModelPoolOverrides
+      )
     );
   }
   return routing;
@@ -109,10 +132,65 @@ export async function resolveTurnAgent(
   }
 }
 
+async function routingDecisionForTurn(
+  root: string,
+  internal: RunTurnInternal
+): Promise<RoutingDecisionRecord | undefined> {
+  const task = internal.task;
+  if (!task.workflowRun) return undefined;
+
+  const identity = await resolveRunIdentityFromRouting(root, internal.agent, internal.modelPoolId);
+  if (!identity) return undefined;
+
+  const [bundle, usage] = await Promise.all([loadAgentConfig(root), loadUsageSnapshots(root)]);
+
+  if (internal.routingContext) {
+    const capability =
+      internal.routingContext.explanation?.capability ?? roleCapability(internal.step.agent);
+    return buildRoutingDecisionRecord({
+      harness: internal.agent,
+      modelPoolId: internal.modelPoolId,
+      capability,
+      source: internal.routingContext.routing.source,
+      reason: internal.routingContext.routing.routeReason ?? internal.routingContext.routing.source,
+      identity,
+      quotaState: quotaStateForPool(bundle, usage, internal.agent, internal.modelPoolId),
+      explanation: internal.routingContext.explanation
+    });
+  }
+
+  const context: StepRoutingContext | null = await resolveStepRoutingContext(
+    root,
+    task.workflowRun.workflowId,
+    internal.step.id,
+    task.stageAgentOverrides,
+    task.stageModelPoolOverrides,
+    internal.workspace.cwd
+  );
+  if (!context) return undefined;
+
+  const capability =
+    context.explanation?.capability ?? roleCapability(internal.step.agent);
+
+  return buildRoutingDecisionRecord({
+    harness: internal.agent,
+    modelPoolId: internal.modelPoolId,
+    capability,
+    source: context.routing.source,
+    reason: context.routing.routeReason ?? context.routing.source,
+    identity,
+    quotaState: quotaStateForPool(bundle, usage, internal.agent, internal.modelPoolId),
+    explanation: context.explanation
+  });
+}
+
 export async function executeAgentTurn(root: string, internal: RunTurnInternal): Promise<TurnSummary | null> {
   const { task, prompt, workspace, resolvedRunner, options } = internal;
   const startedAt = now();
   const workflow = await loadWorkflow(root, task.workflowRun!.workflowId);
+
+  const resolvedIdentity = await resolveRunIdentityFromRouting(root, internal.agent, internal.modelPoolId);
+  const routingDecision = await routingDecisionForTurn(root, internal);
 
   const run = await claimRunForTask(root, {
     taskId: task.id,
@@ -123,7 +201,9 @@ export async function executeAgentTurn(root: string, internal: RunTurnInternal):
     startedAt,
     artifacts: ["prompt.md", "log.txt"],
     modelPoolId: internal.modelPoolId,
-    stepId: internal.step.id
+    stepId: internal.step.id,
+    ...(resolvedIdentity ? { resolvedIdentity } : {}),
+    ...(routingDecision ? { routingDecision } : {})
   });
   if (!run) return null;
 
@@ -298,6 +378,20 @@ export async function advanceAuthorTurnWorkflow(
   const nextStep = getCurrentStep(workflow, advanced.workflowRun!);
 
   if (nextStep.kind === "create_merge_request") {
+    if (options?.replayExternalSteps) {
+      await updateTask(root, task.id, (current) => ({
+        ...current,
+        mergeRequest: { provider: "github", url: "https://replay.invalid/merge-request/1", number: 1, state: "open" },
+        updatedAt: now()
+      }));
+      await advanceTaskWorkflowStep(root, task.id);
+      const afterMergeRequest = await getTask(root, task.id);
+      if (afterMergeRequest?.workflowRun && getCurrentStep(workflow, afterMergeRequest.workflowRun).kind === "resolve_conflicts") {
+        await advanceTaskWorkflowStep(root, task.id);
+      }
+      const updated = await patchTaskExecution(root, task.id, { blockedReason: null }, baseUpdates);
+      return { runId, execution: deriveExecution(updated) };
+    }
     await patchTaskExecution(root, task.id, { blockedReason: null }, baseUpdates);
     const chained = await runTaskTurn(root, task.id, { ...options, wait: options?.wait ?? true });
     void captureLessonFromReply(root, task, run, replyBody).catch(() => {});

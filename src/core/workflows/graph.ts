@@ -65,11 +65,63 @@ export function findImplementationStepId(workflow: Pick<WorkflowDefinition, "ste
   return workflow.steps["implement"] ? "implement" : null;
 }
 
+/** Find the nearest upstream step that can have produced the reviewed artifact. */
+export function findArtifactProducingStepId(
+  workflow: Pick<WorkflowDefinition, "initial" | "steps">,
+  reviewStepId: string
+): string | null {
+  const implementation = findImplementationStepId(workflow);
+  if (implementation && implementation !== reviewStepId) return implementation;
+
+  const upstream = new Map<string, string[]>();
+  for (const [stepId, step] of Object.entries(workflow.steps)) {
+    const nextIds = [
+      ...(step.next ? [step.next] : []),
+      ...(step.parallel ?? []),
+      ...(step.join ? [step.join] : []),
+      ...Object.values(step.branch ?? {})
+    ];
+    for (const nextId of nextIds) {
+      const entries = upstream.get(nextId) ?? [];
+      entries.push(stepId);
+      upstream.set(nextId, entries);
+    }
+  }
+
+  const queue = [...(upstream.get(reviewStepId) ?? [])];
+  const seen = new Set<string>();
+  while (queue.length) {
+    const stepId = queue.shift()!;
+    if (seen.has(stepId)) continue;
+    seen.add(stepId);
+    const step = workflow.steps[stepId];
+    if (step && step.agent !== "none" && (step.kind === "agent_turn" || step.kind === "conversation")) {
+      return stepId;
+    }
+    queue.push(...(upstream.get(stepId) ?? []));
+  }
+  return null;
+}
+
 export function findMergeRequestStepId(workflow: Pick<WorkflowDefinition, "steps">): string | null {
   for (const [stepId, step] of Object.entries(workflow.steps)) {
     if (step.kind === "create_merge_request") return stepId;
   }
   return null;
+}
+
+/** Explicit read-only technical investigation (`agent_turn` + `modifiesRepo: false`). */
+export function stepIsReadOnlyInvestigation(step: {
+  kind: string;
+  modifiesRepo?: boolean;
+}): boolean {
+  return step.kind === "agent_turn" && step.modifiesRepo === false;
+}
+
+/** Runner permission mode for a workflow step. Defaults to execute for repo-mutating agent turns. */
+export function stepRunnerMode(step: WorkflowStep): "execute" | "plan" {
+  if (step.kind === "conversation" || stepIsReadOnlyInvestigation(step)) return "plan";
+  return "execute";
 }
 
 export function stepModifiesRepo(step: WorkflowStep): boolean {
@@ -121,7 +173,7 @@ export function resolveStepAgent(
   const taskOverride = taskOverrides?.[stepId];
   if (taskOverride) return taskOverride;
 
-  const override = overrides.overrides[stepId];
+  const override = overrides.overrides[`${workflow.id}:${stepId}`];
   if (override) return override;
 
   if (isWorkflowAgentTool(step.agent)) {

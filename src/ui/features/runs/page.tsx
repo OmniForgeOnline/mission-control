@@ -53,6 +53,12 @@ function RunItem({ run }: { run: HarnessRun }) {
         {model ? <span class="run-model"> · {model}</span> : null}
       </span>
       {run.blockedReason ? <span class="run-blocked">{run.blockedReason}</span> : null}
+      {run.routingDecision ? (
+        <span class="run-routing muted" title={run.routingDecision.reason}>
+          {run.routingDecision.source} · {run.routingDecision.provider}/{run.routingDecision.resolvedModel} · quota{" "}
+          {run.routingDecision.quotaState}
+        </span>
+      ) : null}
       <div class="run-item-end">
         <div class="run-item-actions">
           {run.status === "running" ? (

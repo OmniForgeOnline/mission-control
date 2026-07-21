@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "id": "historical-runtime-spec",
+  "workflowId": "product-spec",
+  "taskClass": "medium",
+  "inputs": {
+    "title": "Define a product capability and its operating model",
+    "description": "Produce a decision-ready product specification with scope, constraints, evidence, and acceptance criteria."
+  },
+  "permittedTools": ["claude", "kiro"],
+  "outcome": {
+    "artifact": { "kind": "product-specification" },
+    "deterministicChecks": [{ "kind": "workflow-step", "stepId": "handoff" }]
+  },
+  "risk": "medium",
+  "provenance": {
+    "kind": "historical",
+    "source": "runtime-task-sha256:a2e726829bc57083",
+    "notes": "Privacy-reviewed summary of a completed local product-spec task; customer, repository, and transcript details were excluded.",
+    "redactions": ["task wording generalized", "transcript omitted", "personal and repository identifiers omitted"]
+  },
+  "replay": { "fixtures": { "artifactPaths": ["replay-artifacts/product-spec.txt"] } }
+}

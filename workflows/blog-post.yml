@@ -31,9 +31,9 @@ steps:
     effort: medium
     skill: content-production
     approval: required
-    next: seo_review
+    next: seo_pass
 
-  seo_review:
+  seo_pass:
     kind: agent_turn
     agent: author
     effort: medium
@@ -45,7 +45,8 @@ steps:
     kind: review
     agent: reviewer
     effort: high
-    skill: code-review
+    skill: content-production
+    review_profile: content
     approval: none
     branch:
       approved: handoff

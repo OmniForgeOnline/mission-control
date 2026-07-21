@@ -29,12 +29,23 @@ const READY_RUFF = JSON.stringify({
   rationale: "Ruff is declared in pyproject.toml."
 });
 
-/** Resolve pending microtasks long enough for a fire-and-forget generation to land. */
-async function settle(): Promise<void> {
-  for (let i = 0; i < 30; i++) {
-    await new Promise((resolve) => setImmediate(resolve));
+/** Poll until the gate leaves a non-terminal in-flight state or hits the expected status. */
+async function waitForQualityGate(
+  root: string,
+  projectId: string,
+  expected: QualityGateFile["status"],
+  timeoutMs = 15_000
+): Promise<QualityGateFile> {
+  const { readProjectQualityGate } = await import("../src/core/projects/quality-gate.ts");
+  const deadline = Date.now() + timeoutMs;
+  let latest = await readProjectQualityGate(root, projectId);
+  while (Date.now() < deadline) {
+    latest = await readProjectQualityGate(root, projectId);
+    if (latest.status === expected) return latest;
+    if (latest.status !== "generating") return latest;
+    await new Promise((resolve) => setTimeout(resolve, 50));
   }
-  await new Promise((resolve) => setTimeout(resolve, 30));
+  return latest;
 }
 
 describe("quality-gate generation recovery", () => {
@@ -81,20 +92,15 @@ describe("quality-gate generation recovery", () => {
     });
 
     const { startProjectQualityGate } = await import("../src/core/projects/quality-gate-generation.ts");
-    const { readProjectQualityGate } = await import("../src/core/projects/quality-gate.ts");
 
     await startProjectQualityGate(root, project, { runner: repliesRunner("nope"), agent: "claude" });
-    await settle();
-
-    const stored = await readProjectQualityGate(root, project.id);
+    const stored = await waitForQualityGate(root, project.id, "failed");
     expect(stored.status).toBe("failed");
     expect(stored.error ?? "").toMatch(/simulated terminal write failure/);
   });
 
   it("re-kicks a gate left generating by a prior process (stale, not in-flight)", async () => {
-    const { writeQualityGate, readProjectQualityGate } = await import(
-      "../src/core/projects/quality-gate.ts"
-    );
+    const { writeQualityGate } = await import("../src/core/projects/quality-gate.ts");
     const { reconcileStaleQualityGates } = await import(
       "../src/core/projects/quality-gate-generation.ts"
     );
@@ -108,9 +114,8 @@ describe("quality-gate generation recovery", () => {
       agent: "claude"
     });
     expect(reKicked).toBe(1);
-    await settle();
 
-    const stored = await readProjectQualityGate(root, project.id);
+    const stored = await waitForQualityGate(root, project.id, "ready");
     expect(stored.status).toBe("ready");
   });
 
@@ -141,6 +146,7 @@ describe("quality-gate generation recovery", () => {
 
     // Release the stalled gather so generation completes and frees the in-flight guard.
     resolveGather({ repoPath: repo, markers: [], commands: [], docs: [], ci: [], buildConfigs: [], summary: [] });
-    await settle();
+    const stored = await waitForQualityGate(root, project.id, "failed");
+    expect(stored.status).toBe("failed");
   });
 });

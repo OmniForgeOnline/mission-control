@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "id": "historical-runtime-feature",
+  "workflowId": "code-feature",
+  "taskClass": "medium",
+  "inputs": {
+    "title": "Implement a scoped product feature",
+    "description": "Make a repository change with tests, checks, and an independently reviewed artifact."
+  },
+  "permittedTools": ["claude", "codex", "kiro"],
+  "outcome": {
+    "artifact": { "kind": "code-change" },
+    "deterministicChecks": [{ "kind": "workflow-step", "stepId": "handoff" }]
+  },
+  "risk": "medium",
+  "provenance": {
+    "kind": "historical",
+    "source": "runtime-task-sha256:9eee323c58ddc5db",
+    "notes": "Privacy-reviewed summary of a completed local runtime task; only behavioral shape was retained.",
+    "redactions": ["task wording generalized", "transcript and repository identifiers omitted"]
+  },
+  "replay": { "fixtures": { "artifactPaths": ["replay-artifacts/feature.txt"] } }
+}

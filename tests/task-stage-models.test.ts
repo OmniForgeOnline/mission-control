@@ -5,13 +5,18 @@ import request from "supertest";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { ensureHarnessRepository } from "../src/core/bootstrap/repository.ts";
-import { isRegisteredModelPool, resolveStepRouting } from "../src/core/agents/stage-agents.ts";
+import {
+  formatStepNoRouteMessage,
+  isRegisteredModelPool,
+  resolveStepRouting
+} from "../src/core/agents/stage-agents.ts";
 import type { ModelPoolConfig } from "../src/core/agents/config/types.ts";
 import { upsertModelPool } from "../src/core/agents/config/store.ts";
 import { createServer } from "../src/server/app.ts";
 import {
   clearTaskStageModelPoolOverride,
   createTask,
+  setTaskStageAgentOverride,
   setTaskStageModelPoolOverride
 } from "../src/core/tasks/tasks.ts";
 import { resetWorkflowCache } from "../src/core/workflows/index.ts";
@@ -24,7 +29,6 @@ function codexPool(overrides: Partial<ModelPoolConfig>): ModelPoolConfig {
     modelArgs: [],
     modelEnv: {},
     capabilities: ["author", "reviewer", "code", "plan", "review"],
-    qualityWeight: 80,
     tier: "paid",
     usage: { kind: "usage-only", softThresholdPercent: 80 },
     usageSource: "none",
@@ -89,9 +93,9 @@ describe("task stage model pools", () => {
   });
 
   it("resolveStepRouting honors a model pool override that matches the resolved tool", async () => {
-    // Add a second, deliberately weaker codex pool so the optimizer would pick
-    // codex-default; the override forcing codex-extra proves the branch ran.
-    await upsertModelPool(root, codexPool({ id: "codex-extra", qualityWeight: 1 }));
+    // Add a second codex pool so the optimizer would pick codex-default; the
+    // override forcing codex-extra proves the branch ran.
+    await upsertModelPool(root, codexPool({ id: "codex-extra", tier: "free" }));
 
     const routing = await resolveStepRouting(
       root,
@@ -103,11 +107,10 @@ describe("task stage model pools", () => {
 
     expect(routing?.modelPoolId).toBe("codex-extra");
     expect(routing?.toolId).toBe("codex");
+    expect(routing?.source).toBe("pin");
   });
 
-  it("resolveStepRouting ignores an override whose pool belongs to a different tool", async () => {
-    // Agent overridden to codex; model override points at a claude pool. The
-    // override must be ignored (tool mismatch) and the optimizer picks codex.
+  it("resolveStepRouting fails when a cross-tool model pool override is pinned", async () => {
     const routing = await resolveStepRouting(
       root,
       "code-feature",
@@ -116,11 +119,37 @@ describe("task stage model pools", () => {
       { implement: "claude-default" }
     );
 
-    expect(routing?.toolId).toBe("codex");
-    expect(routing?.modelPoolId).toBe("codex-default");
+    expect(routing).toBeNull();
   });
 
-  it("resolveStepRouting ignores an override whose pool is disabled", async () => {
+  it("formatStepNoRouteMessage explains a cross-tool model pool pin mismatch", async () => {
+    const message = await formatStepNoRouteMessage(
+      root,
+      "code-feature",
+      "implement",
+      { implement: "codex" },
+      { implement: "claude-default" }
+    );
+    expect(message).toMatch(/cannot run/i);
+    expect(message).toMatch(/belongs to "claude"/);
+  });
+
+  it("resolveStepRouting excludes pools missing required vision on frontend review", async () => {
+    await upsertModelPool(
+      root,
+      codexPool({
+        id: "codex-no-vision",
+        displayName: "Codex (no vision)",
+        modelArgs: ["--model", "codex-mini"],
+        tier: "free"
+      })
+    );
+
+    const routing = await resolveStepRouting(root, "frontend-ui-change", "review");
+    expect(routing?.modelPoolId).not.toBe("codex-no-vision");
+  });
+
+  it("resolveStepRouting fails when a same-tool pin is disabled", async () => {
     await upsertModelPool(root, codexPool({ id: "codex-disabled", enabled: false }));
 
     const routing = await resolveStepRouting(
@@ -131,20 +160,16 @@ describe("task stage model pools", () => {
       { implement: "codex-disabled" }
     );
 
-    expect(routing?.toolId).toBe("codex");
-    expect(routing?.modelPoolId).toBe("codex-default");
+    expect(routing).toBeNull();
   });
 
-  it("resolveStepRouting defaults to the tool's no-arg pool (does not force a model)", async () => {
-    // No model pinned: claude must resolve to its no-arg default pool, not the
-    // highest-quality named model. Forcing a named model by default would break
-    // a tool pointed at a custom provider (e.g. z.ai).
+  it("resolveStepRouting uses the optimizer for the preferred tool", async () => {
     const routing = await resolveStepRouting(root, "code-feature", "implement", {
       implement: "claude"
     });
 
     expect(routing?.toolId).toBe("claude");
-    expect(routing?.modelPoolId).toBe("claude-default");
+    expect(routing?.source).toBe("preferred");
   });
 
   it("sets and clears the model pool override over HTTP", async () => {
@@ -154,11 +179,12 @@ describe("task stage model pools", () => {
       source: "manual",
       links: []
     });
+    await setTaskStageAgentOverride(root, task.id, "implement", "codex");
     const app = createServer({ root });
 
     const setResponse = await request(app)
       .post(`/api/tasks/${task.id}/stage-model-pools/implement`)
-      .send({ poolId: "codex-default" });
+      .send({ poolId: "codex-default", acknowledgeWarnings: true });
     expect(setResponse.status).toBe(200);
     expect(setResponse.body.stageModelPoolOverrides).toEqual({ implement: "codex-default" });
 

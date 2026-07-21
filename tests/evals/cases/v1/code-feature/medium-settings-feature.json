@@ -1,0 +1,74 @@
+{
+  "schemaVersion": 1,
+  "id": "medium-settings-feature",
+  "workflowId": "code-feature",
+  "taskClass": "medium",
+  "inputs": {
+    "title": "Add workflow stage agent override UI",
+    "description": "Expose per-step agent overrides in Settings with validation against enabled tools and persistence through the existing stage-agents store.",
+    "targets": [
+      {
+        "path": "src/ui",
+        "kind": "directory"
+      },
+      {
+        "path": "src/core/agents/stage-agents.ts",
+        "kind": "file"
+      }
+    ],
+    "context": {
+      "acceptance": "Operators can override a step agent, see the effective routing, and clear overrides."
+    }
+  },
+  "permittedTools": [
+    "claude",
+    "codex",
+    "kiro"
+  ],
+  "outcome": {
+    "artifact": {
+      "kind": "code-change",
+      "pathPattern": "src/ui/**"
+    },
+    "deterministicChecks": [
+      {
+        "kind": "checks-outcome",
+        "outcome": "validated"
+      },
+      {
+        "kind": "workflow-step",
+        "stepId": "review"
+      },
+      {
+        "kind": "reviewer-verdict",
+        "decision": "approved"
+      }
+    ],
+    "rubric": [
+      {
+        "id": "plan",
+        "criterion": "Plan names affected surfaces, API routes, and rollback path."
+      },
+      {
+        "id": "tests",
+        "criterion": "Adds or updates tests covering override set, clear, and effective routing."
+      }
+    ]
+  },
+  "risk": "medium",
+  "provenance": {
+    "kind": "synthetic",
+    "source": "Derived from multi-surface code-feature deliveries in settings and routing.",
+    "notes": "Pattern-synthesized from representative completed runs; no single source task id archived.",
+    "redactions": [
+      "internal project names",
+      "forge tokens"
+    ]
+  },
+  "replay": {
+    "fixtures": {
+      "workspacePath": "tests/evals/fixtures/checks-validated",
+      "reviewerReply": "tests/evals/fixtures/reviewer-approved.json"
+    }
+  }
+}

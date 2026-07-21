@@ -56,7 +56,9 @@ export function buildConversationPrompt(
     .join("\n\n");
 
   const agentTurnCount = (task.messages ?? []).filter((m) => m.author === "agent").length;
-  const skillHint = step.skill ? `\nLoad the \`${step.skill}\` skill with \`read_skill\` if it helps structure this conversation.` : "";
+  const skillRequirement = step.skill
+    ? `\nThe required skill for this step is loaded in the prompt header; follow it when planning.`
+    : "";
 
   const instructions = `You are in a multi-turn planning conversation for workflow step "${step.id}".
 
@@ -74,9 +76,12 @@ Alternatively you may prefix the final plan with \`FINAL_PLAN:\` on its own line
 
 Until you emit a final plan marker, the ticket stays interactive and the operator may answer your question.
 
-When producing a final plan:
-- Use clear step titles, dependencies, and effort estimates (low/medium/high).
-- End with scope summary and risks or open questions.${skillHint}`;
+When producing a final plan, include these required sections (each header present with non-empty content):
+- ## Acceptance Criteria — observable completion conditions
+- ## Verification — how completion is tested
+- ## Risks — material risks or open questions
+You may also include ## File Forecast, ## Dependencies, ## Rollout, and ## Rollback where relevant.
+- Use clear step titles, dependencies, and effort estimates (low/medium/high).${skillRequirement}`;
 
   return `${kernelHeader}
 ${memorySection ? `\n${memorySection}\n` : ""}
@@ -121,7 +126,9 @@ export function buildConversationFollowupPrompt(
     })
     .join("\n\n");
   const agentTurnCount = (task.messages ?? []).filter((m) => m.author === "agent").length;
-  const skillHint = step.skill ? `\nLoad the \`${step.skill}\` skill with \`read_skill\` if it helps structure this conversation.` : "";
+  const skillRequirement = step.skill
+    ? `\nThe required skill for this step is loaded in the prompt header; follow it when updating the plan.`
+    : "";
 
   const instructions = `You are continuing the planning conversation for workflow step "${step.id}".
 
@@ -139,9 +146,12 @@ Rules for this turn:
 
 Alternatively you may prefix the updated plan with \`FINAL_PLAN:\` on its own line.
 
-When producing an updated plan:
-- Use clear step titles, dependencies, and effort estimates (low/medium/high).
-- End with scope summary and risks or open questions.${skillHint}`;
+When producing an updated plan, include these required sections (each header present with non-empty content):
+- ## Acceptance Criteria — observable completion conditions
+- ## Verification — how completion is tested
+- ## Risks — material risks or open questions
+You may also include ## File Forecast, ## Dependencies, ## Rollout, and ## Rollback where relevant.
+- Use clear step titles, dependencies, and effort estimates (low/medium/high).${skillRequirement}`;
 
   return `${kernelHeader}
 ${memorySection ? `\n${memorySection}\n` : ""}
@@ -170,7 +180,12 @@ ${instructions}
 Do NOT edit any files. Do NOT execute any commands. Only plan and converse.`;
 }
 
-export function buildFollowupPrompt(task: HarnessTask, harnessRoot: string, memorySection = ""): string {
+export function buildFollowupPrompt(
+  task: HarnessTask,
+  harnessRoot: string,
+  stablePrefix: string,
+  memorySection = ""
+): string {
   const operatorMessages = (task.messages ?? []).filter((m) => m.author === "operator");
   const latest = operatorMessages.at(-1);
   // Task-level attachments (intake uploads, ClickUp imports appended after the
@@ -181,10 +196,17 @@ export function buildFollowupPrompt(task: HarnessTask, harnessRoot: string, memo
   const body = latest
     ? withAttachmentReferences(latest.body, harnessRoot, attachments)
     : "Operator did not provide a message. Continue from your last turn or ask a focused question.";
-  if (!memorySection) return body;
-  return `${memorySection}
-
-## Operator message
+  const operatorSection = `## Operator message
 
 ${body}`;
+  if (!memorySection) {
+    return `${stablePrefix}
+
+${operatorSection}`;
+  }
+  return `${stablePrefix}
+
+${memorySection}
+
+${operatorSection}`;
 }

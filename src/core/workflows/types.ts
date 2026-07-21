@@ -1,7 +1,25 @@
-import path from "node:path";
-import { fileURLToPath } from "node:url";
-
 import type { ToolId, EffortLevel } from "../types.ts";
+
+export type ReviewProfileId =
+  | "code"
+  | "frontend"
+  | "technical-doc"
+  | "content"
+  | "data"
+  | "decision"
+  | "incident"
+  | "support";
+
+export const REVIEW_PROFILE_IDS = [
+  "code",
+  "frontend",
+  "technical-doc",
+  "content",
+  "data",
+  "decision",
+  "incident",
+  "support"
+] as const satisfies readonly ReviewProfileId[];
 
 export type WorkflowStepKind =
   | "conversation"
@@ -25,6 +43,20 @@ export interface WorkflowStep {
   kind: WorkflowStepKind;
   agent: WorkflowStepAgent;
   skill?: string;
+  /** Human-readable step goal surfaced in agent prompts. */
+  objective?: string;
+  /** Artifact the step must produce before advancing. */
+  requiredArtifact?: string;
+  /** Allowed action verbs for this step contract. */
+  allowedActions?: string[];
+  /** Context the agent should assume at step entry. */
+  entryContext?: string;
+  /** Conditions that mark this step complete. */
+  exitCriteria?: string;
+  /** Risk classification for operator review (e.g. repo-mutation). */
+  riskClass?: string;
+  /** Who or what consumes this step's output next. */
+  downstreamConsumer?: string;
   /** Extension ids to enable for agent turns on this step. */
   extensions?: string[];
   approval: WorkflowStepApproval;
@@ -36,6 +68,10 @@ export interface WorkflowStep {
   mergeRequestTitle?: string;
   /** Optional override for generated merge request description. */
   mergeRequestDescription?: string;
+  /** Artifact-specific review rubric for review steps. */
+  reviewProfile?: ReviewProfileId;
+  /** When set, overrides profile default for independent verification. */
+  reviewerIndependence?: boolean;
   next?: string;
   /** Fan-out: start these steps concurrently. */
   parallel?: string[];
@@ -119,9 +155,7 @@ export const VALID_KINDS = new Set<WorkflowStepKind>([
 export const VALID_APPROVALS = new Set<WorkflowStepApproval>(["required", "none"]);
 export const VALID_EFFORT_LEVELS = new Set<EffortLevel>(["low", "medium", "high", "xhigh", "max"]);
 
-const PACKAGE_ROOT =
-  process.env["HARNESS_PACKAGE_ROOT"] ??
-  path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
+export const VALID_REVIEW_PROFILE_IDS = new Set<ReviewProfileId>(REVIEW_PROFILE_IDS);
 
 export const BUNDLED_WORKFLOW_IDS = [
   "code-feature",
@@ -140,11 +174,3 @@ export const BUNDLED_WORKFLOW_IDS = [
   "infrastructure-change",
   "data-analysis"
 ] as const;
-
-export function bundledWorkflowsDir(): string {
-  return path.join(PACKAGE_ROOT, "workflows");
-}
-
-export function workflowsDir(root: string): string {
-  return path.join(root, "workflows");
-}

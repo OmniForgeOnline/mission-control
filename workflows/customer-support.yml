@@ -5,7 +5,7 @@ initial: triage
 defaults:
   agents:
     author: claude
-    reviewer: claude
+    reviewer: codex
   effort: medium
 
 steps:
@@ -21,7 +21,7 @@ steps:
     kind: agent_turn
     agent: author
     effort: medium
-    skill: harness-memory
+    skill: customer-support-triage
     approval: none
     next: draft_response
 
@@ -31,7 +31,18 @@ steps:
     effort: medium
     skill: customer-support-triage
     approval: required
-    next: handoff
+    next: review
+
+  review:
+    kind: review
+    agent: reviewer
+    effort: medium
+    skill: customer-support-triage
+    review_profile: support
+    approval: none
+    branch:
+      approved: handoff
+      changes_requested: draft_response
 
   handoff:
     kind: terminal

@@ -11,6 +11,10 @@ import {
   buildReviewerPrompt,
   gatherReviewContext
 } from "../core/review/code-review.ts";
+import { gatherReviewSupportingEvidence } from "../core/review/supporting-evidence.ts";
+import { reviewerIndependenceViolation } from "../core/review/independence.ts";
+import { resolveReviewerIndependence, resolveReviewProfile } from "../core/review/profiles.ts";
+import { loadStageModelPoolOverrides } from "../core/agents/stage-model-pools.ts";
 import {
   inspectPostTurnGit,
   prepareStepWorkspace
@@ -18,22 +22,17 @@ import {
 import {
   advanceTaskWorkflowStep,
   getTask,
-  listTasks,
   markTaskBlocked,
   markTaskRunning,
   patchTaskExecution,
   rehydrateTaskTargets,
-  routeTaskToImplementationStep,
   routeTaskToMergeRequestStep,
   updateTask
 } from "../core/tasks/tasks.ts";
 import { listAllRuns } from "../core/tasks/runs.ts";
 import {
-  isDaemonQueueCandidate,
-  isTaskResumable,
   isTaskRunnable,
-  isTaskRunning,
-  isTaskTerminal
+  isTaskRunning
 } from "../core/tasks/status.ts";
 import {
   currentStepNeedsApproval,
@@ -45,39 +44,56 @@ import {
   buildFollowupPrompt,
   hasOperatorReplySinceLastAgentTurn
 } from "../core/workflows/prompts.ts";
+import { stepSkillReferenceError } from "../core/workflows/skill-validation.ts";
 import {
+  findArtifactProducingStepId,
   findImplementationStepId,
-  findRepoRemediationStepId,
-  isPostPushWorkflowStep,
-  loadWorkflow,
-  stepModifiesRepo,
-  taskNeedsGitOperatorFollowup
+  loadWorkflow
 } from "../core/workflows/index.ts";
 import type { HarnessTask } from "../core/types.ts";
 import { listInflightTaskIds } from "../runtime/sessions.ts";
 import { createRunnerForRouting } from "../runners/index.ts";
 import type { ResolvedRouting } from "../core/agents/stage-agents.ts";
+import { resolveStepRoutingContext } from "../core/runs/routing-inspect.ts";
 import { buildMemoryRecallSection } from "../memory/recall.ts";
 import { executeAgentTurn, resolveTurnAgent, scheduleReviewerTurn } from "./agent-turn.ts";
-import { buildInitialPrompt, buildKernelHeader } from "./prompts.ts";
+import { loadRequiredSkillSection } from "../core/workflows/required-skill.ts";
+import { buildInitialPrompt, buildStableAgentPrefix } from "./prompts.ts";
 import { executeCreateMergeRequestStep } from "./step-handlers/merge-request.ts";
 import { executeResolveConflictsStep } from "./step-handlers/resolve-conflicts.ts";
-import {
-  MAX_RESUME_ATTEMPTS,
-  now,
-  type ProcessOptions,
-  type TurnSummary
-} from "./types.ts";
+import { now, type ProcessOptions, type TurnSummary } from "./types.ts";
 
 export type { ProcessOptions, TurnSummary } from "./types.ts";
-export { looksLikeFinalAnswer } from "./final-answer.ts";
+export {
+  processAllApprovedTasks,
+  processNextApprovedTask,
+  resumeTask,
+  runOperatorFollowupTurn,
+  shouldAutoRunAuthorForOperatorFollowup
+} from "./processor-queue.ts";
 
-export function shouldAutoRunAuthorForOperatorFollowup(
+async function executionRoutingContext(
+  root: string,
   task: HarnessTask,
-  workflow: Awaited<ReturnType<typeof loadWorkflow>>
-): boolean {
-  return taskNeedsGitOperatorFollowup(task, workflow);
+  stepId: string,
+  cwd: string
+) {
+  if (!task.workflowRun) return undefined;
+  return (
+    (await resolveStepRoutingContext(
+      root,
+      task.workflowRun.workflowId,
+      stepId,
+      task.stageAgentOverrides,
+      task.stageModelPoolOverrides,
+      cwd,
+      task.agentSessionId && task.agentSessionAgent && task.agentSessionModelPool
+        ? { agent: task.agentSessionAgent, modelPoolId: task.agentSessionModelPool }
+        : undefined
+    )) ?? undefined
+  );
 }
+export { looksLikeFinalAnswer } from "./final-answer.ts";
 
 function reviewRequiresMergeRequest(task: HarnessTask): boolean {
   return Boolean(
@@ -89,36 +105,27 @@ function reviewRequiresMergeRequest(task: HarnessTask): boolean {
   );
 }
 
-async function listPersistedRunningTaskIds(root: string): Promise<Set<string>> {
-  const runs = await listAllRuns(root);
-  return new Set(runs.filter((run) => run.status === "running").map((run) => run.taskId));
+async function persistedAuthorRouting(
+  root: string,
+  taskId: string,
+  stepId: string,
+  fallback: ResolvedRouting
+): Promise<ResolvedRouting> {
+  const runs = (await listAllRuns(root))
+    .filter((run) => run.taskId === taskId && run.stepId === stepId && run.modelPoolId)
+    .sort((left, right) => right.startedAt.localeCompare(left.startedAt));
+  const run = runs[0];
+  if (!run?.modelPoolId) return fallback;
+  return {
+    ...fallback,
+    toolId: run.agent,
+    modelPoolId: run.modelPoolId
+  };
 }
 
 async function hasPersistedRunningRun(root: string, taskId: string): Promise<boolean> {
-  return (await listPersistedRunningTaskIds(root)).has(taskId);
-}
-
-export async function runOperatorFollowupTurn(
-  root: string,
-  taskId: string,
-  options?: ProcessOptions
-): Promise<TurnSummary | null> {
-  const task = await getTask(root, taskId);
-  if (!task?.workflowRun) return null;
-
-  const workflow = await loadWorkflow(root, task.workflowRun.workflowId);
-  if (!shouldAutoRunAuthorForOperatorFollowup(task, workflow)) return null;
-  if (isTaskRunning(task, listInflightTaskIds())) return null;
-
-  const remediationStepId = findRepoRemediationStepId(workflow);
-  if (!remediationStepId) return null;
-
-  const step = getCurrentStep(workflow, task.workflowRun);
-  if (isPostPushWorkflowStep(workflow, step.id)) {
-    await routeTaskToImplementationStep(root, taskId);
-  }
-
-  return runTaskTurn(root, taskId, options);
+  const runs = await listAllRuns(root);
+  return runs.some((run) => run.taskId === taskId && run.status === "running");
 }
 
 export async function runTaskTurn(
@@ -180,13 +187,42 @@ export async function runTaskTurn(
 
   const refreshed = (await getTask(root, taskWithTargets.id))!;
   const skills = await loadSkillsIndex(root);
-  const kernelHeader = buildKernelHeader(root, refreshed, skills);
+  const workflowId = task.workflowRun.workflowId;
   const operatorFollowup = hasOperatorReplySinceLastAgentTurn(refreshed)
     ? (refreshed.messages ?? []).filter((m) => m.author === "operator").at(-1)?.body
     : undefined;
   const memorySection = await buildMemoryRecallSection(root, refreshed, {
     ...(operatorFollowup !== undefined ? { extraQuery: operatorFollowup } : {})
   });
+
+  const skillReferenceError = await stepSkillReferenceError(root, step);
+  if (skillReferenceError) {
+    await markTaskBlocked(root, refreshed.id, skillReferenceError);
+    return { runId: refreshed.runId ?? refreshed.id, execution: "blocked" };
+  }
+
+  let requiredSkillSection = "";
+  if (step.skill) {
+    try {
+      requiredSkillSection = await loadRequiredSkillSection(root, step);
+    } catch {
+      await markTaskBlocked(
+        root,
+        refreshed.id,
+        `Workflow step "${step.id}" requires skill "${step.skill}" but it could not be loaded.`
+      );
+      return { runId: refreshed.runId ?? refreshed.id, execution: "blocked" };
+    }
+  }
+
+  const stablePrefix = buildStableAgentPrefix(
+    root,
+    refreshed,
+    skills,
+    workflowId,
+    step,
+    requiredSkillSection
+  );
 
   let prompt: string;
   let routing: ResolvedRouting | undefined;
@@ -198,8 +234,8 @@ export async function runTaskTurn(
     if ("execution" in agentResult) return agentResult;
     routing = agentResult;
     prompt = operatorFollowup
-      ? buildConversationFollowupPrompt(refreshed, step, workspace.cwd, root, kernelHeader, memorySection)
-      : buildConversationPrompt(refreshed, step, workspace.cwd, root, kernelHeader, memorySection);
+      ? buildConversationFollowupPrompt(refreshed, step, workspace.cwd, root, stablePrefix, memorySection)
+      : buildConversationPrompt(refreshed, step, workspace.cwd, root, stablePrefix, memorySection);
   } else if (step.kind === "review") {
     if (reviewRequiresMergeRequest(refreshed)) {
       // The create_merge_request step is marked complete but no merge request was
@@ -211,13 +247,30 @@ export async function runTaskTurn(
       return runTaskTurn(root, taskId, options);
     }
 
-    const authorStepId = findImplementationStepId(workflow) ?? step.id;
+    const authorStepId = findArtifactProducingStepId(workflow, step.id) ?? step.id;
     const reviewerResult = await resolveTurnAgent(root, refreshed, step.id);
     if ("execution" in reviewerResult) return reviewerResult;
     const reviewerRouting = reviewerResult;
     const authorResult = await resolveTurnAgent(root, refreshed, authorStepId);
     if ("execution" in authorResult) return authorResult;
-    const authorAgent = authorResult.toolId;
+    const authorRouting = await persistedAuthorRouting(root, refreshed.id, authorStepId, authorResult);
+    const authorAgent = authorRouting.toolId;
+    const independenceViolation = reviewerIndependenceViolation({
+      required: resolveReviewerIndependence(step, resolveReviewProfile(step)),
+      author: authorRouting,
+      reviewer: reviewerRouting,
+      authorStepId,
+      reviewerStepId: step.id,
+      workflowId,
+      ...(refreshed.stageModelPoolOverrides
+        ? { taskModelPoolOverrides: refreshed.stageModelPoolOverrides }
+        : {}),
+      workflowModelPoolOverrides: await loadStageModelPoolOverrides(root)
+    });
+    if (independenceViolation) {
+      await markTaskBlocked(root, refreshed.id, independenceViolation);
+      return { runId: refreshed.runId ?? refreshed.id, execution: "blocked" };
+    }
     const gitState = await inspectPostTurnGit(workspace);
     const authorReply = (refreshed.messages ?? []).filter((m) => m.author === "agent").at(-1)?.body ?? "";
     const reviewContext = await gatherReviewContext({
@@ -230,15 +283,25 @@ export async function runTaskTurn(
       task: refreshed,
       authorAgent,
       context: reviewContext,
-      memorySection
+      memorySection,
+      step,
+      supportingEvidence: gatherReviewSupportingEvidence({
+        task: refreshed,
+        step,
+        workflow,
+        harnessRoot: root,
+        excludeAuthorReply: authorReply
+      })
     });
     await markTaskRunning(root, refreshed.id, { startedAt: refreshed.startedAt ?? now() });
     const reviewerRunner =
       options?.reviewerRunner ??
       options?.runner ??
       (await createRunnerForRouting(root, reviewerRouting));
+    const reviewerTask = (await getTask(root, refreshed.id))!;
+    const reviewerRoutingContext = await executionRoutingContext(root, reviewerTask, step.id, workspace.cwd);
     return executeAgentTurn(root, {
-      task: (await getTask(root, refreshed.id))!,
+      task: reviewerTask,
       prompt,
       agent: reviewerRouting.toolId,
       modelPoolId: reviewerRouting.modelPoolId,
@@ -251,7 +314,8 @@ export async function runTaskTurn(
       step,
       reviewer: { round: (refreshed.reviewRounds ?? 0) + 1 },
       enabledExtensionIds: reviewerRouting.extensions,
-      extensionEntries: reviewerRouting.extensionEntries
+      extensionEntries: reviewerRouting.extensionEntries,
+      ...(reviewerRoutingContext ? { routingContext: reviewerRoutingContext } : {})
     });
   } else if (step.kind === "create_merge_request") {
     const mrSummary = await executeCreateMergeRequestStep(root, refreshed, workspace, step, options);
@@ -297,10 +361,13 @@ export async function runTaskTurn(
             refreshed,
             skills,
             workspace,
+            workflowId,
+            step,
             memorySection,
-            describeCheckPlan(await planProjectChecks(root, refreshed.projectId, workspace.cwd))
+            describeCheckPlan(await planProjectChecks(root, refreshed.projectId, workspace.cwd)),
+            requiredSkillSection
           )
-        : buildFollowupPrompt(refreshed, root, memorySection);
+        : buildFollowupPrompt(refreshed, root, stablePrefix, memorySection);
     }
     if (shouldAttachWorkspaceArtifacts(step.skill)) {
       const artifacts = await gatherWorkspaceArtifacts(workspace);
@@ -318,8 +385,10 @@ export async function runTaskTurn(
         checksRemediation: false
       }
     }));
+  const executionTask = (await getTask(root, refreshed.id))!;
+  const routingContext = await executionRoutingContext(root, executionTask, step.id, workspace.cwd);
   return executeAgentTurn(root, {
-    task: (await getTask(root, refreshed.id))!,
+    task: executionTask,
     prompt,
     agent: routing!.toolId,
     modelPoolId: routing!.modelPoolId,
@@ -332,120 +401,7 @@ export async function runTaskTurn(
     step,
     ...(conversation ? { conversation } : {}),
     enabledExtensionIds: routing!.extensions,
-    extensionEntries: routing!.extensionEntries
+    extensionEntries: routing!.extensionEntries,
+    ...(routingContext ? { routingContext } : {})
   });
-}
-
-export async function processNextApprovedTask(
-  root: string,
-  options?: ProcessOptions
-): Promise<TurnSummary | null> {
-  const [tasks, runningTaskIds] = await Promise.all([listTasks(root), listPersistedRunningTaskIds(root)]);
-  const workflows = await Promise.all(
-    tasks.map((t) => (t.workflowRun ? loadWorkflow(root, t.workflowRun.workflowId) : null))
-  );
-  const next = tasks.find((task, i) => {
-    const workflow = workflows[i];
-    return workflow && !runningTaskIds.has(task.id) && isDaemonQueueCandidate(task, workflow);
-  });
-  if (!next) return null;
-  return runTaskTurn(root, next.id, options);
-}
-
-export async function processAllApprovedTasks(
-  root: string,
-  options?: ProcessOptions
-): Promise<TurnSummary[]> {
-  const [tasks, runningTaskIds] = await Promise.all([listTasks(root), listPersistedRunningTaskIds(root)]);
-  const workflows = await Promise.all(
-    tasks.map((t) => (t.workflowRun ? loadWorkflow(root, t.workflowRun.workflowId) : null))
-  );
-  const candidates = tasks.filter((task, i) => {
-    const workflow = workflows[i];
-    return workflow && !runningTaskIds.has(task.id) && isDaemonQueueCandidate(task, workflow);
-  });
-  const results: TurnSummary[] = [];
-  for (const task of candidates) {
-    const result = await runTaskTurn(root, task.id, options);
-    if (result) results.push(result);
-  }
-  return results;
-}
-
-export async function resumeTask(
-  root: string,
-  taskId: string,
-  options?: ProcessOptions
-): Promise<TurnSummary | null> {
-  const task = await getTask(root, taskId);
-  if (!task) return null;
-  if (!isTaskResumable(task)) return null;
-  if (isTaskRunning(task, listInflightTaskIds())) return null;
-  let workflow: Awaited<ReturnType<typeof loadWorkflow>> | undefined;
-  if (task.workflowRun) {
-    workflow = await loadWorkflow(root, task.workflowRun.workflowId);
-    if (isTaskTerminal(task, workflow)) return null;
-  }
-
-  // The resume cap is per-step: a task that legitimately advances through many steps
-  // must not exhaust a single lifetime budget. Only count attempts accrued on the
-  // step the task is currently sitting on; a step change starts a fresh budget.
-  const currentStepId = task.workflowRun?.currentStepId;
-  const hasCurrentStepAgentOverride =
-    currentStepId !== undefined && task.stageAgentOverrides?.[currentStepId] !== undefined;
-  const unscopedLegacyAttempts =
-    task.resumeAttemptsStepId == null && (task.resumeAttempts ?? 0) > 0 && !hasCurrentStepAgentOverride;
-  const sameStep =
-    currentStepId !== undefined &&
-    (task.resumeAttemptsStepId === currentStepId || unscopedLegacyAttempts);
-  const attempts =
-    currentStepId === undefined
-      ? (task.resumeAttempts ?? 0) + 1
-      : (sameStep ? (task.resumeAttempts ?? 0) : 0) + 1;
-  if (attempts > MAX_RESUME_ATTEMPTS) {
-    await markTaskBlocked(
-      root,
-      taskId,
-      `Exceeded maximum resume attempts (${MAX_RESUME_ATTEMPTS})`
-    );
-    return null;
-  }
-  const attemptUpdates =
-    currentStepId !== undefined
-      ? { resumeAttempts: attempts, resumeAttemptsStepId: currentStepId }
-      : { resumeAttempts: attempts };
-
-  if (workflow && task.workflowRun) {
-    const step = getCurrentStep(workflow, task.workflowRun);
-    if (step.kind === "agent_turn" && stepModifiesRepo(step)) {
-      const workspace = await prepareStepWorkspace(task, step, { harnessRoot: root });
-      const gitState = await inspectPostTurnGit(workspace);
-      if (gitState && gitState.commitCount > 0 && !gitState.hasUnpushedCommits) {
-        await patchTaskExecution(
-          root,
-          taskId,
-          { pausedAt: null, interruptedAt: null, blockedReason: null, completedAt: null },
-          {
-            ...attemptUpdates,
-            pushedAt: now(),
-            commitCount: gitState.commitCount,
-            checkRound: 0
-          },
-          { clear: ["currentActivity", "lastCheckFailure", "lastRemediationFingerprint"] }
-        );
-        await advanceTaskWorkflowStep(root, taskId);
-        const updated = (await getTask(root, taskId))!;
-        return { runId: updated.runId ?? taskId, execution: "idle" };
-      }
-    }
-  }
-
-  await patchTaskExecution(
-    root,
-    taskId,
-    { pausedAt: null, interruptedAt: null, blockedReason: null, completedAt: null },
-    attemptUpdates
-  );
-
-  return runTaskTurn(root, taskId, options);
 }

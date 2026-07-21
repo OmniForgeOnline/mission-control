@@ -14,6 +14,7 @@ import { INLINE_MODEL_PREVIEW, sortPoolsForDisplay } from "./model-list.js";
 import { PoolRow } from "./model-pools.js";
 import { ModelsModal } from "./models-modal.js";
 import { toolSetupActions, type ToolRuntimePresence, type ToolSetupMode } from "./tool-setup.js";
+import { WorkflowDefaults } from "./workflow-defaults.js";
 
 function refresh(): void {
   document.dispatchEvent(new CustomEvent("harness:refresh"));
@@ -362,6 +363,7 @@ export function AgentConfigSection() {
 
   return (
     <section class="settings-section" data-settings-panel="agent-config">
+      <WorkflowDefaults config={config} />
       <div class="catalog-section-label">
         Tools &amp; models
         <div class="catalog-section-actions">

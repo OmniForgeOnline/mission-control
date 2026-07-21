@@ -5,21 +5,50 @@ import { ensureHarnessRepository } from "../bootstrap/repository.ts";
 import { loadHarnessSettings } from "../settings.ts";
 import { loadAgentConfig } from "./config/store.ts";
 import { loadUsageSnapshots } from "./config/usage-store.ts";
-import { bestPoolForTool, formatNoRouteMessage, routeAgent } from "./config/optimizer.ts";
+import {
+  formatNoRouteMessage,
+  formatPinRouteFailure,
+  routeAgent,
+  validatePinnedPool
+} from "./config/optimizer.ts";
 import type { AgentConfigBundle } from "./config/types.ts";
+import { buildRouteRequest, enrichRouteRequest, roleCapability } from "./stage-routing.ts";
 import type { ModelPoolId, ToolId } from "../types.ts";
 import {
   assertValidWorkflowStep,
   isWorkflowAgentTool,
+  loadAllWorkflows,
   loadWorkflow,
   resolveStepAgent,
   type WorkflowDefinition
 } from "../workflows/index.ts";
 import { resolveStepExtensions } from "./extensions/launch.ts";
 import type { ToolExtension } from "./extensions/types.ts";
+import {
+  loadStageModelPoolOverrides,
+  lookupStageModelPoolOverride
+} from "./stage-model-pools.ts";
 
 export interface StageAgentOverrides {
   overrides: Record<string, ToolId>;
+  /** Legacy step-only keys that match multiple workflows; require explicit operator choice. */
+  ambiguousLegacy?: Record<string, ToolId>;
+}
+
+export function stageOverrideKey(workflowId: string, stepId: string): string {
+  return `${workflowId}:${stepId}`;
+}
+
+export function isScopedOverrideKey(key: string): boolean {
+  return key.includes(":");
+}
+
+export function lookupStageAgentOverride(
+  overrides: StageAgentOverrides,
+  workflowId: string,
+  stepId: string
+): ToolId | undefined {
+  return overrides.overrides[stageOverrideKey(workflowId, stepId)];
 }
 
 export interface ResolvedStageAgent {
@@ -35,21 +64,67 @@ export interface ResolvedRouting {
   toolId: ToolId;
   modelPoolId: ModelPoolId;
   preferred: ToolId;
-  source: "preferred" | "optimizer-fallback";
+  source: "preferred" | "optimizer-fallback" | "pin";
   supportsEffort: boolean;
   /** Resolved extension ids to enable for this launch. */
   extensions: string[];
   /** Full extension entries for launch injection. */
   extensionEntries: ToolExtension[];
+  /** Human-readable routing decision from the optimizer. */
+  routeReason?: string;
 }
 
 function stageAgentsPath(root: string): string {
   return path.join(root, "data", "state", "stage-agents.json");
 }
 
+async function migrateLegacyStageOverrides(
+  root: string,
+  config: StageAgentOverrides
+): Promise<{ config: StageAgentOverrides; migrated: boolean }> {
+  const workflows = await loadAllWorkflows(root);
+  const stepToWorkflows = new Map<string, string[]>();
+  for (const [workflowId, workflow] of workflows) {
+    for (const stepId of Object.keys(workflow.steps)) {
+      const owners = stepToWorkflows.get(stepId) ?? [];
+      owners.push(workflowId);
+      stepToWorkflows.set(stepId, owners);
+    }
+  }
+
+  let migrated = false;
+  const nextOverrides = { ...config.overrides };
+  const ambiguousLegacy = { ...config.ambiguousLegacy };
+
+  for (const [key, agent] of Object.entries(config.overrides)) {
+    if (isScopedOverrideKey(key)) continue;
+
+    const owners = stepToWorkflows.get(key) ?? [];
+    delete nextOverrides[key];
+    migrated = true;
+
+    if (owners.length === 1) {
+      nextOverrides[stageOverrideKey(owners[0]!, key)] = agent;
+    } else {
+      ambiguousLegacy[key] = agent;
+    }
+  }
+
+  const nextConfig: StageAgentOverrides = {
+    overrides: nextOverrides,
+    ...(Object.keys(ambiguousLegacy).length ? { ambiguousLegacy } : {})
+  };
+  return { config: nextConfig, migrated };
+}
+
 export async function loadStageAgentOverrides(root: string): Promise<StageAgentOverrides> {
   await ensureHarnessRepository(root);
-  return readJsonFile<StageAgentOverrides>(stageAgentsPath(root), { overrides: {} });
+  const raw = await readJsonFile<StageAgentOverrides>(stageAgentsPath(root), { overrides: {} });
+  const { config, migrated } = await migrateLegacyStageOverrides(root, raw);
+  if (migrated) {
+    await saveStageAgentOverrides(root, config);
+  }
+  return config;
 }
 
 /**
@@ -96,10 +171,14 @@ export async function setStageAgentOverride(
   if (step.agent === "none") {
     throw new Error(`Step "${stage}" does not use an agent.`);
   }
-  const config = await loadStageAgentOverrides(root);
-  config.overrides[stage] = agent;
-  await saveStageAgentOverrides(root, config);
-  return config;
+  const agentConfig = await loadAgentConfig(root);
+  const tool = agentConfig.tools.find((entry) => entry.id === agent);
+  if (!tool) throw new Error(unregisteredAgentMessage(agent));
+  if (!tool.enabled) throw new Error(`Agent "${agent}" is disabled.`);
+  const overrides = await loadStageAgentOverrides(root);
+  overrides.overrides[stageOverrideKey(workflowId, stage)] = agent;
+  await saveStageAgentOverrides(root, overrides);
+  return overrides;
 }
 
 export async function bulkSetStageAgentOverrides(
@@ -113,23 +192,56 @@ export async function bulkSetStageAgentOverrides(
   }
   const workflow = await loadWorkflow(root, workflowId);
   const config = await loadStageAgentOverrides(root);
+  const agentConfig = await loadAgentConfig(root);
   for (const stage of stages) {
     assertValidWorkflowStep(workflow, stage);
     const step = workflow.steps[stage]!;
     if (step.agent === "none") {
       throw new Error(`Step "${stage}" does not use an agent.`);
     }
-    config.overrides[stage] = agent;
+    const tool = agentConfig.tools.find((entry) => entry.id === agent);
+    if (!tool) throw new Error(unregisteredAgentMessage(agent));
+    if (!tool.enabled) throw new Error(`Agent "${agent}" is disabled.`);
+    config.overrides[stageOverrideKey(workflowId, stage)] = agent;
   }
   await saveStageAgentOverrides(root, config);
   return config;
 }
 
-export async function clearStageAgentOverride(root: string, stage: string): Promise<StageAgentOverrides> {
+export async function clearStageAgentOverride(
+  root: string,
+  stage: string,
+  workflowId = "code-feature"
+): Promise<StageAgentOverrides> {
+  const workflow = await loadWorkflow(root, workflowId);
+  assertValidWorkflowStep(workflow, stage);
   const config = await loadStageAgentOverrides(root);
-  delete config.overrides[stage];
+  delete config.overrides[stageOverrideKey(workflowId, stage)];
   await saveStageAgentOverrides(root, config);
   return config;
+}
+
+export async function adoptAmbiguousLegacyOverride(
+  root: string,
+  stepId: string,
+  workflowId: string
+): Promise<StageAgentOverrides> {
+  const config = await loadStageAgentOverrides(root);
+  const agent = config.ambiguousLegacy?.[stepId];
+  if (!agent) {
+    throw new Error(`No ambiguous legacy override for step "${stepId}".`);
+  }
+  await setStageAgentOverride(root, stepId, agent, workflowId);
+  const validated = await loadStageAgentOverrides(root);
+  const nextAmbiguous = { ...validated.ambiguousLegacy };
+  delete nextAmbiguous[stepId];
+  if (Object.keys(nextAmbiguous).length) {
+    validated.ambiguousLegacy = nextAmbiguous;
+  } else {
+    delete validated.ambiguousLegacy;
+  }
+  await saveStageAgentOverrides(root, validated);
+  return validated;
 }
 
 export async function resolveAgentForStep(
@@ -146,51 +258,33 @@ export async function resolveAgentForStep(
   return resolveStepAgent(workflow, overrides, stepId, settings.defaultAgent, taskOverrides);
 }
 
-/** Capability a model pool must advertise for a workflow role. */
-function roleCapability(stepAgent: string | undefined): string {
-  return stepAgent === "reviewer" ? "reviewer" : "author";
-}
-
 function toolSupportsEffort(bundle: AgentConfigBundle, toolId: ToolId): boolean {
   return bundle.tools.find((tool) => tool.id === toolId)?.supportsEffort ?? false;
 }
 
-/**
- * Resolve a preferred tool into a concrete {tool, model pool}. When the preferred
- * tool has no eligible pool (disabled/exhausted), the optimizer routes the role to
- * the best alternative. Returns null when nothing can serve the role.
- */
-function routeWithPreferred(
+function routingFromResult(
   bundle: AgentConfigBundle,
-  usage: Awaited<ReturnType<typeof loadUsageSnapshots>>,
   preferred: ToolId,
-  capability: string,
+  routed: NonNullable<ReturnType<typeof routeAgent>>,
   extensions: string[],
-  extensionEntries: ResolvedRouting["extensionEntries"]
-): ResolvedRouting | null {
-  const pool = bestPoolForTool(bundle, usage, preferred, capability);
-  if (pool) {
-    return {
-      toolId: preferred,
-      modelPoolId: pool.id,
-      preferred,
-      source: "preferred",
-      supportsEffort: toolSupportsEffort(bundle, preferred),
-      extensions,
-      extensionEntries
-    };
-  }
-  const routed = routeAgent(bundle, usage, { role: capability, capability });
-  if (!routed) return null;
+  extensionEntries: ResolvedRouting["extensionEntries"],
+  source: ResolvedRouting["source"]
+): ResolvedRouting {
   return {
     toolId: routed.toolId,
     modelPoolId: routed.modelPoolId,
     preferred,
-    source: "optimizer-fallback",
+    source,
     supportsEffort: toolSupportsEffort(bundle, routed.toolId),
     extensions,
-    extensionEntries
+    extensionEntries,
+    routeReason: routed.reason
   };
+}
+
+export interface SessionPoolHint {
+  agent: ToolId;
+  modelPoolId: ModelPoolId;
 }
 
 export async function resolveStepRouting(
@@ -199,11 +293,13 @@ export async function resolveStepRouting(
   stepId: string,
   taskOverrides?: Partial<Record<string, ToolId>>,
   taskModelPoolOverrides?: Partial<Record<string, ModelPoolId>>,
-  cwd?: string
+  cwd?: string,
+  sessionPoolHint?: SessionPoolHint
 ): Promise<ResolvedRouting | null> {
-  const [workflow, overrides, settings, bundle, usage] = await Promise.all([
+  const [workflow, overrides, modelPoolOverrides, settings, bundle, usage] = await Promise.all([
     loadWorkflow(root, workflowId),
     loadStageAgentOverrides(root),
+    loadStageModelPoolOverrides(root),
     loadHarnessSettings(root),
     loadAgentConfig(root),
     loadUsageSnapshots(root)
@@ -219,52 +315,68 @@ export async function resolveStepRouting(
     ...(cwd ? { cwd } : {})
   });
 
-  // An operator-pinned model pool wins when it belongs to the resolved tool and
-  // is enabled. A pool from a different tool (the agent was switched) or a
-  // disabled pool is ignored, and the optimizer routes as usual.
-  const overridePoolId = taskModelPoolOverrides?.[stepId];
-  const overridePool = overridePoolId
-    ? bundle.pools.find((pool) => pool.id === overridePoolId)
-    : undefined;
-  if (overridePool && overridePool.toolId === preferred && overridePool.enabled) {
-    return {
-      toolId: preferred,
-      modelPoolId: overridePool.id,
-      preferred,
-      source: "preferred",
-      supportsEffort: toolSupportsEffort(bundle, preferred),
-      extensions: resolvedExtensions.enabledIds,
-      extensionEntries: resolvedExtensions.entries
-    };
-  }
-
-  // Default: run the tool with no model override (its no-arg pool), so it uses
-  // whatever it is currently configured against. The optimizer's within-tool
-  // model pick is intentionally bypassed here — forcing a specific model by
-  // default breaks tools pointed at a custom provider. Fall back to the
-  // optimizer only when the tool has no no-arg pool.
-  const defaultPool = bundle.pools.find(
-    (pool) => pool.toolId === preferred && pool.enabled && pool.modelArgs.length === 0
-  );
-  if (defaultPool) {
-    return {
-      toolId: preferred,
-      modelPoolId: defaultPool.id,
-      preferred,
-      source: "preferred",
-      supportsEffort: toolSupportsEffort(bundle, preferred),
-      extensions: resolvedExtensions.enabledIds,
-      extensionEntries: resolvedExtensions.entries
-    };
-  }
-
-  return routeWithPreferred(
+  const capability = roleCapability(step?.agent);
+  const routeRequest = await enrichRouteRequest(
+    root,
     bundle,
-    usage,
+    buildRouteRequest(capability, workflowId, step, preferred),
+    cwd,
+    { includeInstalledToolIds: false }
+  );
+
+  const pinRouting = (
+    poolId: ModelPoolId,
+    source: ResolvedRouting["source"],
+    reason: string
+  ): ResolvedRouting | null => {
+    const validation = validatePinnedPool(bundle, usage, routeRequest, preferred, poolId);
+    if (!validation.ok) return null;
+    return {
+      toolId: preferred,
+      modelPoolId: poolId,
+      preferred,
+      source,
+      supportsEffort: toolSupportsEffort(bundle, preferred),
+      extensions: resolvedExtensions.enabledIds,
+      extensionEntries: resolvedExtensions.entries,
+      routeReason: reason
+    };
+  };
+
+  if (taskModelPoolOverrides?.[stepId]) {
+    return pinRouting(taskModelPoolOverrides[stepId]!, "pin", `pinned ${capability} → ${preferred}/${taskModelPoolOverrides[stepId]}`);
+  }
+
+  if (sessionPoolHint && sessionPoolHint.agent === preferred) {
+    const resumed = pinRouting(
+      sessionPoolHint.modelPoolId,
+      "preferred",
+      `resume session pool → ${preferred}/${sessionPoolHint.modelPoolId}`
+    );
+    if (resumed) return resumed;
+  }
+
+  const workflowPoolId = lookupStageModelPoolOverride(modelPoolOverrides, workflowId, stepId);
+  if (workflowPoolId && !taskModelPoolOverrides?.[stepId]) {
+    const pool = bundle.pools.find((entry) => entry.id === workflowPoolId);
+    if (pool?.toolId === preferred) {
+      return pinRouting(
+        workflowPoolId,
+        "preferred",
+        `workflow default → ${preferred}/${workflowPoolId}`
+      );
+    }
+  }
+
+  const routed = routeAgent(bundle, usage, routeRequest);
+  if (!routed) return null;
+  return routingFromResult(
+    bundle,
     preferred,
-    roleCapability(step?.agent),
+    routed,
     resolvedExtensions.enabledIds,
-    resolvedExtensions.entries
+    resolvedExtensions.entries,
+    routed.toolId === preferred ? "preferred" : "optimizer-fallback"
   );
 }
 
@@ -275,23 +387,71 @@ export async function resolveHarnessDefaultRouting(root: string): Promise<Resolv
     loadUsageSnapshots(root)
   ]);
   const resolvedExtensions = await resolveStepExtensions({ root, toolId: settings.defaultAgent });
-  return routeWithPreferred(
+  const routeRequest = await enrichRouteRequest(
+    root,
     bundle,
-    usage,
+    buildRouteRequest("author", "code-feature", undefined, settings.defaultAgent),
+    undefined,
+    { includeInstalledToolIds: false }
+  );
+  const routed = routeAgent(bundle, usage, routeRequest);
+  if (!routed) return null;
+  return routingFromResult(
+    bundle,
     settings.defaultAgent,
-    "author",
+    routed,
     resolvedExtensions.enabledIds,
-    resolvedExtensions.entries
+    resolvedExtensions.entries,
+    routed.toolId === settings.defaultAgent ? "preferred" : "optimizer-fallback"
   );
 }
 
 export async function formatStepNoRouteMessage(
   root: string,
   workflowId: string,
-  stepId: string
+  stepId: string,
+  taskOverrides?: Partial<Record<string, ToolId>>,
+  taskModelPoolOverrides?: Partial<Record<string, ModelPoolId>>
 ): Promise<string> {
-  const [workflow, bundle] = await Promise.all([loadWorkflow(root, workflowId), loadAgentConfig(root)]);
-  return formatNoRouteMessage(bundle, roleCapability(workflow.steps[stepId]?.agent));
+  const [workflow, overrides, modelPoolOverrides, bundle, usage] = await Promise.all([
+    loadWorkflow(root, workflowId),
+    loadStageAgentOverrides(root),
+    loadStageModelPoolOverrides(root),
+    loadAgentConfig(root),
+    loadUsageSnapshots(root)
+  ]);
+  const step = workflow.steps[stepId];
+  const settings = await loadHarnessSettings(root);
+  const preferred = resolveStepAgent(workflow, overrides, stepId, settings.defaultAgent, taskOverrides);
+  if (!preferred) {
+    return `No agent configured for workflow step "${stepId}".`;
+  }
+  const capability = roleCapability(step?.agent);
+  const routeRequest = await enrichRouteRequest(
+    root,
+    bundle,
+    buildRouteRequest(capability, workflowId, step, preferred),
+    undefined,
+    { includeInstalledToolIds: false }
+  );
+  const overridePoolId =
+    taskModelPoolOverrides?.[stepId] ??
+    lookupStageModelPoolOverride(modelPoolOverrides, workflowId, stepId);
+  if (taskModelPoolOverrides?.[stepId]) {
+    const validation = validatePinnedPool(bundle, usage, routeRequest, preferred, taskModelPoolOverrides[stepId]!);
+    if (!validation.ok) {
+      return formatPinRouteFailure(preferred, taskModelPoolOverrides[stepId]!, validation);
+    }
+  } else if (overridePoolId) {
+    const pool = bundle.pools.find((entry) => entry.id === overridePoolId);
+    if (pool?.toolId === preferred) {
+      const validation = validatePinnedPool(bundle, usage, routeRequest, preferred, overridePoolId);
+      if (!validation.ok) {
+        return formatPinRouteFailure(preferred, overridePoolId, validation);
+      }
+    }
+  }
+  return formatNoRouteMessage(bundle, capability);
 }
 
 export function buildResolvedStageAgents(
@@ -300,7 +460,7 @@ export function buildResolvedStageAgents(
   defaultAgent: ToolId
 ): ResolvedStageAgent[] {
   return Object.entries(workflow.steps).map(([stage, step]) => {
-    const override = overrides.overrides[stage];
+    const override = lookupStageAgentOverride(overrides, workflow.id, stage);
     const agent = resolveStepAgent(workflow, overrides, stage, defaultAgent);
     const source: ResolvedStageAgent["source"] =
       step.agent === "none"

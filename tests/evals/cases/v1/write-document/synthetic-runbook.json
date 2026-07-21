@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 1,
+  "id": "synthetic-runbook",
+  "workflowId": "write-document",
+  "taskClass": "synthetic",
+  "inputs": {
+    "title": "Write daemon recovery runbook",
+    "description": "Produce an operator runbook for restarting the harness daemon after a stuck turn."
+  },
+  "permittedTools": [
+    "claude",
+    "kiro"
+  ],
+  "outcome": {
+    "artifact": {
+      "kind": "document",
+      "requiredSections": [
+        "Symptoms",
+        "Steps",
+        "Verification"
+      ]
+    },
+    "rubric": [
+      {
+        "id": "actionable",
+        "criterion": "Each step names a command or UI action without requiring ambient secrets."
+      }
+    ]
+  },
+  "risk": "low",
+  "provenance": {
+    "kind": "synthetic",
+    "source": "Generated placeholder for unexercised write-document workflow."
+  }
+}

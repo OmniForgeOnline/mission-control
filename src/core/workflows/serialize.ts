@@ -9,6 +9,13 @@ const STEP_FIELDS: ReadonlyArray<readonly [yamlKey: string, field: keyof Workflo
   ["agent", "agent"],
   ["effort", "effort"],
   ["skill", "skill"],
+  ["objective", "objective"],
+  ["required_artifact", "requiredArtifact"],
+  ["allowed_actions", "allowedActions"],
+  ["entry_context", "entryContext"],
+  ["exit_criteria", "exitCriteria"],
+  ["risk_class", "riskClass"],
+  ["downstream_consumer", "downstreamConsumer"],
   ["extensions", "extensions"],
   ["modifies_repo", "modifiesRepo"],
   ["approval", "approval"],
@@ -18,7 +25,9 @@ const STEP_FIELDS: ReadonlyArray<readonly [yamlKey: string, field: keyof Workflo
   ["join", "join"],
   ["join_policy", "joinPolicy"],
   ["merge_request_title", "mergeRequestTitle"],
-  ["merge_request_description", "mergeRequestDescription"]
+  ["merge_request_description", "mergeRequestDescription"],
+  ["review_profile", "reviewProfile"],
+  ["reviewer_independence", "reviewerIndependence"]
 ];
 
 function serializeStep(step: WorkflowStep): Record<string, unknown> {

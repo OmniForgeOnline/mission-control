@@ -1,0 +1,48 @@
+{
+  "schemaVersion": 1,
+  "id": "synthetic-ci-cache",
+  "workflowId": "infrastructure-change",
+  "taskClass": "synthetic",
+  "inputs": {
+    "title": "Add npm cache to CI workflow",
+    "description": "Speed up CI by caching node_modules between runs without weakening test isolation.",
+    "targets": [
+      {
+        "path": ".github/workflows",
+        "kind": "directory"
+      }
+    ]
+  },
+  "permittedTools": [
+    "claude",
+    "codex"
+  ],
+  "outcome": {
+    "artifact": {
+      "kind": "ci-config",
+      "pathPattern": ".github/workflows/**"
+    },
+    "deterministicChecks": [
+      {
+        "kind": "checks-outcome",
+        "outcome": "validated"
+      }
+    ],
+    "rubric": [
+      {
+        "id": "rollback",
+        "criterion": "Change documents how to disable cache if flakes appear."
+      }
+    ]
+  },
+  "risk": "medium",
+  "provenance": {
+    "kind": "synthetic",
+    "source": "Generated placeholder for unexercised infrastructure-change workflow."
+  },
+  "replay": {
+    "fixtures": {
+      "workspacePath": "tests/evals/fixtures/checks-validated"
+    }
+  }
+}

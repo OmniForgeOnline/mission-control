@@ -31,8 +31,8 @@ describe("planning as workflow step", () => {
     const runner = new DeterministicAgentRunner("claude");
     runner.setReplies([
       "What constraints should the plan respect?",
-      "<proposed_plan>\n# Plan\nShip workflow refactor.\n</proposed_plan>",
-      "<proposed_plan>\n# Plan\nShip workflow refactor with tests.\n</proposed_plan>",
+      "<proposed_plan>\n# Plan\nShip workflow refactor.\n## Acceptance Criteria\nRefactor lands.\n## Verification\nRun tests.\n## Risks\nNone.\n</proposed_plan>",
+      "<proposed_plan>\n# Plan\nShip workflow refactor with tests.\n## Acceptance Criteria\nRefactor lands.\n## Verification\nRun tests.\n## Risks\nNone.\n</proposed_plan>",
       "unused"
     ]);
 

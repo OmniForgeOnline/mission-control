@@ -1,6 +1,7 @@
 import { icon } from "@ui/shell/icons.js";
 import { ui } from "@ui/app/state.js";
 import { AutonomyPanel } from "@ui/features/autonomy/page.js";
+import { RuntimeAssetsPanel } from "./runtime-assets.js";
 import { RunGroupList } from "@ui/features/runs/page.js";
 import { isMaintenanceRun } from "@ui/features/runs/groups.js";
 import { confirmAndShutdown } from "./shutdown.js";
@@ -32,6 +33,7 @@ export function MaintenanceView({ embedded = false }: { embedded?: boolean }) {
         </div>
       )}
       <AutonomyPanel scope={{ kind: "harness" }} />
+      <RuntimeAssetsPanel />
       <section class="project-panel">
         <div class="project-section-head">
           <div>

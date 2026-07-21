@@ -71,6 +71,7 @@ export interface HarnessTask {
   };
   worktreeCleanedAt?: string;
   reviewState?: string;
+  reviewRounds?: number;
   lastProgressAt?: string;
   currentActivity?: string;
   effort?: string;
@@ -105,6 +106,16 @@ export interface HarnessRun {
   artifacts: string[];
   modelPoolId?: string;
   stepId?: string;
+  effort?: string;
+  routingDecision?: {
+    harness: string;
+    modelPoolId: string;
+    source: string;
+    reason: string;
+    quotaState: string;
+    provider: string;
+    resolvedModel: string;
+  };
 }
 
 export interface WorkflowSummary {
@@ -124,6 +135,8 @@ export interface WorkflowSummary {
       parallel?: string[];
       join?: string;
       branch?: Record<string, string>;
+      reviewProfile?: string;
+      modifiesRepo?: boolean;
     }
   >;
   defaults: { author: string; reviewer: string; effort?: string };
@@ -278,7 +291,6 @@ export interface AgentSummary {
   id: string;
   displayName: string;
   supportsEffort: boolean;
-  effortLevels: string[];
 }
 
 export interface AppState {
@@ -299,6 +311,10 @@ export interface AppState {
   workflows?: WorkflowSummary[];
   workflow?: WorkflowMetadata;
   stageAgentOverrides?: Record<string, string>;
+  stageModelPoolOverrides?: Record<string, string>;
+  /** Legacy step-only overrides shared by multiple workflows; require explicit adoption. */
+  ambiguousStageAgentOverrides?: Record<string, string>;
+  ambiguousStageModelPoolOverrides?: Record<string, string>;
   inflightTaskIds?: string[];
   /** Interactive PTY turns waiting for operator Done/Block. */
   interactiveSessions?: Array<{

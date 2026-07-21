@@ -32,7 +32,7 @@ function makeTool(id: string): AgentToolConfig {
 }
 
 function makePool(id: string, toolId: string): ModelPoolConfig {
-  return normalizeModelPool({ id, toolId, capabilities: ["author"], qualityWeight: 60, tier: "free" });
+  return normalizeModelPool({ id, toolId, capabilities: ["author"], tier: "free" });
 }
 
 describe("agent config normalization", () => {
@@ -215,13 +215,11 @@ describe("agent config store", () => {
     }
   });
 
-  it("resolveRunnerLaunch defaults to the tool's no-arg pool (does not force a model)", async () => {
+  it("resolveRunnerLaunch routes through the optimizer to a reviewer-capable pool", async () => {
     await loadAgentConfig(root);
     const launch = await resolveRunnerLaunch(root, "claude", "reviewer");
-    // claude has higher-quality named pools, but the default must be the no-arg
-    // pool so a tool pointed at a custom provider isn't overridden.
-    expect(launch?.pool.id).toBe("claude-default");
-    expect(launch?.pool.modelArgs).toEqual([]);
+    expect(launch?.pool.id).toBeTruthy();
+    expect(launch?.pool.capabilities).toContain("reviewer");
   });
 
   it("is idempotent across reloads", async () => {
@@ -283,11 +281,9 @@ describe("agent config store", () => {
     await loadAgentConfig(root);
     const bundle = await upsertRoutingProfile(root, {
       role: "author",
-      minQuality: 70,
       requiredCapability: "code"
     });
     const profile = bundle.profiles.find((entry) => entry.role === "author")!;
-    expect(profile.minQuality).toBe(70);
     expect(profile.requiredCapability).toBe("code");
   });
 
@@ -337,7 +333,7 @@ describe("agent config change set", () => {
       modelArgs: ["--model", "glm-5.1"],
       modelEnv: { ANTHROPIC_BASE_URL: "https://api.z.ai" },
       capabilities: ["author", "reviewer"],
-      qualityWeight: 75,
+  
       tier: "paid",
       usage: { kind: "unavailable" }
     });

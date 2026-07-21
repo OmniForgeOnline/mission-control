@@ -16,7 +16,6 @@ describe("settings models modal", () => {
         toolId: "cursor",
         displayName: "Auto",
         modelArgs: ["--model", "auto"],
-        qualityWeight: 99,
         enabled: true
       }),
       normalizeModelPool({
@@ -24,7 +23,6 @@ describe("settings models modal", () => {
         toolId: "cursor",
         displayName: "Cursor (default)",
         modelArgs: [],
-        qualityWeight: 10,
         enabled: false
       }),
       normalizeModelPool({
@@ -32,7 +30,6 @@ describe("settings models modal", () => {
         toolId: "cursor",
         displayName: "Zed",
         modelArgs: ["--model", "zed"],
-        qualityWeight: 40,
         enabled: true
       })
     ];
@@ -41,15 +38,6 @@ describe("settings models modal", () => {
       "cursor-auto",
       "cursor-zed"
     ]);
-  });
-
-  it("sorts enabled / higher-quality pools first for the card preview", () => {
-    const pools = [
-      normalizeModelPool({ id: "a", toolId: "cursor", displayName: "Zed", qualityWeight: 40, enabled: false }),
-      normalizeModelPool({ id: "b", toolId: "cursor", displayName: "Beta", qualityWeight: 90, enabled: true }),
-      normalizeModelPool({ id: "c", toolId: "cursor", displayName: "Alpha", qualityWeight: 90, enabled: true })
-    ];
-    expect(sortPoolsForDisplay(pools).map((p) => p.id)).toEqual(["c", "b", "a"]);
   });
 
   it("caps the inline preview and wires a models modal", () => {

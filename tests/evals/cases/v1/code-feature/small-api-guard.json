@@ -1,0 +1,62 @@
+{
+  "schemaVersion": 1,
+  "id": "small-api-guard",
+  "workflowId": "code-feature",
+  "taskClass": "small",
+  "inputs": {
+    "title": "Guard empty JSON payloads in task API",
+    "description": "Return 400 when POST /api/tasks receives an empty body instead of throwing during JSON parse.",
+    "targets": [
+      {
+        "path": "src/server/routes/tasks.ts",
+        "kind": "file"
+      }
+    ]
+  },
+  "permittedTools": [
+    "claude",
+    "codex"
+  ],
+  "outcome": {
+    "artifact": {
+      "kind": "code-change",
+      "pathPattern": "src/server/routes/tasks.ts"
+    },
+    "deterministicChecks": [
+      {
+        "kind": "checks-outcome",
+        "outcome": "validated"
+      },
+      {
+        "kind": "workflow-step",
+        "stepId": "handoff"
+      }
+    ],
+    "rubric": [
+      {
+        "id": "repro",
+        "criterion": "Includes a failing test or reproduction for the empty-body case."
+      },
+      {
+        "id": "scope",
+        "criterion": "Change is limited to request parsing and error response wiring."
+      }
+    ]
+  },
+  "risk": "low",
+  "provenance": {
+    "kind": "synthetic",
+    "source": "Redacted from completed code-feature tasks with single-file API guard fixes.",
+    "notes": "Pattern-synthesized from representative completed runs; no single source task id archived.",
+    "redactions": [
+      "operator names",
+      "repo URLs",
+      "live task ids"
+    ]
+  },
+  "replay": {
+    "fixtures": {
+      "workspacePath": "tests/evals/fixtures/checks-validated"
+    }
+  }
+}

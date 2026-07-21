@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 1,
+  "id": "synthetic-one-pager",
+  "workflowId": "marketing-asset",
+  "taskClass": "synthetic",
+  "inputs": {
+    "title": "Create one-pager for workflow automation",
+    "description": "Produce a single-page PDF outline describing Mission Control workflow automation for sales follow-up."
+  },
+  "permittedTools": [
+    "kiro",
+    "claude"
+  ],
+  "outcome": {
+    "artifact": {
+      "kind": "marketing-asset",
+      "requiredSections": [
+        "Value prop",
+        "How it works",
+        "CTA"
+      ]
+    },
+    "rubric": [
+      {
+        "id": "brand",
+        "criterion": "Copy uses approved product naming without customer-specific claims."
+      }
+    ]
+  },
+  "risk": "low",
+  "provenance": {
+    "kind": "synthetic",
+    "source": "Generated placeholder for unexercised marketing-asset workflow."
+  }
+}

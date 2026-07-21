@@ -1,0 +1,38 @@
+{
+  "schemaVersion": 1,
+  "id": "synthetic-usage-snapshot",
+  "workflowId": "data-analysis",
+  "taskClass": "synthetic",
+  "inputs": {
+    "title": "Analyze workflow usage distribution",
+    "description": "Summarize relative task volume per bundled workflow from a redacted inventory snapshot fixture.",
+    "context": {
+      "fixture": "tests/evals/fixtures/redacted-inventory-usage.json"
+    }
+  },
+  "permittedTools": [
+    "claude",
+    "codex"
+  ],
+  "outcome": {
+    "artifact": {
+      "kind": "analysis-memo",
+      "requiredSections": [
+        "Method",
+        "Findings",
+        "Limitations"
+      ]
+    },
+    "rubric": [
+      {
+        "id": "offline",
+        "criterion": "Analysis uses committed fixtures only, not ambient HARNESS_ROOT."
+      }
+    ]
+  },
+  "risk": "low",
+  "provenance": {
+    "kind": "synthetic",
+    "source": "Generated placeholder for unexercised data-analysis workflow."
+  }
+}

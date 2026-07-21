@@ -1,6 +1,8 @@
 import type { HarnessTask, PmStatus, Resolution, TaskStatus } from "../types.ts";
+import { extractPlanFromTask } from "../prompts/plan-approval.ts";
 import { currentStepNeedsApproval, getActiveSteps, getCurrentStep } from "../workflows/run.ts";
 import type { WorkflowDefinition } from "../workflows/index.ts";
+import { stepIsReadOnlyInvestigation } from "../workflows/graph.ts";
 
 export type ExecutionState = "idle" | "running" | "blocked" | "paused";
 
@@ -119,9 +121,11 @@ export function isAwaitingOperator(task: HarnessTask, workflow: WorkflowDefiniti
   const run = task.workflowRun;
   if (!run) return false;
   const step = getCurrentStep(workflow, run);
-  if (step.kind !== "conversation") return false;
   const agentTurns = (task.messages ?? []).filter((m) => m.author === "agent").length;
-  return agentTurns > 0;
+  if (agentTurns === 0) return false;
+  if (step.kind === "conversation") return true;
+  if (stepIsReadOnlyInvestigation(step) && !extractPlanFromTask(task)) return true;
+  return false;
 }
 
 export function isAwaitingReview(task: HarnessTask, workflow: WorkflowDefinition): boolean {
