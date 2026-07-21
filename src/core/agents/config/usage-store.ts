@@ -1,5 +1,6 @@
 import path from "node:path";
 
+import { matchesProviderLimit } from "../provider-failure.ts";
 import { readJsonFile, updateJsonFile, writeJsonFile } from "../../infra/fs.ts";
 import { ensureHarnessRepository } from "../../bootstrap/repository.ts";
 import type { ModelPoolId, ToolId } from "../../types.ts";
@@ -34,23 +35,6 @@ export async function upsertUsageSnapshot(root: string, snapshot: UsageSnapshot)
   });
 }
 
-const EXHAUSTION_PATTERNS = [
-  /rate.?limit/i,
-  /429\b/,
-  /too many requests/i,
-  /quota\s+(exceeded|exhausted|depleted)/i,
-  /credit/i,
-  /upgrade\s+(your|the\s)?plan/i,
-  /billing/i,
-  /payment/i,
-  /subscription/i,
-  /capacity/i,
-  /insufficient/i,
-  /unauthorized/i,
-  /forbidden/i,
-  /payment_required/i,
-];
-
 /**
  * Detect credit/quota exhaustion from an agent turn's blocked reason.
  * When detected, write an exhausted usage snapshot so the optimizer skips
@@ -65,8 +49,7 @@ export async function markPoolExhaustedFromFailure(
   blockedReason: string | undefined
 ): Promise<boolean> {
   if (!blockedReason) return false;
-  const matched = EXHAUSTION_PATTERNS.some((re) => re.test(blockedReason));
-  if (!matched) return false;
+  if (!matchesProviderLimit(blockedReason)) return false;
 
   const now = new Date();
   const resetsAt = Math.floor(now.getTime() / 1000) + 30 * 60; // 30-minute cooldown

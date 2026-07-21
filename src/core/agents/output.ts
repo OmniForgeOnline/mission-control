@@ -5,6 +5,7 @@
 
 import { repairStreamedTables } from "../infra/markdown-tables.ts";
 import { extractPlanBody, hasPlanMarker } from "../prompts/plan-markers.ts";
+import { inferAgentFailureReason } from "./provider-failure.ts";
 
 function tryJson(line: string): unknown {
   try {
@@ -463,7 +464,12 @@ export function parseAgentOutput(stdout: string, agent: string): ParsedAgentOutp
     const fallbackReply = sawStructuredEvent ? "" : stdout.trim();
     const replyText = resultReply ?? (assistantReply || fallbackReply);
     const reply = normalizeEscapedNewlines(replyText.trim());
-    return { reply, ...(sessionId !== undefined ? { sessionId } : {}) };
+    const errorReason = inferAgentFailureReason(stdout, "", agent);
+    return {
+      reply,
+      ...(sessionId !== undefined ? { sessionId } : {}),
+      ...(errorReason !== undefined ? { errorReason } : {})
+    };
   }
 
   let sessionId: string | undefined;

@@ -27,6 +27,16 @@ const INTERNAL_PATTERNS: Array<{
     hint: "Resume when connectivity is restored, or retry with a different agent."
   },
   {
+    test: /usage\s+limit|out of (usage|credits)|billing_error|error_max_budget|quota\s+(exceeded|exhausted|depleted)/i,
+    message: "The agent provider reported exhausted usage or billing limits.",
+    hint: "Wait for limits to reset, add credits, switch model pool in Settings → Agents, or resume with a different agent."
+  },
+  {
+    test: /purchase more credits|settings\/usage|upgrade to pro/i,
+    message: "The agent provider reported exhausted usage or billing limits.",
+    hint: "Add credits or switch to another agent in Settings → Agents, then resume the task."
+  },
+  {
     test: /rate limit|429|too many requests/i,
     message: "The agent provider rate-limited this run.",
     hint: "Wait a few minutes, then resume or switch to another agent."

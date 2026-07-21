@@ -242,6 +242,15 @@ describe("ui blocked reason formatting", () => {
     expect(formatted.message).toContain("does not support reasoning effort");
   });
 
+  it("maps provider usage limits to recoverable guidance", () => {
+    const formatted = formatBlockedReason(
+      "claude exited with code 1: You've hit your usage limit for glm-5.2. Upgrade to Pro or try again later."
+    );
+    expect(formatted.recoverable).toBe(true);
+    expect(formatted.message).toContain("exhausted usage or billing limits");
+    expect(formatted.hint).toContain("Settings → Agents");
+  });
+
   it("passes through unknown errors unchanged", () => {
     const formatted = formatBlockedReason("Mechanical checks failed: lint");
     expect(formatted).toEqual({
