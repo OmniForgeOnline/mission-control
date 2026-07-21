@@ -2,19 +2,17 @@ import path from "node:path";
 import os from "node:os";
 import { defineConfig } from "vitest/config";
 
+import { INTEGRATION_TEST_GLOBS } from "./vitest.config.ts";
+
 const cpus = typeof os.availableParallelism === "function" ? os.availableParallelism() : os.cpus().length;
-// CI runners are ~2 vCPU; oversubscribing flakes and slows the suite. Locally use more workers.
 const maxWorkers = process.env.CI ? 2 : Math.min(8, Math.max(4, cpus - 1));
 
-/** Heavy multi-turn daemon/git/replay coverage — run via `npm run test:integration`. */
-export const INTEGRATION_TEST_GLOBS = [
-  "tests/workflow-daemon-*.test.ts",
-  "tests/merge-request-step.test.ts",
-  "tests/merge-tracking.test.ts",
-  "tests/review-profiles-replay.test.ts",
-  "tests/daemon-blocked-reason.test.ts"
-] as const;
-
+/**
+ * Slow multi-turn daemon / git / replay coverage excluded from default `npm test`.
+ * Run with: npm run test:integration
+ *
+ * Standalone config (not mergeConfig) so base `exclude` globs are not inherited.
+ */
 export default defineConfig({
   resolve: {
     alias: {
@@ -30,19 +28,11 @@ export default defineConfig({
   test: {
     environment: "node",
     globals: true,
-    // Integration tests drive real git worktrees/merges and multi-step daemon
-    // turns; the slowest run ~5s on a fast dev machine and far longer on a
-    // loaded/single-core CI, so a tight cap flakes under contention. 30s gives
-    // the headroom those tests need without masking genuine hangs.
     testTimeout: 30_000,
     maxWorkers,
     restoreMocks: true,
     setupFiles: ["./tests/setup.ts"],
-    exclude: [
-      "**/node_modules/**",
-      "**/dist/**",
-      "**/data/**",
-      ...INTEGRATION_TEST_GLOBS
-    ]
+    include: [...INTEGRATION_TEST_GLOBS],
+    exclude: ["**/node_modules/**", "**/dist/**", "**/data/**"]
   }
 });

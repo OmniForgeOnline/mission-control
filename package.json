@@ -40,6 +40,8 @@
     "run:server": "node --experimental-strip-types --experimental-transform-types --disable-warning=ExperimentalWarning src/server/index.ts",
     "start": "node scripts/check-node.mjs && npm run build && npm run run:server",
     "test": "vitest run",
+    "test:integration": "vitest run --config vitest.integration.config.ts",
+    "test:all": "npm test && npm run test:integration",
     "test:packed": "node --experimental-strip-types --experimental-transform-types --disable-warning=ExperimentalWarning scripts/packed-package-smoke.mjs",
     "lint": "eslint src tests",
     "fix:lint": "eslint src tests --fix",
