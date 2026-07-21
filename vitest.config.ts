@@ -21,7 +21,8 @@ export default defineConfig({
     // loaded/single-core CI, so a tight cap flakes under contention. 30s gives
     // the headroom those tests need without masking genuine hangs.
     testTimeout: 30_000,
-    // Sharded CI jobs each get a full runner; 4 workers matches ubuntu-latest vCPUs.
+    // Parallelize within one Vitest process (file-level workers). 4 matches
+    // ubuntu-latest vCPUs and speeds CI without paying multi-job cold starts.
     maxWorkers: 4,
     restoreMocks: true,
     setupFiles: ["./tests/setup.ts"],
