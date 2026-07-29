@@ -65,6 +65,9 @@ describe("planning as workflow step", () => {
     expect(afterSecond?.workflowRun?.currentStepId).toBe("plan_gate");
     expect(afterSecond && (await taskLegacyStatus(root, afterSecond))).toBe("queued");
     expect(afterSecond?.messages?.some((m) => m.body.includes("Ship workflow refactor"))).toBe(true);
-    expect(afterSecond?.description).not.toContain("## Plan");
+    // The conversation plan step must forward its plan into task.description,
+    // which is the only channel buildInitialPrompt reads for the implement step.
+    expect(afterSecond?.description).toContain("## Plan");
+    expect(afterSecond?.description).toContain("Ship workflow refactor");
   });
 });

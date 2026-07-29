@@ -275,12 +275,21 @@ export async function completeAgentTurn(params: CompleteAgentTurnParams): Promis
   if (internal.conversation) {
     const plan = extractFinalPlan(normalizeReplyForPlanExtraction(replyBody, internal.agent));
     if ((plan || interactiveDone) && turnSucceeded && !isAborted) {
+      // Mirror the read-only-investigation branch: forward the plan into
+      // task.description, the only channel buildInitialPrompt reads for the
+      // implement step. No-op when no plan was emitted (interactiveDone-only).
+      const descriptionWithPlan = mergeInvestigationPlanIntoDescription(task.description, plan);
       await advanceTaskWorkflowStep(root, task.id);
       const updated = await patchTaskExecution(
         root,
         task.id,
         { blockedReason: null },
-        baseUpdates,
+        {
+          ...baseUpdates,
+          ...(descriptionWithPlan !== undefined && descriptionWithPlan !== task.description
+            ? { description: descriptionWithPlan }
+            : {})
+        },
         { clear: baseClear }
       );
       void captureLessonFromReply(root, task, run, replyBody).catch(() => {});

@@ -79,6 +79,7 @@ describe("workflow-driven daemon", () => {
     const implementRun = taskRuns[1]!;
     const prompt = await readFile(path.join(root, "data", "runs", implementRun.id, "prompt.md"), "utf8");
     expect(prompt).toContain("You are running under OmniForge Mission Control");
+    expect(prompt).toContain("Add tests/core.test.ts");
     expect(prompt).not.toContain("Operator did not provide a message");
   });
 
