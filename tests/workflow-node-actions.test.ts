@@ -70,4 +70,21 @@ describe("workflow node actions", () => {
     const updated = applyWorkflowNodeAction(workflow, task, "plan_gate", "approve");
     expect(updated?.stepApprovals["plan_gate"]?.status).toBe("approved");
   });
+
+  it("does not allow approving a step that is not the active decision point", async () => {
+    const workflow = await loadWorkflow(root, "code-feature");
+    const run = createWorkflowRun(workflow);
+    // createWorkflowRun starts at "plan"; plan_gate is an upcoming, unreached gate.
+    expect(run.currentStepId).toBe("plan");
+    expect(nodeActionAllowed(workflow, stubTask(run), "plan_gate", "approve")).toBe(false);
+  });
+
+  it("does not allow approving an active step while the task is running", async () => {
+    const workflow = await loadWorkflow(root, "code-feature");
+    const run = createWorkflowRun(workflow);
+    run.currentStepId = "plan_gate";
+    expect(nodeActionAllowed(workflow, stubTask(run), "plan_gate", "approve", { running: true })).toBe(false);
+    // Allowed again once the agent is idle.
+    expect(nodeActionAllowed(workflow, stubTask(run), "plan_gate", "approve")).toBe(true);
+  });
 });

@@ -254,7 +254,7 @@ export function createTasksRouter(options: ServerOptions): Router {
         return;
       }
       const workflow = await loadWorkflow(options.root, task.workflowRun.workflowId);
-      if (!nodeActionAllowed(workflow, task, stepId, action)) {
+      if (!nodeActionAllowed(workflow, task, stepId, action, { running: isTaskRunning(task, listInflightTaskIds()) })) {
         res.status(409).json({ error: `Action ${action} is not allowed on step ${stepId}.` });
         return;
       }

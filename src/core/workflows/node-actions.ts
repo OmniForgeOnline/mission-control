@@ -110,7 +110,8 @@ export function nodeActionAllowed(
   workflow: WorkflowDefinition,
   task: HarnessTask,
   stepId: string,
-  action: WorkflowNodeAction
+  action: WorkflowNodeAction,
+  options?: { running?: boolean }
 ): boolean {
   const run = task.workflowRun;
   if (!run) return false;
@@ -119,7 +120,15 @@ export function nodeActionAllowed(
 
   switch (action) {
     case "approve":
-      return step.approval === "required" && run.stepApprovals[stepId]?.status !== "approved";
+      // Approve only the active decision point, and only while the agent is
+      // idle. Allowing it on an unreached gate pre-approves a future step, and
+      // allowing it mid-turn races the agent; both break phase order.
+      return (
+        step.approval === "required" &&
+        run.stepApprovals[stepId]?.status !== "approved" &&
+        getActiveSteps(workflow, run).includes(stepId) &&
+        !options?.running
+      );
     case "jump":
     case "rollback":
       return getActiveSteps(workflow, run).includes(stepId) || run.completedSteps.includes(stepId);

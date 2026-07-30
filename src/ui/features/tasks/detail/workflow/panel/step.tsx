@@ -280,7 +280,7 @@ export function WorkflowStepPanel({
   const interactiveStep = hasAgent && (step.kind === "agent_turn" || step.kind === "conversation");
   const interactiveSessionId = (ui.data?.interactiveSessions ?? []).find((s) => s.taskId === task.id)
     ?.terminalSessionId;
-  const showInteractiveComplete = interactiveStep && Boolean(interactiveSessionId);
+  const showInteractiveComplete = interactiveStep && isActive && Boolean(interactiveSessionId);
   const showSettingsActions =
     needsApproval || canRevertStep || showInteractiveComplete || Boolean(task.mergeRequest);
 
@@ -396,6 +396,14 @@ export function WorkflowStepPanel({
                 <button
                   type="button"
                   class="btn btn-sm btn-primary"
+                  disabled={!isActive || isRunning}
+                  title={
+                    !isActive
+                      ? "This step is not the active decision point."
+                      : isRunning
+                        ? "Wait for the agent to finish before approving."
+                        : undefined
+                  }
                   onClick={() => void runNodeAction(task.id, stepId, "approve")}
                 >
                   Approve step
