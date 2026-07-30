@@ -41,12 +41,15 @@ export function stepChatSubmission(
 
 export function StepChat({
   task,
-  stepId
+  stepId,
+  draft,
+  onDraftChange
 }: {
   task: HarnessTask;
   stepId: string;
+  draft: string;
+  onDraftChange: (value: string) => void;
 }) {
-  const [draft, setDraft] = useState("");
   const [attachments, setAttachments] = useState<HarnessAttachment[]>([]);
   const [uploading, setUploading] = useState(false);
   const messages = messagesForStep(task.messages ?? [], stepId);
@@ -67,7 +70,7 @@ export function StepChat({
       });
       // Drop the draft and attachments only once the message is posted;
       // clearing earlier orphans uploaded blobs on a transient failure.
-      setDraft("");
+      onDraftChange("");
       setAttachments([]);
       requestRefresh();
     } catch (err) {
@@ -113,7 +116,7 @@ export function StepChat({
             placeholder={`Message about ${stepLabel(stepId)}…`}
             value={draft}
             onInput={(event) => {
-              setDraft((event.currentTarget as HTMLTextAreaElement).value);
+              onDraftChange((event.currentTarget as HTMLTextAreaElement).value);
             }}
             onKeyDown={enterSubmit}
           />

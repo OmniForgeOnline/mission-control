@@ -171,6 +171,7 @@ export function WorkflowStepPanel({
   stepId: string | null;
 }) {
   const [completeBusy, setCompleteBusy] = useState(false);
+  const [draft, setDraft] = useState("");
 
   if (!stepId) {
     return (
@@ -280,7 +281,7 @@ export function WorkflowStepPanel({
   const interactiveStep = hasAgent && (step.kind === "agent_turn" || step.kind === "conversation");
   const interactiveSessionId = (ui.data?.interactiveSessions ?? []).find((s) => s.taskId === task.id)
     ?.terminalSessionId;
-  const showInteractiveComplete = interactiveStep && Boolean(interactiveSessionId);
+  const showInteractiveComplete = interactiveStep && isActive && Boolean(interactiveSessionId);
   const showSettingsActions =
     needsApproval || canRevertStep || showInteractiveComplete || Boolean(task.mergeRequest);
 
@@ -294,6 +295,21 @@ export function WorkflowStepPanel({
     } finally {
       setCompleteBusy(false);
     }
+  }
+
+  async function onApproveStep(): Promise<void> {
+    if (!stepId) return;
+    if (draft.trim()) {
+      const ok = await confirm({
+        title: "Discard unsent message?",
+        message: "You have an unsent message for this step. Approving discards it.",
+        confirmLabel: "Discard & approve",
+        tone: "danger"
+      });
+      if (!ok) return;
+      setDraft("");
+    }
+    await runNodeAction(task.id, stepId, "approve");
   }
 
   async function onRevertAndResume(): Promise<void> {
@@ -396,7 +412,15 @@ export function WorkflowStepPanel({
                 <button
                   type="button"
                   class="btn btn-sm btn-primary"
-                  onClick={() => void runNodeAction(task.id, stepId, "approve")}
+                  disabled={!isActive || isRunning}
+                  title={
+                    !isActive
+                      ? "This step is not the active decision point."
+                      : isRunning
+                        ? "Wait for the agent to finish before approving."
+                        : undefined
+                  }
+                  onClick={() => void onApproveStep()}
                 >
                   Approve step
                 </button>
@@ -455,7 +479,7 @@ export function WorkflowStepPanel({
           active={isActive && isRunning}
         />
       ) : (
-        <StepChat task={task} stepId={stepId} />
+        <StepChat task={task} stepId={stepId} draft={draft} onDraftChange={setDraft} />
       )}
     </div>
   );
