@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.9.1
+
+### Patch Changes
+
+- 2907293: Enforce the workflow state machine on per-step controls. Approve step is disabled and rejected server-side unless the step is the active decision point and the agent is idle, so a workflow can no longer be advanced while the agent is working or by pre-approving an unreached gate. Done/Block now render only for the active step's live interactive session.
+- 2907293: Forward the conversation plan step's plan into the implementation step's prompt. The conversation completion branch advanced on plan emission without writing the plan into `task.description` (the only channel the implement prompt reads), so conversation-based workflows (code-feature et al.) ran implementation without the plan. Now mirrors the read-only-investigation branch.
+- 2907293: Guard against discarding unsent operator input when advancing a workflow step. Approving a step that has an unsent draft in the step conversation now prompts for confirmation before discarding it, instead of silently dropping the text.
+
 ## 0.9.0
 
 ### Minor Changes
