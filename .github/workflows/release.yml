@@ -42,7 +42,7 @@ jobs:
       - run: npm install -g npm@11
 
       - name: Version Packages PR or publish
-        uses: changesets/action@v1
+        uses: changesets/action@v2
         with:
           version: npx changeset version
           publish: npm run release
