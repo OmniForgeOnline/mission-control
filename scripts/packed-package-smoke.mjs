@@ -1,6 +1,6 @@
 /* global console, process */
 import { execFile } from "node:child_process";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -18,6 +18,16 @@ try {
   const archive = path.join(scratch, packed[0].filename);
   await execFileAsync("tar", ["-xzf", archive, "-C", scratch]);
   const packageRoot = path.join(scratch, "package");
+  // Drop devDependencies from the extracted manifest before installing. --omit=dev prunes
+  // them from the installed tree but npm still resolves them while building the ideal tree,
+  // and npm 10 crashes doing so on this manifest ("Cannot read properties of null (reading
+  // 'edgesOut')" from arborist's peer-set walk over vitest). A consumer never sees this: a
+  // dependency install reads only "dependencies". Stripping them here makes the resolution
+  // match what the smoke test is actually asserting -- the production closure.
+  const manifestPath = path.join(packageRoot, "package.json");
+  const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
+  delete manifest.devDependencies;
+  await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
   await execFileAsync("npm", ["install", "--omit=dev", "--ignore-scripts", "--no-audit", "--no-fund"], {
     cwd: packageRoot,
     maxBuffer: 10 * 1024 * 1024
