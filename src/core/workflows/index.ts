@@ -26,7 +26,6 @@ export {
   effortForRunner
 } from "./graph.ts";
 export {
-  GIT_WORKFLOW_IDS,
   collectPostPushStepIds,
   findRepoRemediationStepId,
   isGitWorkflow,
@@ -37,16 +36,7 @@ export {
 export { listWorkflowSummaries, toWorkflowMetadata } from "./metadata.ts";
 export { serializeWorkflow } from "./serialize.ts";
 export {
-  advanceCompletedToken,
-  collectJoinPredecessors,
-  isJoinReady,
-  joinPolicyForStep,
-  resolveTokenSuccessors,
-  setWorkflowFrontier
-} from "./parallel.ts";
-export {
   canRevertToStep,
   downstreamStepIds,
-  downstreamStepKinds,
   rewindWorkflowRunForRevert
 } from "./revert.ts";

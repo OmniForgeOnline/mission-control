@@ -17,37 +17,18 @@ export type {
   UnknownMetric
 } from "./types.ts";
 export {
-  BASELINE_METRICS_VERSION,
-  BASELINE_SCHEMA_VERSION
-} from "./types.ts";
-export {
   aggregateTaskMetrics,
-  countOperatorInterventions,
-  countToolRetries,
-  isAcceptedOutcome,
-  isCancelledTask,
-  isDeterministicPass,
-  isFailedTask,
-  isFirstPassReviewAccepted,
-  isRetriedTask,
-  isReviewedTask,
-  wallTimeMs
+  isAcceptedOutcome
 } from "./metrics.ts";
-export { provisionalQualityFloors } from "./floors.ts";
-export { computeBaselineId, fingerprintModelIdentities } from "./id.ts";
+export { computeBaselineId } from "./id.ts";
 export type { BaselineIdInput, ModelIdentityFingerprint } from "./id.ts";
 export {
-  createReplayTemplateRoot,
-  observeHistoricalCase,
   observeHistoricalCases,
-  replayEvalCase,
-  replayEvalCorpus
+  replayEvalCase
 } from "./replay.ts";
 export {
   buildBaselineReport,
   buildSpotCheck,
-  PHASE2_UNSUPPORTED_METRICS,
-  renderBaselineMarkdown,
   SPOT_CHECK_CASE_ID,
   writeBaselineReport
 } from "./report.ts";

@@ -1,7 +1,6 @@
-import { REVIEW_PROFILE_IDS, type ReviewProfileId, type WorkflowStep } from "../workflows/types.ts";
+import { type ReviewProfileId, type WorkflowStep } from "../workflows/types.ts";
 
 export type { ReviewProfileId } from "../workflows/types.ts";
-export { REVIEW_PROFILE_IDS };
 
 export const PROFILE_CONSEQUENTIAL: Record<ReviewProfileId, boolean> = {
   code: true,
