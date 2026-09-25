@@ -102,7 +102,7 @@ async function mcpRequest(
   });
 }
 
-describe.sequential("mcp launcher", () => {
+describe("mcp launcher", { concurrent: false }, () => {
   let harnessRoot: string;
 
   beforeEach(async () => {

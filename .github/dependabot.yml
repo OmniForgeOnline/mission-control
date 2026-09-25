@@ -8,6 +8,16 @@ updates:
       day: monday
       time: "09:00"
     open-pull-requests-limit: 4
+    ignore:
+      # TypeScript 7 ships no compiler API until 7.1, and @typescript-eslint
+      # refuses to load against it ("typescript-eslint does not support TS 7.0";
+      # its peer range is >=4.8.4 <6.1.0). Bumping typescript to 7 breaks
+      # `npm run lint` at require time and `npm ci` with ERESOLVE. Scoped to 7.x
+      # so TS 6 minors still flow and a future TS 8 is not silently hidden.
+      # Remove this once @typescript-eslint supports TS 7.
+      - dependency-name: typescript
+        versions:
+          - 7.x
     groups:
       npm-minor-and-patch:
         update-types:
