@@ -17,6 +17,8 @@ data/
 .env*.local
 # Test coverage
 coverage/
+# Vitest 5 artifact root — blob/json/junit reports, attachments, failure screenshots
+.vitest/
 # TypeScript incremental build cache
 *.tsbuildinfo
 # ESLint cache
