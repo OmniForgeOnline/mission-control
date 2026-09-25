@@ -1,1 +1,1 @@
-export { bindTails, openTail } from "./tail/index.ts";
+export { bindTails } from "./tail/index.ts";

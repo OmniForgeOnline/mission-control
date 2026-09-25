@@ -61,8 +61,6 @@ export interface AdvanceAuthorTurnContext {
 
 export const MAX_RESUME_ATTEMPTS = 3;
 
-export { isTaskRunnable as isTaskDaemonRunnable } from "../core/tasks/status.ts";
-
 export function now(): string {
   return new Date().toISOString();
 }
