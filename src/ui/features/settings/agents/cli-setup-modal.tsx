@@ -24,7 +24,7 @@ export function AgentCliSetupModal({
   onProbed?: (toolId: string) => void;
 }) {
   const dlgRef = useRef<HTMLDialogElement>(null);
-  const sessionIdRef = useRef<string | undefined>();
+  const sessionIdRef = useRef<string | undefined>(undefined);
   const finishingRef = useRef(false);
   const [sessionId, setSessionId] = useState<string | undefined>();
   const [error, setError] = useState<string | null>(null);
